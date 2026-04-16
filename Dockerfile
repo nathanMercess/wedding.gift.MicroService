@@ -14,4 +14,5 @@ ENV DOTNET_RUNNING_IN_CONTAINER=true \
 EXPOSE 33001
 
 # Run the dotnet application from within the container
-ENTRYPOINT ["dotnet", "wedding-gift-api.Application.Webapi.dll"]
+ENTRYPOINT ["dotnet", "wedding.gift.Application.Webapi.dll"]
+

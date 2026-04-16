@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path="Dockerfile" />
+  </Folder>
+  <Folder Name="/src/" />
+	<Folder Name="/src/2 - infrastructure/" />
+    <Folder Name="/src/2 - infrastructure/2.1 - contracts/">
+	  <Project Path="src/wedding.gift.Infra.Contracts/wedding.gift.Infra.Contracts.csproj" />
+    </Folder>
+    <Folder Name="/src/2 - infrastructure/2.2 - implementations/">
+	  <Project Path="src/wedding.gift.Infra.Implementations/wedding.gift.Infra.Implementations.csproj" />
+    </Folder>
+	<Folder Name="/src/3 - domain/">
+	  <Project Path="src/wedding.gift.Domain.Model/wedding.gift.Domain.Model.csproj" />
+	</Folder>
+	<Folder Name="/src/4 - service/" />
+    <Folder Name="/src/4 - service/4.1 - contracts/">
+	  <Project Path="src/wedding.gift.Services.Contracts/wedding.gift.Services.Contracts.csproj" />
+    </Folder>
+    <Folder Name="/src/4 - service/4.2 - implementations/">
+	  <Project Path="src/wedding.gift.Services.Implementations/wedding.gift.Services.Implementations.csproj" />
+    </Folder>
+	<Folder Name="/src/5 - application/">
+	  <Project Path="src/wedding.gift.Application.Webapi/wedding.gift.Application.Webapi.csproj" />
+	</Folder>
+	<Folder Name="/src/6 - crosscutting/">
+	  <Project Path="src/wedding.gift.Crosscutting/wedding.gift.Crosscutting.csproj" />
+	</Folder>
+	<Folder Name="/src/7 - tests/">
+	  <Project Path="src/wedding.gift.Tests/wedding.gift.Tests.csproj" />
+	</Folder>
+</Solution>
+
