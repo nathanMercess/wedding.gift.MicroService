@@ -1,128 +1,87 @@
-using wedding.gift.Crosscutting.Constants;
-using wedding.gift.Infra.Implementations.DataContext;
-using wedding.gift.Infra.Implementations.Extensions;
-using wedding.gift.Services.Implementations.Extensions;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.ResponseCompression;
+using System.Text.Json;
+using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.OpenApi;
-using System.Reflection;
-using System.Text.Json.Serialization;
+using wedding.gift.Application.Webapi.Data;
+using wedding.gift.Application.Webapi.Services;
+using wedding.gift.Application.Webapi.Services.Exceptions;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-builder.Configuration
-    .SetBasePath(builder.Environment.ContentRootPath)
-    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
-    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: false)
-    .AddEnvironmentVariables();
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-string formatedVersion = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "1.0.0";
-
-builder.Services.Configure<GzipCompressionProviderOptions>(options => options.Level = System.IO.Compression.CompressionLevel.Optimal);
-builder.Services.AddResponseCompression();
-builder.Services.AddSingleton<IConfiguration>(builder.Configuration);
-
-// Dependency Injection
-string httpClientName = builder.Configuration["GatewayRoutes:HttpClientName"] ?? "Default";
-
-builder.Services.AddDbContext<MicroServiceContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"), o => o.EnableRetryOnFailure(1)));
-
-builder.Services.AddOptions();
-
-builder.Services.AddMvc(config =>
+builder.Services.AddCors(options =>
 {
-})
-.AddJsonOptions(jsonOptions =>
-{
-    jsonOptions.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
-    jsonOptions.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
-});
-
-builder.Services.AddAuthorization(auth =>
-{
-    auth.AddPolicy("Bearer", new AuthorizationPolicyBuilder()
-        .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
-        .RequireAuthenticatedUser()
-        .Build());
+    options.AddPolicy("AngularLocal", policy =>
+    {
+        policy.WithOrigins("http://localhost:4200")
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
 });
 
 builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.Authority = builder.Configuration["JwtSettings:Issuer"];
-        options.Audience = builder.Configuration["JwtSettings:Audience"];
-        options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
-    });
+    .AddControllers()
+    .AddJsonOptions(options => { options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase; });
 
-builder.Services.AddOpenApi();
-
-builder.Services.AddEndpointsApiExplorer();
-
-builder.Services.AddSwaggerGen(c =>
+builder.Services.Configure<ApiBehaviorOptions>(options =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo { Title = ApplicationConstants.APPLICATION_NAME, Version = formatedVersion });
-    
-    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme()
+    options.InvalidModelStateResponseFactory = context =>
     {
-        Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\"",
-        Name = "Authorization",
-        In = ParameterLocation.Header,
-        Type = SecuritySchemeType.ApiKey,
-        Scheme = "Bearer"
-    });
+        var details = new ValidationProblemDetails(context.ModelState)
+        {
+            Status = StatusCodes.Status400BadRequest,
+            Title = "Erro de validação",
+            Detail = "Verifique os campos enviados e tente novamente."
+        };
 
-    c.CustomSchemaIds(x => x.FullName);
-
-    c.AddSecurityRequirement(document => new OpenApiSecurityRequirement()
-    {
-        [new OpenApiSecuritySchemeReference("Bearer", document, null)] = []
-    });
+        return new BadRequestObjectResult(details);
+    };
 });
 
-builder.Services.AddHttpContextAccessor();
+builder.Services.AddProblemDetails();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 
-// HttpClients
-builder.Services.AddHttpClient(httpClientName)
-    .SetHandlerLifetime(TimeSpan.FromMinutes(5));
-
-// Context
-builder.Services.AddMicroServiceContext();
-
-// Unit of Work
-builder.Services.AddUnitOfWork();
-
-// Repositories
-builder.Services.AddRepositories();
-
-// Services
-builder.Services.AddServices();
+builder.Services.AddScoped<IGiftService, GiftService>();
+builder.Services.AddScoped<IContributionService, ContributionService>();
 
 WebApplication app = builder.Build();
 
-// Middlewares
-app.UseResponseCompression();
-
-app.UseCors();
-
-app.UseSwagger();
-
-app.UseSwaggerUI(c =>
+app.UseExceptionHandler(errorApp =>
 {
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Wedding Gift API");
+    errorApp.Run(async context =>
+    {
+        var exception = context.Features.Get<IExceptionHandlerFeature>()?.Error;
+
+        var problem = exception switch
+        {
+            AppException appException => new ProblemDetails
+            {
+                Status = appException.StatusCode,
+                Title = appException.Title,
+                Detail = appException.Message
+            },
+            _ => new ProblemDetails
+            {
+                Status = StatusCodes.Status500InternalServerError,
+                Title = "Erro interno no servidor",
+                Detail = "Ocorreu um erro inesperado."
+            }
+        };
+
+        context.Response.StatusCode = problem.Status ?? StatusCodes.Status500InternalServerError;
+        context.Response.ContentType = "application/problem+json";
+        await context.Response.WriteAsJsonAsync(problem);
+    });
 });
 
-app.UseRouting();
+app.UseCors("AngularLocal");
 
-app.UseAuthentication();
-
-app.UseAuthorization();
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.MapControllers();
-
-app.MapOpenApi();
 
 app.Run();
