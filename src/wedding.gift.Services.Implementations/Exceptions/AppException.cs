@@ -1,4 +1,4 @@
-namespace wedding.gift.Application.Webapi.Services.Exceptions;
+namespace wedding.gift.Services.Implementations.Exceptions;
 
 public abstract class AppException(string title, string detail, int statusCode) : Exception(detail)
 {

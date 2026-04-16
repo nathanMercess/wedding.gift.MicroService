@@ -1,11 +1,12 @@
 using Microsoft.EntityFrameworkCore;
-using wedding.gift.Application.Webapi.Data;
-using wedding.gift.Application.Webapi.Mappings;
-using wedding.gift.Application.Webapi.Models.DTOs;
-using wedding.gift.Application.Webapi.Models.Entities;
-using wedding.gift.Application.Webapi.Services.Exceptions;
+using wedding.gift.Crosscutting.Models.DTOs;
+using wedding.gift.Domain.Model.Entities;
+using wedding.gift.Infra.Implementations.DataContext;
+using wedding.gift.Services.Contracts;
+using wedding.gift.Services.Implementations.Exceptions;
+using wedding.gift.Services.Implementations.Extensions;
 
-namespace wedding.gift.Application.Webapi.Services;
+namespace wedding.gift.Services.Implementations;
 
 public class GiftService(AppDbContext dbContext) : IGiftService
 {
@@ -49,17 +50,14 @@ public class GiftService(AppDbContext dbContext) : IGiftService
     public async Task<Gift> GetByIdAsync(Guid id, CancellationToken cancellationToken)
     {
         var entity = await dbContext.Gifts.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
-
         return entity ?? throw new NotFoundException($"Presente com id '{id}' não foi encontrado.");
     }
 
     public async Task<Gift> CreateAsync(GiftCreateDto dto, CancellationToken cancellationToken)
     {
         var entity = dto.ToEntity();
-
         dbContext.Gifts.Add(entity);
         await dbContext.SaveChangesAsync(cancellationToken);
-
         return entity;
     }
 
@@ -69,7 +67,6 @@ public class GiftService(AppDbContext dbContext) : IGiftService
                      ?? throw new NotFoundException($"Presente com id '{id}' não foi encontrado.");
 
         entity.ApplyUpdate(dto);
-
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return entity;
@@ -82,7 +79,6 @@ public class GiftService(AppDbContext dbContext) : IGiftService
 
         entity.Available = available;
         entity.UpdatedAt = DateTime.UtcNow;
-
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return entity;

@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
-using wedding.gift.Application.Webapi.Mappings;
-using wedding.gift.Application.Webapi.Models.DTOs;
-using wedding.gift.Application.Webapi.Services;
+using wedding.gift.Crosscutting.Models.DTOs;
+using wedding.gift.Services.Contracts;
+using wedding.gift.Services.Implementations.Extensions;
 
 namespace wedding.gift.Application.Webapi.Controllers;
 

@@ -2,9 +2,9 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using wedding.gift.Application.Webapi.Data;
-using wedding.gift.Application.Webapi.Services;
-using wedding.gift.Application.Webapi.Services.Exceptions;
+using wedding.gift.Infra.Implementations.DataContext;
+using wedding.gift.Services.Implementations.Exceptions;
+using wedding.gift.Services.Implementations.Extensions;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -44,8 +44,7 @@ builder.Services.AddProblemDetails();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-builder.Services.AddScoped<IGiftService, GiftService>();
-builder.Services.AddScoped<IContributionService, ContributionService>();
+builder.Services.AddServices();
 
 WebApplication app = builder.Build();
 

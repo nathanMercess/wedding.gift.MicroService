@@ -19,12 +19,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\wedding.gift.Crosscutting\wedding.gift.Crosscutting.csproj" />
     <ProjectReference Include="..\wedding.gift.Infra.Contracts\wedding.gift.Infra.Contracts.csproj" />
+    <ProjectReference Include="..\wedding.gift.Infra.Implementations\wedding.gift.Infra.Implementations.csproj" />
     <ProjectReference Include="..\wedding.gift.Services.Contracts\wedding.gift.Services.Contracts.csproj" />
     <ProjectReference Include="..\wedding.gift.Domain.Model\wedding.gift.Domain.Model.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.3" />
   </ItemGroup>
 
 </Project>

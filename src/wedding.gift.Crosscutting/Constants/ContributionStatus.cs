@@ -1,4 +1,4 @@
-namespace wedding.gift.Application.Webapi.Models.Entities;
+namespace wedding.gift.Crosscutting.Constants;
 
 public static class ContributionStatus
 {

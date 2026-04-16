@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using wedding.gift.Application.Webapi.Models.Entities;
+using wedding.gift.Domain.Model.Entities;
 
-namespace wedding.gift.Application.Webapi.Data;
+namespace wedding.gift.Infra.Implementations.DataContext;
 
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
@@ -11,7 +11,6 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
-
         base.OnModelCreating(modelBuilder);
     }
 

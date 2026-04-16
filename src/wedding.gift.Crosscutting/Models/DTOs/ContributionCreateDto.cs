@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace wedding.gift.Application.Webapi.Models.DTOs;
+namespace wedding.gift.Crosscutting.Models.DTOs;
 
 public class ContributionCreateDto
 {

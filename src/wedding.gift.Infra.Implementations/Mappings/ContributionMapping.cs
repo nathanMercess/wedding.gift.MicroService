@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using wedding.gift.Application.Webapi.Models.Entities;
+using wedding.gift.Domain.Model.Entities;
 
-namespace wedding.gift.Application.Webapi.Data.Mappings;
+namespace wedding.gift.Infra.Implementations.Mappings;
 
 public class ContributionMapping : IEntityTypeConfiguration<Contribution>
 {

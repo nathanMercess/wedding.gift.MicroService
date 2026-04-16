@@ -1,8 +1,8 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace wedding.gift.Application.Webapi.Models.DTOs;
+namespace wedding.gift.Crosscutting.Models.DTOs;
 
-public class GiftCreateDto
+public class GiftUpdateDto
 {
     [Required(ErrorMessage = "O título é obrigatório.")]
     [MaxLength(120, ErrorMessage = "O título deve ter no máximo 120 caracteres.")]
@@ -22,5 +22,5 @@ public class GiftCreateDto
     [MaxLength(80, ErrorMessage = "A categoria deve ter no máximo 80 caracteres.")]
     public string Category { get; set; } = string.Empty;
 
-    public bool Available { get; set; } = true;
+    public bool Available { get; set; }
 }

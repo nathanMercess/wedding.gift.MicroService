@@ -1,11 +1,13 @@
 using Microsoft.EntityFrameworkCore;
-using wedding.gift.Application.Webapi.Data;
-using wedding.gift.Application.Webapi.Mappings;
-using wedding.gift.Application.Webapi.Models.DTOs;
-using wedding.gift.Application.Webapi.Models.Entities;
-using wedding.gift.Application.Webapi.Services.Exceptions;
+using wedding.gift.Crosscutting.Constants;
+using wedding.gift.Crosscutting.Models.DTOs;
+using wedding.gift.Domain.Model.Entities;
+using wedding.gift.Infra.Implementations.DataContext;
+using wedding.gift.Services.Contracts;
+using wedding.gift.Services.Implementations.Exceptions;
+using wedding.gift.Services.Implementations.Extensions;
 
-namespace wedding.gift.Application.Webapi.Services;
+namespace wedding.gift.Services.Implementations;
 
 public class ContributionService(AppDbContext dbContext) : IContributionService
 {
@@ -20,7 +22,6 @@ public class ContributionService(AppDbContext dbContext) : IContributionService
     public async Task<Contribution> GetByIdAsync(Guid id, CancellationToken cancellationToken)
     {
         var entity = await dbContext.Contributions.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
-
         return entity ?? throw new NotFoundException($"Contribuição com id '{id}' não foi encontrada.");
     }
 

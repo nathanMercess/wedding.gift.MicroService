@@ -1,7 +1,7 @@
-using wedding.gift.Application.Webapi.Models.DTOs;
-using wedding.gift.Application.Webapi.Models.Entities;
+using wedding.gift.Crosscutting.Models.DTOs;
+using wedding.gift.Domain.Model.Entities;
 
-namespace wedding.gift.Application.Webapi.Mappings;
+namespace wedding.gift.Services.Implementations.Extensions;
 
 public static class EntityDtoMappings
 {
