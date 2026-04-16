@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>wedding-gift-api.MicroService.Tests</AssemblyName>
+    <PackageId>wedding-gift-api.MicroService.Tests</PackageId>
+    <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
+    <GenerateAssemblyConfigurationAttribute>false</GenerateAssemblyConfigurationAttribute>
+    <GenerateAssemblyCompanyAttribute>false</GenerateAssemblyCompanyAttribute>
+    <GenerateAssemblyProductAttribute>false</GenerateAssemblyProductAttribute>
+    <ImplicitUsings>true</ImplicitUsings>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <WarningsAsErrors>NU1605;CS4014;CS1998</WarningsAsErrors>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <WarningsAsErrors>NU1605;CS4014;CS1998</WarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\wedding-gift-api.Domain.Model\wedding-gift-api.Domain.Model.csproj" />
+    <ProjectReference Include="..\wedding-gift-api.Services.Implementations\wedding-gift-api.Services.Implementations.csproj" />
+    <ProjectReference Include="..\wedding-gift-api.Services.Contracts\wedding-gift-api.Services.Contracts.csproj" />
+    <ProjectReference Include="..\wedding-gift-api.Infra.Implementations\wedding-gift-api.Infra.Implementations.csproj" />
+    <ProjectReference Include="..\wedding-gift-api.Infra.Contracts\wedding-gift-api.Infra.Contracts.csproj" />
+    <ProjectReference Include="..\wedding-gift-api.Crosscutting\wedding-gift-api.Crosscutting.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.3.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="xunit" Version="2.9.3" />
+  </ItemGroup>
+
+</Project>

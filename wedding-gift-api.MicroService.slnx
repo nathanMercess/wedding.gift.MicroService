@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path="Dockerfile" />
+  </Folder>
+  <Folder Name="/src/" />
+	<Folder Name="/src/2 - infrastructure/" />
+    <Folder Name="/src/2 - infrastructure/2.1 - contracts/">
+	  <Project Path="src/wedding-gift-api.Infra.Contracts/wedding-gift-api.Infra.Contracts.csproj" />
+    </Folder>
+    <Folder Name="/src/2 - infrastructure/2.2 - implementations/">
+	  <Project Path="src/wedding-gift-api.Infra.Implementations/wedding-gift-api.Infra.Implementations.csproj" />
+    </Folder>
+	<Folder Name="/src/3 - domain/">
+	  <Project Path="src/wedding-gift-api.Domain.Model/wedding-gift-api.Domain.Model.csproj" />
+	</Folder>
+	<Folder Name="/src/4 - service/" />
+    <Folder Name="/src/4 - service/4.1 - contracts/">
+	  <Project Path="src/wedding-gift-api.Services.Contracts/wedding-gift-api.Services.Contracts.csproj" />
+    </Folder>
+    <Folder Name="/src/4 - service/4.2 - implementations/">
+	  <Project Path="src/wedding-gift-api.Services.Implementations/wedding-gift-api.Services.Implementations.csproj" />
+    </Folder>
+	<Folder Name="/src/5 - application/">
+	  <Project Path="src/wedding-gift-api.Application.Webapi/wedding-gift-api.Application.Webapi.csproj" />
+	</Folder>
+	<Folder Name="/src/6 - crosscutting/">
+	  <Project Path="src/wedding-gift-api.Crosscutting/wedding-gift-api.Crosscutting.csproj" />
+	</Folder>
+	<Folder Name="/src/7 - tests/">
+	  <Project Path="src/wedding-gift-api.Tests/wedding-gift-api.Tests.csproj" />
+	</Folder>
+</Solution>
