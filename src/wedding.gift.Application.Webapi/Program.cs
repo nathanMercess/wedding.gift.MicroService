@@ -8,6 +8,8 @@ using wedding.gift.Services.Implementations.Extensions;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
+builder.Configuration.AddJsonFile("hosting.json", optional: true, reloadOnChange: true);
+
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
