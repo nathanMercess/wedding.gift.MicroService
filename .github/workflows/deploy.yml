@@ -35,12 +35,21 @@ jobs:
     - name: Executar testes
       run: dotnet test --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx" --collect:"XPlat Code Coverage"
 
+    - name: Debug - Listar arquivos TRX gerados
+      if: always()
+      run: |
+        echo "Procurando arquivos .trx:"
+        find . -name "*.trx" -type f 2>/dev/null || echo "Nenhum arquivo .trx encontrado"
+        echo "Estrutura de diretórios TestResults:"
+        find . -type d -name "TestResults" 2>/dev/null || echo "Nenhum diretório TestResults encontrado"
+
     - name: Publicar resultado dos testes
       uses: dorny/test-reporter@v1
       if: always()
+      continue-on-error: true
       with:
         name: Test Results
-        path: '**/TestResults/*.trx'
+        path: '**/TestResults/test-results.trx'
         reporter: dotnet-trx
         fail-on-error: false
 
