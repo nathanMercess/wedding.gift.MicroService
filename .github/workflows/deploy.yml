@@ -122,8 +122,9 @@ jobs:
 
     - name: Pull e retag da imagem do GHCR para GCR
       run: |
-        docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-        docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} gcr.io/weddinggift/weddinggift:${{ github.sha }}
+        IMAGE_LOWERCASE=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
+        docker pull ${IMAGE_LOWERCASE}:${{ github.sha }}
+        docker tag ${IMAGE_LOWERCASE}:${{ github.sha }} gcr.io/weddinggift/weddinggift:${{ github.sha }}
         docker push gcr.io/weddinggift/weddinggift:${{ github.sha }}
 
     - name: Deploy para Cloud Run
