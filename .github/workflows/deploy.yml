@@ -39,14 +39,6 @@ jobs:
     - name: Executar testes
       run: dotnet test --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx" --collect:"XPlat Code Coverage"
 
-    - name: Debug - Listar arquivos TRX gerados
-      if: always()
-      run: |
-        echo "Procurando arquivos .trx:"
-        find . -name "*.trx" -type f 2>/dev/null || echo "Nenhum arquivo .trx encontrado"
-        echo "Estrutura de diretórios TestResults:"
-        find . -type d -name "TestResults" 2>/dev/null || echo "Nenhum diretório TestResults encontrado"
-
     - name: Publicar resultado dos testes
       uses: dorny/test-reporter@v1
       if: always()
@@ -117,23 +109,10 @@ jobs:
     - name: Configurar Cloud SDK
       uses: google-github-actions/setup-gcloud@v2
 
-    - name: Configurar Docker para GCR
-      run: gcloud auth configure-docker
-
-    - name: Build da imagem Docker
-      run: |
-        docker build -t gcr.io/weddinggift/weddinggift:${{ github.sha }} .
-        docker build -t gcr.io/weddinggift/weddinggift:latest .
-
-    - name: Push da imagem para GCR
-      run: |
-        docker push gcr.io/weddinggift/weddinggift:${{ github.sha }}
-        docker push gcr.io/weddinggift/weddinggift:latest
-
     - name: Deploy para Cloud Run
       run: |
         gcloud run deploy weddinggift \
-          --image gcr.io/weddinggift/weddinggift:${{ github.sha }} \
+          --image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
           --platform managed \
           --region us-central1 \
           --allow-unauthenticated \
