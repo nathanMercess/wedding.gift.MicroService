@@ -33,14 +33,14 @@ jobs:
       run: dotnet build --configuration Release --no-restore
     
     - name: Executar testes
-      run: dotnet test --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage"
-    
+      run: dotnet test --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx" --collect:"XPlat Code Coverage"
+
     - name: Publicar resultado dos testes
       uses: dorny/test-reporter@v1
       if: always()
       with:
         name: Test Results
-        path: '**/*.trx'
+        path: '**/TestResults/*.trx'
         reporter: dotnet-trx
         fail-on-error: false
 
