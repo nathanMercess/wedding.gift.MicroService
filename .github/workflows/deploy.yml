@@ -95,6 +95,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      packages: read
 
     steps:
     - name: Checkout do código
@@ -109,10 +110,26 @@ jobs:
     - name: Configurar Cloud SDK
       uses: google-github-actions/setup-gcloud@v2
 
+    - name: Login no GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Configurar Docker para GCR
+      run: gcloud auth configure-docker gcr.io
+
+    - name: Pull e retag da imagem do GHCR para GCR
+      run: |
+        docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+        docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} gcr.io/weddinggift/weddinggift:${{ github.sha }}
+        docker push gcr.io/weddinggift/weddinggift:${{ github.sha }}
+
     - name: Deploy para Cloud Run
       run: |
         gcloud run deploy weddinggift \
-          --image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+          --image gcr.io/weddinggift/weddinggift:${{ github.sha }} \
           --platform managed \
           --region us-central1 \
           --allow-unauthenticated \
