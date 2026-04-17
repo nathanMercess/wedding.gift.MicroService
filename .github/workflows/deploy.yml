@@ -16,7 +16,11 @@ jobs:
   build-and-test:
     name: Build e Testes
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+
     steps:
     - name: Checkout do código
       uses: actions/checkout@v4
