@@ -17,7 +17,7 @@ public class SmtpEmailSender(IOptions<EmailSettings> emailSettings, ILogger<Smtp
 
         if (!_settings.Enabled || string.IsNullOrWhiteSpace(_settings.Host))
         {
-            logger.LogWarning("Envio de e-mail está desabilitado. Token de confirmação não foi enviado para {To}.", to);
+            logger.LogWarning("Envio de e-mail está desabilitado. Token de confirmação não foi enviado.");
             return;
         }
 
