@@ -18,6 +18,9 @@ public class UserMapping : IEntityTypeConfiguration<User>
         builder.Property(x => x.PasswordSalt).IsRequired().HasMaxLength(100);
         builder.Property(x => x.Role).IsRequired().HasMaxLength(30).HasDefaultValue(UserRoles.Admin);
         builder.Property(x => x.IsActive).HasDefaultValue(true);
+        builder.Property(x => x.IsEmailConfirmed).HasDefaultValue(false);
+        builder.Property(x => x.EmailConfirmationToken).HasMaxLength(200);
+        builder.Property(x => x.EmailConfirmationTokenExpiresAt);
         builder.Property(x => x.CreatedAt).IsRequired();
         builder.Property(x => x.UpdatedAt).IsRequired();
 
