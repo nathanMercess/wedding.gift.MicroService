@@ -7,7 +7,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 {
     public DbSet<Gift> Gifts => Set<Gift>();
     public DbSet<Contribution> Contributions => Set<Contribution>();
-    public DbSet<UserAccount> Users => Set<UserAccount>();
+    public DbSet<User> Users => Set<User>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -32,7 +32,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             }
         }
 
-        foreach (var entry in ChangeTracker.Entries<UserAccount>())
+        foreach (var entry in ChangeTracker.Entries<User>())
         {
             if (entry.State == EntityState.Added)
             {

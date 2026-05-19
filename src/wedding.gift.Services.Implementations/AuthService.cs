@@ -1,177 +1,95 @@
-using System.Security.Cryptography;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
-using wedding.gift.Crosscutting.Models.DTOs;
-using wedding.gift.Domain.Model.Entities;
+using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
+using wedding.gift.Crosscutting.Models.Configurations;
+using wedding.gift.Crosscutting.Models.DTOs.Auth;
 using wedding.gift.Infra.Implementations.DataContext;
 using wedding.gift.Services.Contracts;
 using wedding.gift.Services.Implementations.Exceptions;
+using wedding.gift.Services.Implementations.Security;
 
 namespace wedding.gift.Services.Implementations;
 
-public class AuthService(AppDbContext dbContext, IEmailSender emailSender) : IAuthService
+public class AuthService(AppDbContext dbContext, IOptions<JwtOptions> jwtOptions) : IAuthService
 {
-    private const int PasswordIterations = 100_000;
-    private static readonly TimeSpan EmailTokenLifetime = TimeSpan.FromMinutes(30);
+    private readonly JwtOptions _jwtOptions = jwtOptions.Value;
 
-    public async Task RegisterAsync(RegisterRequestDto dto, CancellationToken cancellationToken)
+    public async Task<LoginResponseDto> LoginAsync(LoginRequestDto dto, CancellationToken cancellationToken)
     {
-        var normalizedEmail = NormalizeEmail(dto.Email);
-        var emailAlreadyExists = await dbContext.Users.AnyAsync(x => x.Email == normalizedEmail, cancellationToken);
-
-        if (emailAlreadyExists)
+        if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Password))
         {
-            throw new ConflictException("Já existe um usuário cadastrado com este e-mail.");
+            throw new UnauthorizedException("Credenciais inválidas.");
         }
 
-        CreatePasswordHash(dto.Password, out var passwordHash, out var passwordSalt);
-        var plainToken = GenerateEmailToken();
-        var user = new UserAccount
-        {
-            Id = Guid.NewGuid(),
-            Email = normalizedEmail,
-            PasswordHash = passwordHash,
-            PasswordSalt = passwordSalt,
-            IsEmailConfirmed = false,
-            EmailConfirmationTokenHash = ComputeTokenHash(plainToken),
-            EmailConfirmationTokenExpiresAt = DateTime.UtcNow.Add(EmailTokenLifetime)
-        };
+        var normalizedEmail = dto.Email.Trim().ToLowerInvariant();
 
-        dbContext.Users.Add(user);
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        await SendEmailConfirmationTokenAsync(user.Email, plainToken, cancellationToken);
-    }
-
-    public async Task<AuthUserResponseDto> LoginAsync(LoginRequestDto dto, CancellationToken cancellationToken)
-    {
-        var normalizedEmail = NormalizeEmail(dto.Email);
-        var user = await dbContext.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Email == normalizedEmail, cancellationToken);
-
-        if (user is null || !VerifyPassword(dto.Password, user.PasswordHash, user.PasswordSalt))
-        {
-            throw new BadRequestException("Credenciais inválidas.");
-        }
-
-        if (!user.IsEmailConfirmed)
-        {
-            throw new ConflictException("Seu e-mail ainda não foi confirmado.");
-        }
-
-        return new AuthUserResponseDto
-        {
-            Id = user.Id,
-            Email = user.Email,
-            IsEmailConfirmed = user.IsEmailConfirmed
-        };
-    }
-
-    public async Task ConfirmEmailAsync(ConfirmEmailRequestDto dto, CancellationToken cancellationToken)
-    {
-        var normalizedEmail = NormalizeEmail(dto.Email);
-        var user = await dbContext.Users.FirstOrDefaultAsync(x => x.Email == normalizedEmail, cancellationToken);
+        var user = await dbContext.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.NormalizedEmail == normalizedEmail, cancellationToken);
 
         if (user is null)
         {
-            throw new BadRequestException("Token inválido ou expirado.");
+            throw new UnauthorizedException("Credenciais inválidas.");
         }
 
-        if (user.IsEmailConfirmed)
+        if (!user.IsActive)
         {
-            return;
+            throw new UnauthorizedException("Usuário inativo.");
         }
 
-        var tokenHash = ComputeTokenHash(dto.Token);
-        var tokenExpiresAt = user.EmailConfirmationTokenExpiresAt;
-        var tokenIsValid = !string.IsNullOrWhiteSpace(user.EmailConfirmationTokenHash)
-                           && CryptographicOperations.FixedTimeEquals(
-                               Encoding.UTF8.GetBytes(user.EmailConfirmationTokenHash),
-                               Encoding.UTF8.GetBytes(tokenHash))
-                           && tokenExpiresAt.HasValue
-                           && tokenExpiresAt.Value >= DateTime.UtcNow;
+        var isPasswordValid = PasswordHasher.VerifyPassword(dto.Password, user.PasswordHash, user.PasswordSalt);
 
-        if (!tokenIsValid)
+        if (!isPasswordValid)
         {
-            throw new BadRequestException("Token inválido ou expirado.");
+            throw new UnauthorizedException("Credenciais inválidas.");
         }
 
-        user.IsEmailConfirmed = true;
-        user.EmailConfirmedAt = DateTime.UtcNow;
-        user.EmailConfirmationTokenHash = string.Empty;
-        user.EmailConfirmationTokenExpiresAt = null;
+        ValidateJwtConfiguration(_jwtOptions);
 
-        await dbContext.SaveChangesAsync(cancellationToken);
-    }
+        var expiresAtUtc = DateTime.UtcNow.AddMinutes(_jwtOptions.AccessTokenExpirationMinutes);
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtOptions.SigningKey));
+        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
-    public async Task ResendConfirmationEmailAsync(ResendConfirmationEmailRequestDto dto, CancellationToken cancellationToken)
-    {
-        var normalizedEmail = NormalizeEmail(dto.Email);
-        var user = await dbContext.Users.FirstOrDefaultAsync(x => x.Email == normalizedEmail, cancellationToken);
-
-        if (user is null || user.IsEmailConfirmed)
+        var claims = new List<Claim>
         {
-            return;
+            new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+            new(JwtRegisteredClaimNames.Email, user.Email),
+            new(ClaimTypes.Name, user.Name),
+            new(ClaimTypes.Role, user.Role),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+        };
+
+        var token = new JwtSecurityToken(
+            issuer: _jwtOptions.Issuer,
+            audience: _jwtOptions.Audience,
+            claims: claims,
+            notBefore: DateTime.UtcNow,
+            expires: expiresAtUtc,
+            signingCredentials: credentials);
+
+        var accessToken = new JwtSecurityTokenHandler().WriteToken(token);
+
+        return new LoginResponseDto
+        {
+            AccessToken = accessToken,
+            ExpiresAtUtc = expiresAtUtc,
+            UserName = user.Name,
+            Email = user.Email,
+            Role = user.Role
+        };
+    }
+
+    private static void ValidateJwtConfiguration(JwtOptions options)
+    {
+        if (string.IsNullOrWhiteSpace(options.Issuer) ||
+            string.IsNullOrWhiteSpace(options.Audience) ||
+            string.IsNullOrWhiteSpace(options.SigningKey) ||
+            options.SigningKey.Length < 32)
+        {
+            throw new BadRequestException("Configuração JWT inválida.");
         }
-
-        var plainToken = GenerateEmailToken();
-        user.EmailConfirmationTokenHash = ComputeTokenHash(plainToken);
-        user.EmailConfirmationTokenExpiresAt = DateTime.UtcNow.Add(EmailTokenLifetime);
-
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await SendEmailConfirmationTokenAsync(user.Email, plainToken, cancellationToken);
-    }
-
-    private async Task SendEmailConfirmationTokenAsync(string to, string token, CancellationToken cancellationToken)
-    {
-        const string subject = "Confirmação de e-mail - Wedding Gift";
-        var htmlBody = $"""
-                        <p>Olá!</p>
-                        <p>Use o token abaixo para confirmar seu e-mail:</p>
-                        <h2 style="letter-spacing: 4px;">{token}</h2>
-                        <p>Este token expira em 30 minutos.</p>
-                        """;
-
-        await emailSender.SendAsync(to, subject, htmlBody, cancellationToken);
-    }
-
-    private static string NormalizeEmail(string email)
-    {
-        return email.Trim().ToLowerInvariant();
-    }
-
-    private static void CreatePasswordHash(string password, out string hash, out string salt)
-    {
-        var passwordBytes = Encoding.UTF8.GetBytes(password);
-        var saltBytes = RandomNumberGenerator.GetBytes(16);
-        var hashBytes = Rfc2898DeriveBytes.Pbkdf2(passwordBytes, saltBytes, PasswordIterations, HashAlgorithmName.SHA256, 32);
-
-        hash = Convert.ToBase64String(hashBytes);
-        salt = Convert.ToBase64String(saltBytes);
-    }
-
-    private static bool VerifyPassword(string password, string expectedHash, string storedSalt)
-    {
-        var saltBytes = Convert.FromBase64String(storedSalt);
-        var expectedHashBytes = Convert.FromBase64String(expectedHash);
-        var candidateHashBytes = Rfc2898DeriveBytes.Pbkdf2(
-            Encoding.UTF8.GetBytes(password),
-            saltBytes,
-            PasswordIterations,
-            HashAlgorithmName.SHA256,
-            32);
-
-        return CryptographicOperations.FixedTimeEquals(candidateHashBytes, expectedHashBytes);
-    }
-
-    private static string GenerateEmailToken()
-    {
-        return RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
-    }
-
-    private static string ComputeTokenHash(string token)
-    {
-        var tokenBytes = Encoding.UTF8.GetBytes(token.Trim());
-        var hashBytes = SHA256.HashData(tokenBytes);
-        return Convert.ToBase64String(hashBytes);
     }
 }
