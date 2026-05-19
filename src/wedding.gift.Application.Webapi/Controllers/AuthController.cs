@@ -6,7 +6,7 @@ using wedding.gift.Services.Contracts;
 namespace wedding.gift.Application.Webapi.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("[controller]")]
 public class AuthController(IAuthService authService) : ControllerBase
 {
     [AllowAnonymous]

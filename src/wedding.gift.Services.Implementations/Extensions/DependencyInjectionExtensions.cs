@@ -11,6 +11,7 @@ public static class DependencyInjectionExtensions
         services.AddScoped<IGiftService, GiftService>();
         services.AddScoped<IContributionService, ContributionService>();
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<ICoupleService, CoupleService>();
         services.AddTransient<IEmailService, EmailService>();
 
         return services;
