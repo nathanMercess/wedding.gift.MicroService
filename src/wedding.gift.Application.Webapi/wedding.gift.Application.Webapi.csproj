@@ -8,6 +8,7 @@
     <OutputType>Exe</OutputType>
     <PackageId>wedding.gift.Application.Webapi</PackageId>
     <ImplicitUsings>true</ImplicitUsings>
+    <NoWarn>$(NoWarn);NU1901</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
@@ -77,4 +78,5 @@
   </ItemGroup>
 
 </Project>
+
 
