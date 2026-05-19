@@ -9,8 +9,8 @@ public static class DependencyInjectionExtensions
     {
         services.AddScoped<IGiftService, GiftService>();
         services.AddScoped<IContributionService, ContributionService>();
+        services.AddScoped<IAuthService, AuthService>();
 
         return services;
     }
 }
-

@@ -1,14 +1,16 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using wedding.gift.Application.Webapi.Controllers.Base;
+using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Services.Contracts;
 using wedding.gift.Services.Implementations.Extensions;
 
 namespace wedding.gift.Application.Webapi.Controllers;
 
-[ApiController]
-[Route("api/[controller]")]
-public class ContributionsController(IContributionService contributionService) : ControllerBase
+public class ContributionsController(IContributionService contributionService) : ApiControllerBase
 {
+    [AllowAnonymous]
     [HttpGet]
     [ProducesResponseType(typeof(IEnumerable<ContributionResponseDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IEnumerable<ContributionResponseDto>>> GetAll(CancellationToken cancellationToken)
@@ -17,6 +19,7 @@ public class ContributionsController(IContributionService contributionService) :
         return Ok(contributions.Select(x => x.ToResponseDto()));
     }
 
+    [AllowAnonymous]
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(ContributionResponseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -26,6 +29,7 @@ public class ContributionsController(IContributionService contributionService) :
         return Ok(contribution.ToResponseDto());
     }
 
+    [Authorize(Roles = UserRoles.Admin)]
     [HttpPost]
     [ProducesResponseType(typeof(ContributionResponseDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
