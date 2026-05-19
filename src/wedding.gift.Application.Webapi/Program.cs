@@ -2,7 +2,6 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using wedding.gift.Crosscutting.Models.Settings;
 using wedding.gift.Infra.Implementations.DataContext;
 using wedding.gift.Services.Implementations.Exceptions;
 using wedding.gift.Services.Implementations.Extensions;
@@ -44,7 +43,6 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
 builder.Services.AddProblemDetails();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
 
 builder.Services.AddServices();
 
