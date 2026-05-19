@@ -19,11 +19,13 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+var corsOptions = builder.Configuration.GetSection(CorsOptions.SectionName).Get<CorsOptions>() ?? new CorsOptions();
+
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AngularLocal", policy =>
+    options.AddPolicy("AllowedOrigins", policy =>
     {
-        policy.WithOrigins("http://localhost:4200")
+        policy.WithOrigins(corsOptions.AllowedOrigins)
             .AllowAnyHeader()
             .AllowAnyMethod();
     });
@@ -126,7 +128,7 @@ app.UseExceptionHandler(errorApp =>
     });
 });
 
-app.UseCors("AngularLocal");
+app.UseCors("AllowedOrigins");
 
 app.UseSwagger();
 app.UseSwaggerUI();

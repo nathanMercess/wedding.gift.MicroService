@@ -1,0 +1,35 @@
+using Microsoft.EntityFrameworkCore;
+using wedding.gift.Crosscutting.Models.DTOs;
+using wedding.gift.Domain.Model.Entities;
+using wedding.gift.Infra.Implementations.DataContext;
+using wedding.gift.Services.Contracts;
+
+namespace wedding.gift.Services.Implementations;
+
+public class CoupleService(AppDbContext dbContext) : ICoupleService
+{
+    public async Task<Couple?> GetAsync(CancellationToken cancellationToken)
+    {
+        return await dbContext.Couples.AsNoTracking().FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<Couple> UpdateAsync(CoupleUpdateDto dto, CancellationToken cancellationToken)
+    {
+        var entity = await dbContext.Couples.FirstOrDefaultAsync(cancellationToken);
+
+        if (entity is null)
+        {
+            entity = new Couple { Id = Guid.NewGuid() };
+            dbContext.Couples.Add(entity);
+        }
+
+        entity.Names = dto.Names.Trim();
+        entity.WeddingDate = dto.WeddingDate;
+        entity.PhotoUrl = dto.PhotoUrl.Trim();
+        entity.Message = dto.Message.Trim();
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return entity;
+    }
+}
