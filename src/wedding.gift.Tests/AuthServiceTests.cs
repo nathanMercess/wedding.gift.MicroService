@@ -8,6 +8,7 @@ using wedding.gift.Crosscutting.Models.Configurations;
 using wedding.gift.Crosscutting.Models.DTOs.Auth;
 using wedding.gift.Domain.Model.Entities;
 using wedding.gift.Infra.Implementations.DataContext;
+using wedding.gift.Services.Contracts;
 using wedding.gift.Services.Implementations;
 using wedding.gift.Services.Implementations.Exceptions;
 using wedding.gift.Services.Implementations.Security;
@@ -31,7 +32,8 @@ public class AuthServiceTests
             PasswordHash = hash,
             PasswordSalt = salt,
             Role = UserRoles.Admin,
-            IsActive = true
+            IsActive = true,
+            IsEmailConfirmed = true
         });
         await context.SaveChangesAsync();
 
@@ -68,7 +70,8 @@ public class AuthServiceTests
             PasswordHash = hash,
             PasswordSalt = salt,
             Role = UserRoles.Admin,
-            IsActive = true
+            IsActive = true,
+            IsEmailConfirmed = true
         });
         await context.SaveChangesAsync();
 
@@ -98,7 +101,8 @@ public class AuthServiceTests
             PasswordHash = hash,
             PasswordSalt = salt,
             Role = UserRoles.Admin,
-            IsActive = false
+            IsActive = false,
+            IsEmailConfirmed = true
         });
         await context.SaveChangesAsync();
 
@@ -113,6 +117,159 @@ public class AuthServiceTests
         Assert.Equal("Usuário inativo.", ex.Message);
     }
 
+    [Fact]
+    public async Task Login_UnconfirmedEmail_ThrowsUnauthorized()
+    {
+        var context = CreateContext();
+        var (hash, salt) = PasswordHasher.HashPassword("SenhaForte123!");
+
+        context.Users.Add(new User
+        {
+            Id = Guid.NewGuid(),
+            Name = "Novo",
+            Email = "novo@weddinggift.com",
+            NormalizedEmail = "novo@weddinggift.com",
+            PasswordHash = hash,
+            PasswordSalt = salt,
+            Role = UserRoles.Member,
+            IsActive = true,
+            IsEmailConfirmed = false
+        });
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+
+        var ex = await Assert.ThrowsAsync<UnauthorizedException>(() => service.LoginAsync(new LoginRequestDto
+        {
+            Email = "novo@weddinggift.com",
+            Password = "SenhaForte123!"
+        }, CancellationToken.None));
+
+        Assert.Equal("E-mail não confirmado. Verifique sua caixa de entrada.", ex.Message);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_Success_SendsConfirmationEmail()
+    {
+        var context = CreateContext();
+        var emailService = new FakeEmailService();
+        var service = CreateService(context, emailService);
+
+        var result = await service.RegisterAsync(new RegisterRequestDto
+        {
+            Name = "Maria",
+            Email = "maria@weddinggift.com",
+            Password = "SenhaForte123!"
+        }, CancellationToken.None);
+
+        Assert.Equal("maria@weddinggift.com", result.Email);
+        Assert.Equal("Maria", result.Name);
+        Assert.True(emailService.WasCalled);
+        Assert.Equal("maria@weddinggift.com", emailService.LastToEmail);
+
+        var user = await context.Users.FirstAsync(u => u.NormalizedEmail == "maria@weddinggift.com");
+        Assert.False(user.IsEmailConfirmed);
+        Assert.NotNull(user.EmailConfirmationToken);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_DuplicateEmail_ThrowsConflict()
+    {
+        var context = CreateContext();
+        var (hash, salt) = PasswordHasher.HashPassword("SenhaForte123!");
+
+        context.Users.Add(new User
+        {
+            Id = Guid.NewGuid(),
+            Name = "Existente",
+            Email = "existente@weddinggift.com",
+            NormalizedEmail = "existente@weddinggift.com",
+            PasswordHash = hash,
+            PasswordSalt = salt,
+            Role = UserRoles.Member,
+            IsActive = true
+        });
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+
+        await Assert.ThrowsAsync<ConflictException>(() => service.RegisterAsync(new RegisterRequestDto
+        {
+            Name = "Outro",
+            Email = "Existente@WeddingGift.com",
+            Password = "SenhaForte123!"
+        }, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ConfirmEmail_ValidToken_ConfirmsUser()
+    {
+        var context = CreateContext();
+        var token = "token-valido-123";
+
+        context.Users.Add(new User
+        {
+            Id = Guid.NewGuid(),
+            Name = "Pending",
+            Email = "pending@weddinggift.com",
+            NormalizedEmail = "pending@weddinggift.com",
+            PasswordHash = "hash",
+            PasswordSalt = "salt",
+            Role = UserRoles.Member,
+            IsActive = true,
+            IsEmailConfirmed = false,
+            EmailConfirmationToken = token,
+            EmailConfirmationTokenExpiresAt = DateTime.UtcNow.AddHours(24)
+        });
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+
+        await service.ConfirmEmailAsync(new ConfirmEmailRequestDto
+        {
+            Email = "pending@weddinggift.com",
+            Token = token
+        }, CancellationToken.None);
+
+        var user = await context.Users.FirstAsync(u => u.NormalizedEmail == "pending@weddinggift.com");
+        Assert.True(user.IsEmailConfirmed);
+        Assert.Null(user.EmailConfirmationToken);
+        Assert.Null(user.EmailConfirmationTokenExpiresAt);
+    }
+
+    [Fact]
+    public async Task ConfirmEmail_ExpiredToken_ThrowsBadRequest()
+    {
+        var context = CreateContext();
+        var token = "token-expirado";
+
+        context.Users.Add(new User
+        {
+            Id = Guid.NewGuid(),
+            Name = "Expired",
+            Email = "expired@weddinggift.com",
+            NormalizedEmail = "expired@weddinggift.com",
+            PasswordHash = "hash",
+            PasswordSalt = "salt",
+            Role = UserRoles.Member,
+            IsActive = true,
+            IsEmailConfirmed = false,
+            EmailConfirmationToken = token,
+            EmailConfirmationTokenExpiresAt = DateTime.UtcNow.AddHours(-1)
+        });
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+
+        var ex = await Assert.ThrowsAsync<BadRequestException>(() => service.ConfirmEmailAsync(new ConfirmEmailRequestDto
+        {
+            Email = "expired@weddinggift.com",
+            Token = token
+        }, CancellationToken.None));
+
+        Assert.Equal("Token de confirmação inválido ou expirado.", ex.Message);
+    }
+
     private static AppDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
@@ -122,9 +279,9 @@ public class AuthServiceTests
         return new AppDbContext(options);
     }
 
-    private static AuthService CreateService(AppDbContext context)
+    private static AuthService CreateService(AppDbContext context, IEmailService? emailService = null)
     {
-        var options = Options.Create(new JwtOptions
+        var jwtOptions = Options.Create(new JwtOptions
         {
             Issuer = "wedding.gift.api",
             Audience = "wedding.gift.clients",
@@ -132,6 +289,19 @@ public class AuthServiceTests
             AccessTokenExpirationMinutes = 60
         });
 
-        return new AuthService(context, options);
+        return new AuthService(context, jwtOptions, emailService ?? new FakeEmailService());
+    }
+
+    private sealed class FakeEmailService : IEmailService
+    {
+        public bool WasCalled { get; private set; }
+        public string? LastToEmail { get; private set; }
+
+        public Task SendEmailConfirmationAsync(string toEmail, string toName, string token, CancellationToken cancellationToken)
+        {
+            WasCalled = true;
+            LastToEmail = toEmail;
+            return Task.CompletedTask;
+        }
     }
 }

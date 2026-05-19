@@ -12,8 +12,8 @@ using wedding.gift.Infra.Implementations.DataContext;
 namespace wedding.gift.Infra.Implementations.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260519162501_AddUserAuthentication")]
-    partial class AddUserAuthentication
+    [Migration("20260519183042_AddEmailConfirmation")]
+    partial class AddEmailConfirmation
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -183,7 +183,7 @@ namespace wedding.gift.Infra.Implementations.Migrations
                         });
                 });
 
-            modelBuilder.Entity("wedding.gift.Domain.Model.Entities.UserAccount", b =>
+            modelBuilder.Entity("wedding.gift.Domain.Model.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -194,40 +194,59 @@ namespace wedding.gift.Infra.Implementations.Migrations
 
                     b.Property<string>("Email")
                         .IsRequired()
-                        .HasMaxLength(160)
-                        .HasColumnType("nvarchar(160)");
+                        .HasMaxLength(180)
+                        .HasColumnType("nvarchar(180)");
+
+                    b.Property<string>("EmailConfirmationToken")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<DateTime?>("EmailConfirmationTokenExpiresAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("EmailConfirmationTokenHash")
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
-
-                    b.Property<DateTime?>("EmailConfirmedAt")
-                        .HasColumnType("datetime2");
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
                     b.Property<bool>("IsEmailConfirmed")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("NormalizedEmail")
+                        .IsRequired()
+                        .HasMaxLength(180)
+                        .HasColumnType("nvarchar(180)");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
 
                     b.Property<string>("PasswordSalt")
                         .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("Admin");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Email")
+                    b.HasIndex("NormalizedEmail")
                         .IsUnique();
 
                     b.ToTable("Users");
