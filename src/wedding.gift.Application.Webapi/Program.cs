@@ -6,6 +6,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
+using wedding.gift.Application.Webapi.Repositories;
+using wedding.gift.Application.Webapi.Repositories.Interfaces;
+using wedding.gift.Application.Webapi.Services;
+using wedding.gift.Application.Webapi.Services.Interfaces;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.Configurations;
 using wedding.gift.Domain.Model.Entities;
@@ -26,6 +30,13 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowedOrigins", policy =>
     {
         policy.WithOrigins(corsOptions.AllowedOrigins)
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+
+    options.AddPolicy("AngularDev", policy =>
+    {
+        policy.WithOrigins("http://localhost:4200")
             .AllowAnyHeader()
             .AllowAnyMethod();
     });
@@ -81,6 +92,12 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
+builder.Services.AddHttpClient<InfinitePayAuthService>();
+builder.Services.AddHttpClient<InfinitePayService>();
+builder.Services.AddSingleton<IInfinitePayAuthService, InfinitePayAuthService>();
+builder.Services.AddScoped<IInfinitePayService, InfinitePayService>();
+builder.Services.AddScoped<IPagamentoRepository, PagamentoRepository>();
+
 builder.Services.AddSwaggerGen(options =>
 {
     options.SwaggerDoc("v1", new OpenApiInfo { Title = "wedding.gift API", Version = "v1" });
@@ -131,7 +148,7 @@ app.UseExceptionHandler(errorApp =>
     });
 });
 
-app.UseCors("AllowedOrigins");
+app.UseCors("AngularDev");
 
 app.UseSwagger();
 app.UseSwaggerUI();
