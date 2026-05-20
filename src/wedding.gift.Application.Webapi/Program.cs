@@ -1,11 +1,12 @@
-using System.Text;
-using System.Text.Json;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
+using System.Text;
+using System.Text.Json;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.Configurations;
 using wedding.gift.Domain.Model.Entities;
@@ -136,7 +137,10 @@ app.UseSwaggerUI();
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapControllers();
+builder.Services.AddControllers(options =>
+    {
+        options.Conventions.Add(new RouteConvention("api"));
+    });
 
 app.Run();
 
