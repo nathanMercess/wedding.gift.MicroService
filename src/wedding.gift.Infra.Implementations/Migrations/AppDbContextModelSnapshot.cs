@@ -62,6 +62,39 @@ namespace wedding.gift.Infra.Implementations.Migrations
                     b.ToTable("Contributions");
                 });
 
+            modelBuilder.Entity("wedding.gift.Domain.Model.Entities.Couple", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("Names")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("PhotoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("WeddingDate")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Couples");
+                });
+
             modelBuilder.Entity("wedding.gift.Domain.Model.Entities.Gift", b =>
                 {
                     b.Property<Guid>("Id")
@@ -86,17 +119,20 @@ namespace wedding.gift.Infra.Implementations.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
-                    b.Property<string>("ImageUrl")
+                    b.Property<string>("Image")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
 
                     b.Property<decimal>("Price")
                         .HasColumnType("decimal(10,2)");
 
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(120)
-                        .HasColumnType("nvarchar(120)");
+                    b.Property<decimal>("Total")
+                        .HasColumnType("decimal(10,2)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -113,9 +149,10 @@ namespace wedding.gift.Infra.Implementations.Migrations
                             Category = "Cozinha",
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Description = "Conjunto com 5 panelas em inox para o dia a dia.",
-                            ImageUrl = "https://images.example.com/panelas-inox.jpg",
+                            Image = "https://images.example.com/panelas-inox.jpg",
+                            Name = "Jogo de Panelas Inox",
                             Price = 899.90m,
-                            Title = "Jogo de Panelas Inox",
+                            Total = 899.90m,
                             UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
                         },
                         new
@@ -125,9 +162,10 @@ namespace wedding.gift.Infra.Implementations.Migrations
                             Category = "Eletrodomésticos",
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Description = "Liquidificador potente com copo de vidro.",
-                            ImageUrl = "https://images.example.com/liquidificador.jpg",
+                            Image = "https://images.example.com/liquidificador.jpg",
+                            Name = "Liquidificador 1200W",
                             Price = 459.90m,
-                            Title = "Liquidificador 1200W",
+                            Total = 459.90m,
                             UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
                         },
                         new
@@ -137,9 +175,10 @@ namespace wedding.gift.Infra.Implementations.Migrations
                             Category = "Quarto",
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Description = "Kit completo 400 fios para cama queen.",
-                            ImageUrl = "https://images.example.com/jogo-cama.jpg",
+                            Image = "https://images.example.com/jogo-cama.jpg",
+                            Name = "Jogo de Cama Queen",
                             Price = 329.99m,
-                            Title = "Jogo de Cama Queen",
+                            Total = 329.99m,
                             UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
                         },
                         new
@@ -149,9 +188,10 @@ namespace wedding.gift.Infra.Implementations.Migrations
                             Category = "Mesa",
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Description = "Conjunto de jantar em porcelana branca.",
-                            ImageUrl = "https://images.example.com/aparelho-jantar.jpg",
+                            Image = "https://images.example.com/aparelho-jantar.jpg",
+                            Name = "Aparelho de Jantar 20 Peças",
                             Price = 519.00m,
-                            Title = "Aparelho de Jantar 20 Peças",
+                            Total = 519.00m,
                             UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
                         },
                         new
@@ -161,9 +201,10 @@ namespace wedding.gift.Infra.Implementations.Migrations
                             Category = "Casa",
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Description = "Aspirador inteligente com base carregadora.",
-                            ImageUrl = "https://images.example.com/aspirador-robo.jpg",
+                            Image = "https://images.example.com/aspirador-robo.jpg",
+                            Name = "Aspirador Robô",
                             Price = 1299.00m,
-                            Title = "Aspirador Robô",
+                            Total = 1299.00m,
                             UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
                         },
                         new
@@ -173,11 +214,81 @@ namespace wedding.gift.Infra.Implementations.Migrations
                             Category = "Cozinha",
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Description = "Cafeteira automática para cápsulas e pó.",
-                            ImageUrl = "https://images.example.com/cafeteira.jpg",
+                            Image = "https://images.example.com/cafeteira.jpg",
+                            Name = "Cafeteira Expresso",
                             Price = 699.90m,
-                            Title = "Cafeteira Expresso",
+                            Total = 699.90m,
                             UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
                         });
+                });
+
+            modelBuilder.Entity("wedding.gift.Domain.Model.Entities.User", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(180)
+                        .HasColumnType("nvarchar(180)");
+
+                    b.Property<string>("EmailConfirmationToken")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("EmailConfirmationTokenExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<bool>("IsEmailConfirmed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("NormalizedEmail")
+                        .IsRequired()
+                        .HasMaxLength(180)
+                        .HasColumnType("nvarchar(180)");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("PasswordSalt")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("Admin");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedEmail")
+                        .IsUnique();
+
+                    b.ToTable("Users");
                 });
 
             modelBuilder.Entity("wedding.gift.Domain.Model.Entities.Contribution", b =>

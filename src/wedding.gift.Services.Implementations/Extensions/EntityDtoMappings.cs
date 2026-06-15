@@ -1,3 +1,4 @@
+using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Domain.Model.Entities;
 
@@ -10,10 +11,11 @@ public static class EntityDtoMappings
         return new Gift
         {
             Id = Guid.NewGuid(),
-            Title = dto.Title.Trim(),
+            Name = dto.Name.Trim(),
             Description = dto.Description.Trim(),
             Price = dto.Price,
-            ImageUrl = dto.ImageUrl.Trim(),
+            Total = dto.Total > 0 ? dto.Total : dto.Price,
+            Image = dto.Image.Trim(),
             Category = dto.Category.Trim(),
             Available = dto.Available,
             CreatedAt = DateTime.UtcNow,
@@ -23,10 +25,11 @@ public static class EntityDtoMappings
 
     public static void ApplyUpdate(this Gift entity, GiftUpdateDto dto)
     {
-        entity.Title = dto.Title.Trim();
+        entity.Name = dto.Name.Trim();
         entity.Description = dto.Description.Trim();
         entity.Price = dto.Price;
-        entity.ImageUrl = dto.ImageUrl.Trim();
+        entity.Total = dto.Total > 0 ? dto.Total : dto.Price;
+        entity.Image = dto.Image.Trim();
         entity.Category = dto.Category.Trim();
         entity.Available = dto.Available;
         entity.UpdatedAt = DateTime.UtcNow;
@@ -37,10 +40,14 @@ public static class EntityDtoMappings
         return new GiftResponseDto
         {
             Id = entity.Id,
-            Title = entity.Title,
+            Name = entity.Name,
             Description = entity.Description,
             Price = entity.Price,
-            ImageUrl = entity.ImageUrl,
+            Total = entity.Total,
+            Raised = entity.Contributions
+                .Where(c => c.Status == ContributionStatus.Paid)
+                .Sum(c => c.Amount),
+            Image = entity.Image,
             Category = entity.Category,
             Available = entity.Available
         };
@@ -73,6 +80,18 @@ public static class EntityDtoMappings
             PaymentMethod = entity.PaymentMethod,
             PaidAt = entity.PaidAt,
             Status = entity.Status
+        };
+    }
+
+    public static CoupleResponseDto ToResponseDto(this Couple entity)
+    {
+        return new CoupleResponseDto
+        {
+            Id = entity.Id,
+            Names = entity.Names,
+            WeddingDate = entity.WeddingDate,
+            PhotoUrl = entity.PhotoUrl,
+            Message = entity.Message
         };
     }
 }

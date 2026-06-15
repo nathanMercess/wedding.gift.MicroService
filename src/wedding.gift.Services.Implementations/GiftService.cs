@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Domain.Model.Entities;
 using wedding.gift.Infra.Implementations.DataContext;
@@ -10,13 +11,18 @@ namespace wedding.gift.Services.Implementations;
 
 public class GiftService(AppDbContext dbContext) : IGiftService
 {
-    public async Task<IReadOnlyList<Gift>> GetAllAsync(string? category, bool? available, int? page, int? pageSize, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<Gift>> GetAllAsync(string? category, string? search, bool? available, int? page, int? pageSize, CancellationToken cancellationToken)
     {
-        IQueryable<Gift> query = dbContext.Gifts.AsNoTracking();
+        IQueryable<Gift> query = dbContext.Gifts.Include(x => x.Contributions).AsNoTracking();
 
         if (!string.IsNullOrWhiteSpace(category))
         {
             query = query.Where(x => x.Category == category);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            query = query.Where(x => x.Name.Contains(search) || x.Description.Contains(search));
         }
 
         if (available.HasValue)
@@ -24,7 +30,7 @@ public class GiftService(AppDbContext dbContext) : IGiftService
             query = query.Where(x => x.Available == available.Value);
         }
 
-        query = query.OrderBy(x => x.Title);
+        query = query.OrderBy(x => x.Name);
 
         if (page.HasValue || pageSize.HasValue)
         {
@@ -49,7 +55,10 @@ public class GiftService(AppDbContext dbContext) : IGiftService
 
     public async Task<Gift> GetByIdAsync(Guid id, CancellationToken cancellationToken)
     {
-        var entity = await dbContext.Gifts.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        var entity = await dbContext.Gifts
+            .Include(x => x.Contributions)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
         return entity ?? throw new NotFoundException($"Presente com id '{id}' não foi encontrado.");
     }
 
@@ -107,5 +116,33 @@ public class GiftService(AppDbContext dbContext) : IGiftService
             .Where(x => x.GiftId == giftId)
             .OrderByDescending(x => x.PaidAt)
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<Contribution> ContributeAsync(Guid giftId, ContributeDto dto, CancellationToken cancellationToken)
+    {
+        var gift = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == giftId, cancellationToken)
+                   ?? throw new NotFoundException($"Presente com id '{giftId}' não foi encontrado.");
+
+        if (!gift.Available)
+        {
+            throw new ConflictException("Não é permitido contribuir para um presente indisponível.");
+        }
+
+        var entity = new Contribution
+        {
+            Id = Guid.NewGuid(),
+            GiftId = giftId,
+            ContributorName = dto.GuestName.Trim(),
+            Message = dto.Message?.Trim() ?? string.Empty,
+            Amount = dto.Amount,
+            PaymentMethod = string.Empty,
+            PaidAt = DateTime.UtcNow,
+            Status = ContributionStatus.Pending
+        };
+
+        dbContext.Contributions.Add(entity);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return entity;
     }
 }
