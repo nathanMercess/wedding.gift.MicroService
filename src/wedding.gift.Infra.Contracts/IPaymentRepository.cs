@@ -6,5 +6,6 @@ public interface IPaymentRepository
 {
     Task SaveAsync(Payment payment, CancellationToken cancellationToken);
     Task<Payment?> GetByNsuAsync(string nsu, CancellationToken cancellationToken);
-    Task UpdateStatusAsync(string orderId, string status, CancellationToken cancellationToken);
+    Task<Payment?> GetByMpOrderIdAsync(string mpOrderId, CancellationToken cancellationToken);
+    Task UpdateStatusAsync(string orderId, string status, string? statusDetail, CancellationToken cancellationToken);
 }

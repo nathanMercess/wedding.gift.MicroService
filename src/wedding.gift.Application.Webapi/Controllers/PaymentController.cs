@@ -50,13 +50,13 @@ public class PaymentController(IPaymentService paymentService) : ApiControllerBa
         return Ok(result);
     }
 
-    [HttpGet("status/{nsu}")]
+    [HttpGet("status/{mpOrderId}")]
     [ProducesResponseType(typeof(PaymentResponseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(PaymentResponseDto), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(PaymentResponseDto), StatusCodes.Status502BadGateway)]
-    public async Task<ActionResult<PaymentResponseDto>> GetPaymentStatus(string nsu, CancellationToken cancellationToken)
+    public async Task<ActionResult<PaymentResponseDto>> GetPaymentStatus(string mpOrderId, CancellationToken cancellationToken)
     {
-        var result = await paymentService.GetPaymentStatusAsync(nsu, cancellationToken);
+        var result = await paymentService.GetPaymentStatusAsync(mpOrderId, cancellationToken);
 
         if (result.Status == "error")
         {

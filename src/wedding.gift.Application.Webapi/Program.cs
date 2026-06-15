@@ -14,6 +14,8 @@ using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.Configurations;
 using wedding.gift.Domain.Model.Entities;
 using wedding.gift.Infra.Implementations.DataContext;
+using wedding.gift.Services.Contracts;
+using wedding.gift.Services.Implementations;
 using wedding.gift.Services.Implementations.Exceptions;
 using wedding.gift.Services.Implementations.Extensions;
 using wedding.gift.Services.Implementations.Security;
@@ -92,19 +94,22 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
-builder.Services.AddHttpClient<InfinitePayAuthService>();
-builder.Services.AddHttpClient<InfinitePayService>();
-builder.Services.AddSingleton<IInfinitePayAuthService, InfinitePayAuthService>();
-builder.Services.AddScoped<IInfinitePayService, InfinitePayService>();
+builder.Services.AddHttpClient<wedding.gift.Application.Webapi.Services.InfinitePayAuthService>();
+builder.Services.AddHttpClient<wedding.gift.Application.Webapi.Services.InfinitePayService>();
+builder.Services.AddSingleton<wedding.gift.Application.Webapi.Services.Interfaces.IInfinitePayAuthService, wedding.gift.Application.Webapi.Services.InfinitePayAuthService>();
+builder.Services.AddScoped<wedding.gift.Application.Webapi.Services.Interfaces.IInfinitePayService, wedding.gift.Application.Webapi.Services.InfinitePayService>();
 builder.Services.AddScoped<IPagamentoRepository, PagamentoRepository>();
 
-builder.Services.AddHttpClient("PaymentInfinitePayService");
-builder.Services.AddScoped<wedding.gift.Services.Contracts.IInfinitePayService>(sp =>
+builder.Services.AddHttpClient<MercadoPagoService>();
+builder.Services.AddScoped<IMercadoPagoService, MercadoPagoService>();
+
+builder.Services.AddHttpClient("PaymentService");
+builder.Services.AddScoped<wedding.gift.Services.Contracts.IMercadoPagoService>(sp =>
 {
     var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
-    var httpClient = httpClientFactory.CreateClient("PaymentInfinitePayService");
+    var httpClient = httpClientFactory.CreateClient("PaymentService");
     var configuration = sp.GetRequiredService<IConfiguration>();
-    return new wedding.gift.Services.Implementations.InfinitePayService(httpClient, configuration);
+    return new wedding.gift.Services.Implementations.MercadoPagoService(httpClient, configuration);
 });
 builder.Services.AddScoped<wedding.gift.Infra.Contracts.IPaymentRepository, wedding.gift.Infra.Implementations.Repositories.PaymentRepository>();
 builder.Services.AddScoped<wedding.gift.Services.Contracts.IPaymentService, wedding.gift.Services.Implementations.PaymentService>();

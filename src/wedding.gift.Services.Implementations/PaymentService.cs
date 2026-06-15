@@ -6,7 +6,7 @@ using wedding.gift.Services.Contracts;
 namespace wedding.gift.Services.Implementations;
 
 public class PaymentService(
-    IInfinitePayService infinitePayService,
+    IMercadoPagoService mercadoPagoService,
     IPaymentRepository paymentRepository) : IPaymentService
 {
     public async Task<PaymentResponseDto> ProcessCardPaymentAsync(
@@ -28,13 +28,16 @@ public class PaymentService(
         if (request.Method != "credit_card" && request.Method != "debit_card")
             return new PaymentResponseDto { Status = "error", Message = "Invalid method." };
 
-        var result = await infinitePayService.AuthorizeCardAsync(
-            request.CardToken,
-            request.Amount,
-            request.Installments,
-            request.Method,
-            request.OrderId,
-            cancellationToken);
+        if (string.IsNullOrWhiteSpace(request.PaymentMethodId))
+            return new PaymentResponseDto { Status = "error", Message = "PaymentMethodId is required." };
+
+        if (string.IsNullOrWhiteSpace(request.PayerEmail))
+            return new PaymentResponseDto { Status = "error", Message = "PayerEmail is required." };
+
+        if (string.IsNullOrWhiteSpace(request.PayerDocNumber))
+            return new PaymentResponseDto { Status = "error", Message = "PayerDocNumber is required." };
+
+        var result = await mercadoPagoService.CreateCardOrderAsync(request, cancellationToken);
 
         if (result.Status == "error")
             return result;
@@ -47,7 +50,9 @@ public class PaymentService(
             Amount = request.Amount,
             Installments = request.Installments,
             Status = result.Status,
-            Nsu = result.Nsu
+            StatusDetail = result.StatusDetail,
+            MpOrderId = result.MpOrderId,
+            MpPaymentId = result.MpPaymentId
         }, cancellationToken);
 
         return result;
@@ -63,10 +68,13 @@ public class PaymentService(
         if (request.Amount <= 0)
             return new PaymentResponseDto { Status = "error", Message = "Invalid amount." };
 
-        var result = await infinitePayService.CreatePixTransactionAsync(
-            request.Amount,
-            request.OrderId,
-            cancellationToken);
+        if (string.IsNullOrWhiteSpace(request.PayerEmail))
+            return new PaymentResponseDto { Status = "error", Message = "PayerEmail is required." };
+
+        if (string.IsNullOrWhiteSpace(request.PayerDocNumber))
+            return new PaymentResponseDto { Status = "error", Message = "PayerDocNumber (CPF) is required for Pix." };
+
+        var result = await mercadoPagoService.CreatePixOrderAsync(request, cancellationToken);
 
         if (result.Status == "error")
             return result;
@@ -78,32 +86,40 @@ public class PaymentService(
             Method = "pix",
             Amount = request.Amount,
             Status = result.Status,
-            Nsu = result.Nsu,
-            PixQrCode = result.PixQrCode
+            StatusDetail = result.StatusDetail,
+            MpOrderId = result.MpOrderId,
+            MpPaymentId = result.MpPaymentId,
+            PixQrCode = result.QrCode,
+            QrCodeBase64 = result.QrCodeBase64
         }, cancellationToken);
 
         return result;
     }
 
     public async Task<PaymentResponseDto> GetPaymentStatusAsync(
-        string nsu,
+        string mpOrderId,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(nsu))
-            return new PaymentResponseDto { Status = "error", Message = "NSU is required." };
+        if (string.IsNullOrWhiteSpace(mpOrderId))
+            return new PaymentResponseDto { Status = "error", Message = "MpOrderId is required." };
 
-        var payment = await paymentRepository.GetByNsuAsync(nsu, cancellationToken);
+        var payment = await paymentRepository.GetByMpOrderIdAsync(mpOrderId, cancellationToken);
 
         if (payment?.Status == "approved")
-            return new PaymentResponseDto { Status = "approved", Nsu = nsu };
+            return new PaymentResponseDto
+            {
+                Status = "approved",
+                MpOrderId = mpOrderId,
+                StatusDetail = payment.StatusDetail
+            };
 
-        var result = await infinitePayService.GetTransactionStatusAsync(nsu, cancellationToken);
+        var result = await mercadoPagoService.GetOrderStatusAsync(mpOrderId, cancellationToken);
 
         if (result.Status == "error")
             return result;
 
         if (payment != null && payment.Status != result.Status)
-            await paymentRepository.UpdateStatusAsync(payment.OrderId, result.Status, cancellationToken);
+            await paymentRepository.UpdateStatusAsync(payment.OrderId, result.Status, result.StatusDetail, cancellationToken);
 
         return result;
     }
@@ -113,6 +129,6 @@ public class PaymentService(
         string status,
         CancellationToken cancellationToken)
     {
-        await paymentRepository.UpdateStatusAsync(orderId, status, cancellationToken);
+        await paymentRepository.UpdateStatusAsync(orderId, status, null, cancellationToken);
     }
 }
