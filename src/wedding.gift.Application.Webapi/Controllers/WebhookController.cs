@@ -1,76 +1,62 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using wedding.gift.Application.Webapi.Repositories.Interfaces;
+using wedding.gift.Crosscutting.Models.DTOs;
+using wedding.gift.Services.Contracts;
 
 namespace wedding.gift.Application.Webapi.Controllers;
 
-[ApiController]
-[AllowAnonymous]
-[Route("webhook")]
-public class WebhookController(
-    IPagamentoRepository repo,
-    IConfiguration config) : ControllerBase
+public class WebhookController(IPaymentService paymentService, IConfiguration config) : ControllerBase
 {
-    [HttpPost("pagamento")]
-    public async Task<ActionResult<PagamentoWebhookResponse>> ReceberWebhookCartao(
-        [FromQuery] string pedido,
+    [HttpPost("payments")]
+    public async Task<ActionResult<PaymentWebhookResponse>> ReceiveCardWebhook(
+        [FromQuery] string orderId,
         [FromBody] WebhookPayload payload,
-        CancellationToken ct)
+        CancellationToken cancellationToken)
     {
         if (payload.Secret != config["InfinitePay:WebhookSecret"])
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new PagamentoWebhookResponse { Status = "error", Mensagem = "Webhook inválido." });
+            return StatusCode(StatusCodes.Status403Forbidden, new PaymentWebhookResponse { Status = "error", Message = "Invalid webhook." });
         }
 
-        if (string.IsNullOrWhiteSpace(pedido))
+        if (string.IsNullOrWhiteSpace(orderId))
         {
-            return BadRequest(new PagamentoWebhookResponse { Status = "error", Mensagem = "Pedido inválido." });
+            return BadRequest(new PaymentWebhookResponse { Status = "error", Message = "Invalid order ID." });
         }
 
-        await repo.AtualizarStatusAsync(pedido, payload.Status ?? "error", ct);
-        return Ok(new PagamentoWebhookResponse { Status = "ok" });
+        await paymentService.UpdatePaymentStatusAsync(orderId, payload.Status ?? "error", cancellationToken);
+        return Ok(new PaymentWebhookResponse { Status = "ok" });
     }
 
     [HttpPost("pix/validar")]
-    public ActionResult<PagamentoWebhookResponse> ValidarPix([FromQuery] string pedido)
+    public ActionResult<PaymentWebhookResponse> ValidatePix([FromQuery] string orderId)
     {
-        if (string.IsNullOrWhiteSpace(pedido))
+        if (string.IsNullOrWhiteSpace(orderId))
         {
-            return BadRequest(new PagamentoWebhookResponse { Status = "error", Mensagem = "Pedido inválido." });
+            return BadRequest(new PaymentWebhookResponse { Status = "error", Message = "Invalid order ID." });
         }
 
-        return Ok(new PagamentoWebhookResponse { Status = "ok" });
+        return Ok(new PaymentWebhookResponse { Status = "ok" });
     }
 
     [HttpPost("pix/confirmar")]
-    public async Task<ActionResult<PagamentoWebhookResponse>> ConfirmarPix(
-        [FromQuery] string pedido,
+    public async Task<ActionResult<PaymentWebhookResponse>> ConfirmPix(
+        [FromQuery] string orderId,
         [FromBody] WebhookPayload payload,
-        CancellationToken ct)
+        CancellationToken cancellationToken)
     {
         if (payload.Secret != config["InfinitePay:WebhookSecret"])
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new PagamentoWebhookResponse { Status = "error", Mensagem = "Webhook inválido." });
+            return StatusCode(StatusCodes.Status403Forbidden, new PaymentWebhookResponse { Status = "error", Message = "Invalid webhook." });
         }
 
-        if (string.IsNullOrWhiteSpace(pedido))
+        if (string.IsNullOrWhiteSpace(orderId))
         {
-            return BadRequest(new PagamentoWebhookResponse { Status = "error", Mensagem = "Pedido inválido." });
+            return BadRequest(new PaymentWebhookResponse { Status = "error", Message = "Invalid order ID." });
         }
 
-        await repo.AtualizarStatusAsync(pedido, "approved", ct);
-        return Ok(new PagamentoWebhookResponse { Status = "ok" });
+        await paymentService.UpdatePaymentStatusAsync(orderId, "approved", cancellationToken);
+        return Ok(new PaymentWebhookResponse { Status = "ok" });
     }
 }
 
-public class WebhookPayload
-{
-    public string? Status { get; set; }
-    public string? Secret { get; set; }
-}
 
-public class PagamentoWebhookResponse
-{
-    public string Status { get; set; } = string.Empty;
-    public string? Mensagem { get; set; }
-}

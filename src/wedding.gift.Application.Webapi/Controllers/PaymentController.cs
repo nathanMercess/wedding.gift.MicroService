@@ -7,22 +7,19 @@ using wedding.gift.Services.Contracts;
 namespace wedding.gift.Application.Webapi.Controllers;
 
 [AllowAnonymous]
-[Route("api/payments")]
 public class PaymentController(IPaymentService paymentService) : ApiControllerBase
 {
     [HttpPost("card")]
     [ProducesResponseType(typeof(PaymentResponseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(PaymentResponseDto), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(PaymentResponseDto), StatusCodes.Status502BadGateway)]
-    public async Task<ActionResult<PaymentResponseDto>> PayWithCard(
-        [FromBody] CardPaymentRequestDto request,
-        CancellationToken cancellationToken)
+    public async Task<ActionResult<PaymentResponseDto>> PayWithCard([FromBody] CardPaymentRequestDto request, CancellationToken cancellationToken)
     {
         var result = await paymentService.ProcessCardPaymentAsync(request, cancellationToken);
 
         if (result.Status == "error")
         {
-            if (!string.IsNullOrWhiteSpace(result.Message) && 
+            if (!string.IsNullOrWhiteSpace(result.Message) &&
                 (result.Message.Contains("required") || result.Message.Contains("Invalid")))
                 return BadRequest(result);
 
@@ -32,19 +29,18 @@ public class PaymentController(IPaymentService paymentService) : ApiControllerBa
         return Ok(result);
     }
 
+    [AllowAnonymous]
     [HttpPost("pix")]
     [ProducesResponseType(typeof(PaymentResponseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(PaymentResponseDto), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(PaymentResponseDto), StatusCodes.Status502BadGateway)]
-    public async Task<ActionResult<PaymentResponseDto>> PayWithPix(
-        [FromBody] PixPaymentRequestDto request,
-        CancellationToken cancellationToken)
+    public async Task<ActionResult<PaymentResponseDto>> PayWithPix([FromBody] PixPaymentRequestDto request, CancellationToken cancellationToken)
     {
         var result = await paymentService.ProcessPixPaymentAsync(request, cancellationToken);
 
         if (result.Status == "error")
         {
-            if (!string.IsNullOrWhiteSpace(result.Message) && 
+            if (!string.IsNullOrWhiteSpace(result.Message) &&
                 (result.Message.Contains("required") || result.Message.Contains("Invalid")))
                 return BadRequest(result);
 
@@ -58,9 +54,7 @@ public class PaymentController(IPaymentService paymentService) : ApiControllerBa
     [ProducesResponseType(typeof(PaymentResponseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(PaymentResponseDto), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(PaymentResponseDto), StatusCodes.Status502BadGateway)]
-    public async Task<ActionResult<PaymentResponseDto>> GetPaymentStatus(
-        string nsu,
-        CancellationToken cancellationToken)
+    public async Task<ActionResult<PaymentResponseDto>> GetPaymentStatus(string nsu, CancellationToken cancellationToken)
     {
         var result = await paymentService.GetPaymentStatusAsync(nsu, cancellationToken);
 

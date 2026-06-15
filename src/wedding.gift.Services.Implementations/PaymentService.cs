@@ -107,4 +107,12 @@ public class PaymentService(
 
         return result;
     }
+
+    public async Task UpdatePaymentStatusAsync(
+        string orderId,
+        string status,
+        CancellationToken cancellationToken)
+    {
+        await paymentRepository.UpdateStatusAsync(orderId, status, cancellationToken);
+    }
 }
