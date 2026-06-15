@@ -98,6 +98,17 @@ builder.Services.AddSingleton<IInfinitePayAuthService, InfinitePayAuthService>()
 builder.Services.AddScoped<IInfinitePayService, InfinitePayService>();
 builder.Services.AddScoped<IPagamentoRepository, PagamentoRepository>();
 
+builder.Services.AddHttpClient("PaymentInfinitePayService");
+builder.Services.AddScoped<wedding.gift.Services.Contracts.IInfinitePayService>(sp =>
+{
+    var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
+    var httpClient = httpClientFactory.CreateClient("PaymentInfinitePayService");
+    var configuration = sp.GetRequiredService<IConfiguration>();
+    return new wedding.gift.Services.Implementations.InfinitePayService(httpClient, configuration);
+});
+builder.Services.AddScoped<wedding.gift.Infra.Contracts.IPaymentRepository, wedding.gift.Infra.Implementations.Repositories.PaymentRepository>();
+builder.Services.AddScoped<wedding.gift.Services.Contracts.IPaymentService, wedding.gift.Services.Implementations.PaymentService>();
+
 builder.Services.AddSwaggerGen(options =>
 {
     options.SwaggerDoc("v1", new OpenApiInfo { Title = "wedding.gift API", Version = "v1" });

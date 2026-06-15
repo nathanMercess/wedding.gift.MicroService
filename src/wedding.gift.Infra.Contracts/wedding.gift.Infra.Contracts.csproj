@@ -17,6 +17,10 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <WarningsAsErrors>NU1605;CS4014;CS1998</WarningsAsErrors>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\wedding.gift.Domain.Model\wedding.gift.Domain.Model.csproj" />
+  </ItemGroup>
 </Project>
 
 
