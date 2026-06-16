@@ -2,6 +2,9 @@ namespace wedding.gift.Crosscutting.Models.DTOs;
 
 public class CardPaymentRequestDto
 {
+    public required Guid GiftId { get; set; }
+    public required string ContributorName { get; set; }
+    public string Message { get; set; } = string.Empty;
     public required string CardToken { get; set; }
     public required string OrderId { get; set; }
     public decimal Amount { get; set; }

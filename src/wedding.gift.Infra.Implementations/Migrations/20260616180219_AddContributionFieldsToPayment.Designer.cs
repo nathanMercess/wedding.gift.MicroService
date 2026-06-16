@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using wedding.gift.Infra.Implementations.DataContext;
 
@@ -11,9 +12,11 @@ using wedding.gift.Infra.Implementations.DataContext;
 namespace wedding.gift.Infra.Implementations.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260616180219_AddContributionFieldsToPayment")]
+    partial class AddContributionFieldsToPayment
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -231,13 +234,8 @@ namespace wedding.gift.Infra.Implementations.Migrations
                     b.Property<decimal>("Amount")
                         .HasColumnType("decimal(10,2)");
 
-                    b.Property<Guid?>("ContributionId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<string>("ContributorName")
-                        .IsRequired()
-                        .HasMaxLength(120)
-                        .HasColumnType("nvarchar(120)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
@@ -290,10 +288,6 @@ namespace wedding.gift.Infra.Implementations.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("ContributionId");
-
-                    b.HasIndex("GiftId");
 
                     b.HasIndex("MpOrderId");
 
@@ -382,16 +376,6 @@ namespace wedding.gift.Infra.Implementations.Migrations
                         .IsRequired();
 
                     b.Navigation("Gift");
-                });
-
-            modelBuilder.Entity("wedding.gift.Domain.Model.Entities.Payment", b =>
-                {
-                    b.HasOne("wedding.gift.Domain.Model.Entities.Contribution", "Contribution")
-                        .WithMany()
-                        .HasForeignKey("ContributionId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("Contribution");
                 });
 
             modelBuilder.Entity("wedding.gift.Domain.Model.Entities.Gift", b =>

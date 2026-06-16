@@ -12,6 +12,8 @@ public class PaymentMapping : IEntityTypeConfiguration<Payment>
 
         builder.HasKey(x => x.Id);
 
+        builder.Property(x => x.GiftId).IsRequired();
+        builder.Property(x => x.ContributorName).IsRequired().HasMaxLength(120);
         builder.Property(x => x.OrderId).IsRequired().HasMaxLength(100);
         builder.Property(x => x.Method).IsRequired().HasMaxLength(50);
         builder.Property(x => x.Amount).HasColumnType("decimal(10,2)").IsRequired();
@@ -26,8 +28,15 @@ public class PaymentMapping : IEntityTypeConfiguration<Payment>
         builder.Property(x => x.CreatedAt).IsRequired();
         builder.Property(x => x.UpdatedAt).IsRequired();
 
+        builder.HasOne(x => x.Contribution)
+            .WithMany()
+            .HasForeignKey(x => x.ContributionId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        builder.HasIndex(x => x.GiftId);
         builder.HasIndex(x => x.OrderId);
         builder.HasIndex(x => x.Nsu);
         builder.HasIndex(x => x.MpOrderId);
+        builder.HasIndex(x => x.ContributionId);
     }
 }

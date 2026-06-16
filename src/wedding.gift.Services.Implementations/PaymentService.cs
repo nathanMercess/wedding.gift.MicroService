@@ -1,3 +1,4 @@
+using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Domain.Model.Entities;
 using wedding.gift.Infra.Contracts;
@@ -7,12 +8,19 @@ namespace wedding.gift.Services.Implementations;
 
 public class PaymentService(
     IMercadoPagoService mercadoPagoService,
-    IPaymentRepository paymentRepository) : IPaymentService
+    IPaymentRepository paymentRepository,
+    IContributionService contributionService) : IPaymentService
 {
     public async Task<PaymentResponseDto> ProcessCardPaymentAsync(
         CardPaymentRequestDto request,
         CancellationToken cancellationToken)
     {
+        if (request.GiftId == Guid.Empty)
+            return new PaymentResponseDto { Status = "error", Message = "GiftId is required." };
+
+        if (string.IsNullOrWhiteSpace(request.ContributorName))
+            return new PaymentResponseDto { Status = "error", Message = "ContributorName is required." };
+
         if (string.IsNullOrWhiteSpace(request.CardToken))
             return new PaymentResponseDto { Status = "error", Message = "CardToken is required." };
 
@@ -42,9 +50,29 @@ public class PaymentService(
         if (result.Status == "error")
             return result;
 
+        Guid? contributionId = null;
+
+        if (result.Status == "approved")
+        {
+            var contribution = await contributionService.CreateAsync(new ContributionCreateDto
+            {
+                GiftId = request.GiftId,
+                ContributorName = request.ContributorName,
+                Amount = request.Amount,
+                PaymentMethod = request.Method,
+                Status = ContributionStatus.Paid,
+                PaidAt = DateTime.UtcNow
+            }, cancellationToken);
+
+            contributionId = contribution.Id;
+        }
+
         await paymentRepository.SaveAsync(new Payment
         {
             Id = Guid.NewGuid(),
+            GiftId = request.GiftId,
+            ContributorName = request.ContributorName,
+            ContributionId = contributionId,
             OrderId = request.OrderId,
             Method = request.Method,
             Amount = request.Amount,
@@ -52,7 +80,9 @@ public class PaymentService(
             Status = result.Status,
             StatusDetail = result.StatusDetail,
             MpOrderId = result.MpOrderId,
-            MpPaymentId = result.MpPaymentId
+            MpPaymentId = result.MpPaymentId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
         }, cancellationToken);
 
         return result;
@@ -62,6 +92,12 @@ public class PaymentService(
         PixPaymentRequestDto request,
         CancellationToken cancellationToken)
     {
+        if (request.GiftId == Guid.Empty)
+            return new PaymentResponseDto { Status = "error", Message = "GiftId is required." };
+
+        if (string.IsNullOrWhiteSpace(request.ContributorName))
+            return new PaymentResponseDto { Status = "error", Message = "ContributorName is required." };
+
         if (string.IsNullOrWhiteSpace(request.OrderId))
             return new PaymentResponseDto { Status = "error", Message = "OrderId is required." };
 
@@ -79,9 +115,22 @@ public class PaymentService(
         if (result.Status == "error")
             return result;
 
+        var contribution = await contributionService.CreateAsync(new ContributionCreateDto
+        {
+            GiftId = request.GiftId,
+            ContributorName = request.ContributorName,
+            Amount = request.Amount,
+            PaymentMethod = "pix",
+            Status = ContributionStatus.Pending,
+            PaidAt = default
+        }, cancellationToken);
+
         await paymentRepository.SaveAsync(new Payment
         {
             Id = Guid.NewGuid(),
+            GiftId = request.GiftId,
+            ContributorName = request.ContributorName,
+            ContributionId = contribution.Id,
             OrderId = request.OrderId,
             Method = "pix",
             Amount = request.Amount,
@@ -90,7 +139,9 @@ public class PaymentService(
             MpOrderId = result.MpOrderId,
             MpPaymentId = result.MpPaymentId,
             PixQrCode = result.QrCode,
-            QrCodeBase64 = result.QrCodeBase64
+            QrCodeBase64 = result.QrCodeBase64,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
         }, cancellationToken);
 
         return result;

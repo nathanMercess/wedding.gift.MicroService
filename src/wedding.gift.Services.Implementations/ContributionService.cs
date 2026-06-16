@@ -44,14 +44,63 @@ public class ContributionService(AppDbContext dbContext) : IContributionService
 
         if (entity.Status == ContributionStatus.Paid)
         {
-            gift.Available = false;
-            gift.UpdatedAt = DateTime.UtcNow;
             entity.PaidAt = dto.PaidAt == default ? DateTime.UtcNow : dto.PaidAt;
         }
 
         dbContext.Contributions.Add(entity);
         await dbContext.SaveChangesAsync(cancellationToken);
 
+        if (entity.Status == ContributionStatus.Paid)
+        {
+            await RecalculateGiftAvailabilityAsync(gift, cancellationToken);
+        }
+
         return entity;
+    }
+
+    public async Task UpdateStatusAsync(Guid id, string status, DateTime paidAt, CancellationToken cancellationToken)
+    {
+        if (!ContributionStatus.Allowed.Contains(status))
+        {
+            throw new BadRequestException("Status inválido. Valores permitidos: Pending, Paid, Cancelled.");
+        }
+
+        var entity = await dbContext.Contributions.FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
+                     ?? throw new NotFoundException($"Contribuição com id '{id}' não foi encontrada.");
+
+        var previousStatus = entity.Status;
+        entity.Status = status;
+
+        if (status == ContributionStatus.Paid && previousStatus != ContributionStatus.Paid)
+        {
+            entity.PaidAt = paidAt == default ? DateTime.UtcNow : paidAt;
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        if (status != previousStatus && (status == ContributionStatus.Paid || previousStatus == ContributionStatus.Paid))
+        {
+            var gift = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == entity.GiftId, cancellationToken);
+            if (gift != null)
+            {
+                await RecalculateGiftAvailabilityAsync(gift, cancellationToken);
+            }
+        }
+    }
+
+    private async Task RecalculateGiftAvailabilityAsync(Gift gift, CancellationToken cancellationToken)
+    {
+        var paidTotal = await dbContext.Contributions
+            .Where(x => x.GiftId == gift.Id && x.Status == ContributionStatus.Paid)
+            .SumAsync(x => x.Amount, cancellationToken);
+
+        var shouldBeAvailable = paidTotal < gift.Total;
+
+        if (gift.Available != shouldBeAvailable)
+        {
+            gift.Available = shouldBeAvailable;
+            gift.UpdatedAt = DateTime.UtcNow;
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
     }
 }

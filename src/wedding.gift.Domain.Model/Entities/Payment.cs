@@ -3,6 +3,10 @@ namespace wedding.gift.Domain.Model.Entities;
 public class Payment
 {
     public Guid Id { get; set; }
+    public Guid GiftId { get; set; }
+    public string ContributorName { get; set; } = string.Empty;
+    public Guid? ContributionId { get; set; }
+    public Contribution? Contribution { get; set; }
     public string OrderId { get; set; } = string.Empty;
     public string Method { get; set; } = string.Empty;
     public decimal Amount { get; set; }

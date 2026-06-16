@@ -25,6 +25,12 @@ public class PaymentRepository(AppDbContext context) : IPaymentRepository
             .FirstOrDefaultAsync(p => p.MpOrderId == mpOrderId, cancellationToken);
     }
 
+    public async Task<Payment?> GetByOrderIdAsync(string orderId, CancellationToken cancellationToken)
+    {
+        return await context.Payments
+            .FirstOrDefaultAsync(p => p.OrderId == orderId, cancellationToken);
+    }
+
     public async Task UpdateStatusAsync(string orderId, string status, string? statusDetail, CancellationToken cancellationToken)
     {
         var payment = await context.Payments
@@ -34,6 +40,7 @@ public class PaymentRepository(AppDbContext context) : IPaymentRepository
         {
             payment.Status = status;
             payment.StatusDetail = statusDetail;
+            payment.UpdatedAt = DateTime.UtcNow;
             await context.SaveChangesAsync(cancellationToken);
         }
     }
