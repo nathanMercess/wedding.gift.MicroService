@@ -8,7 +8,6 @@ public class GiftUpdateDto
     [MaxLength(120, ErrorMessage = "O nome deve ter no máximo 120 caracteres.")]
     public string Name { get; set; } = string.Empty;
 
-    [Required(ErrorMessage = "A descrição é obrigatória.")]
     [MaxLength(500, ErrorMessage = "A descrição deve ter no máximo 500 caracteres.")]
     public string Description { get; set; } = string.Empty;
 
