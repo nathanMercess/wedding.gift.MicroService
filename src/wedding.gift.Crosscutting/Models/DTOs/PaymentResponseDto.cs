@@ -4,6 +4,7 @@ public class PaymentResponseDto
 {
     public required string Status { get; set; }
     public string? StatusDetail { get; set; }
+    public string? ErrorCode { get; set; }
     public string Message { get; set; } = string.Empty;
     public string Nsu { get; set; } = string.Empty;
     public string? MpOrderId { get; set; }

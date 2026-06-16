@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Configuration;
+using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Crosscutting.Models.DTOs.MercadoPago;
 using wedding.gift.Services.Contracts;
@@ -114,6 +115,7 @@ public class MercadoPagoService(
                 return new PaymentResponseDto
                 {
                     Status = "error",
+                    ErrorCode = PaymentErrorCodes.ProviderError,
                     Message = $"Failed to query order status: {error}"
                 };
             }
@@ -128,6 +130,7 @@ public class MercadoPagoService(
             return new PaymentResponseDto
             {
                 Status = "error",
+                ErrorCode = PaymentErrorCodes.ProviderError,
                 Message = $"Error querying order status: {ex.Message}"
             };
         }
@@ -159,6 +162,7 @@ public class MercadoPagoService(
                 return new PaymentResponseDto
                 {
                     Status = "error",
+                    ErrorCode = PaymentErrorCodes.ProviderError,
                     Message = $"Failed to create order: {error}"
                 };
             }
@@ -173,24 +177,36 @@ public class MercadoPagoService(
             return new PaymentResponseDto
             {
                 Status = "error",
+                ErrorCode = PaymentErrorCodes.ProviderError,
                 Message = $"Error processing order: {ex.Message}"
             };
         }
     }
 
-    // Normaliza: "processed" no nível da Order equivale a "approved"
     private PaymentResponseDto MapResponse(MercadoPagoOrderResponse? order)
     {
         var payment = order?.Transactions?.Payments?.FirstOrDefault();
 
-        // Normaliza: "processed" no nível da Order equivale a "approved"
+        // "processed" no nível da Order equivale a "approved"
         var orderStatus = order?.Status == "processed" ? "approved" : order?.Status;
         var paymentStatus = payment?.Status == "processed" ? "approved" : payment?.Status;
+        var finalStatus = paymentStatus ?? orderStatus ?? "error";
+        var statusDetail = payment?.StatusDetail ?? order?.StatusDetail;
+
+        var errorCode = finalStatus switch
+        {
+            "rejected" => statusDetail == "cc_rejected_card_disabled"
+                ? PaymentErrorCodes.InvalidCardToken
+                : PaymentErrorCodes.PaymentDeclined,
+            "error" => PaymentErrorCodes.ProviderError,
+            _ => null
+        };
 
         return new PaymentResponseDto
         {
-            Status = paymentStatus ?? orderStatus ?? "error",
-            StatusDetail = payment?.StatusDetail ?? order?.StatusDetail,
+            Status = finalStatus,
+            StatusDetail = statusDetail,
+            ErrorCode = errorCode,
             MpOrderId = order?.Id,
             MpPaymentId = payment?.Id,
             QrCode = payment?.PaymentMethod?.QrCode,

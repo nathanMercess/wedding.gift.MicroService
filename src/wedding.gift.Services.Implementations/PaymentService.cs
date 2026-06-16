@@ -16,34 +16,34 @@ public class PaymentService(
         CancellationToken cancellationToken)
     {
         if (request.GiftId == Guid.Empty)
-            return new PaymentResponseDto { Status = "error", Message = "GiftId is required." };
+            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "GiftId is required." };
 
         if (string.IsNullOrWhiteSpace(request.ContributorName))
-            return new PaymentResponseDto { Status = "error", Message = "ContributorName is required." };
+            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "ContributorName is required." };
 
         if (string.IsNullOrWhiteSpace(request.CardToken))
-            return new PaymentResponseDto { Status = "error", Message = "CardToken is required." };
+            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "CardToken is required." };
 
         if (string.IsNullOrWhiteSpace(request.OrderId))
-            return new PaymentResponseDto { Status = "error", Message = "OrderId is required." };
+            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "OrderId is required." };
 
         if (request.Amount <= 0)
-            return new PaymentResponseDto { Status = "error", Message = "Invalid amount." };
+            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "Invalid amount." };
 
         if (request.Installments <= 0)
-            return new PaymentResponseDto { Status = "error", Message = "Invalid installments." };
+            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "Invalid installments." };
 
         if (request.Method != "credit_card" && request.Method != "debit_card")
-            return new PaymentResponseDto { Status = "error", Message = "Invalid method." };
+            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "Invalid method." };
 
         if (string.IsNullOrWhiteSpace(request.PaymentMethodId))
-            return new PaymentResponseDto { Status = "error", Message = "PaymentMethodId is required." };
+            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "PaymentMethodId is required." };
 
         if (string.IsNullOrWhiteSpace(request.PayerEmail))
-            return new PaymentResponseDto { Status = "error", Message = "PayerEmail is required." };
+            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "PayerEmail is required." };
 
         if (string.IsNullOrWhiteSpace(request.PayerDocNumber))
-            return new PaymentResponseDto { Status = "error", Message = "PayerDocNumber is required." };
+            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "PayerDocNumber is required." };
 
         var result = await mercadoPagoService.CreateCardOrderAsync(request, cancellationToken);
 
@@ -93,22 +93,22 @@ public class PaymentService(
         CancellationToken cancellationToken)
     {
         if (request.GiftId == Guid.Empty)
-            return new PaymentResponseDto { Status = "error", Message = "GiftId is required." };
+            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "GiftId is required." };
 
         if (string.IsNullOrWhiteSpace(request.ContributorName))
-            return new PaymentResponseDto { Status = "error", Message = "ContributorName is required." };
+            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "ContributorName is required." };
 
         if (string.IsNullOrWhiteSpace(request.OrderId))
-            return new PaymentResponseDto { Status = "error", Message = "OrderId is required." };
+            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "OrderId is required." };
 
         if (request.Amount <= 0)
-            return new PaymentResponseDto { Status = "error", Message = "Invalid amount." };
+            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "Invalid amount." };
 
         if (string.IsNullOrWhiteSpace(request.PayerEmail))
-            return new PaymentResponseDto { Status = "error", Message = "PayerEmail is required." };
+            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "PayerEmail is required." };
 
         if (string.IsNullOrWhiteSpace(request.PayerDocNumber))
-            return new PaymentResponseDto { Status = "error", Message = "PayerDocNumber (CPF) is required for Pix." };
+            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "PayerDocNumber (CPF) is required for Pix." };
 
         var result = await mercadoPagoService.CreatePixOrderAsync(request, cancellationToken);
 
@@ -152,7 +152,7 @@ public class PaymentService(
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(mpOrderId))
-            return new PaymentResponseDto { Status = "error", Message = "MpOrderId is required." };
+            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "MpOrderId is required." };
 
         var payment = await paymentRepository.GetByMpOrderIdAsync(mpOrderId, cancellationToken);
 
