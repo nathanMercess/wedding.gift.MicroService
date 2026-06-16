@@ -76,6 +76,13 @@ public class GiftService(AppDbContext dbContext) : IGiftService
                      ?? throw new NotFoundException($"Presente com id '{id}' não foi encontrado.");
 
         entity.ApplyUpdate(dto);
+
+        var paidTotal = await dbContext.Contributions
+            .Where(x => x.GiftId == id && x.Status == ContributionStatus.Paid)
+            .SumAsync(x => x.Amount, cancellationToken);
+
+        entity.Available = paidTotal < entity.Total;
+
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return entity;
