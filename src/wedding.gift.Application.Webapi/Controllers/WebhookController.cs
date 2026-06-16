@@ -2,9 +2,6 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using wedding.gift.Crosscutting.Constants;
-using wedding.gift.Crosscutting.Models.DTOs;
-using wedding.gift.Infra.Contracts;
 using wedding.gift.Services.Contracts;
 
 namespace wedding.gift.Application.Webapi.Controllers;
@@ -14,8 +11,6 @@ namespace wedding.gift.Application.Webapi.Controllers;
 [Route("webhook")]
 public class WebhookController(
     IPaymentService paymentService,
-    IContributionService contributionService,
-    IPaymentRepository paymentRepository,
     IMercadoPagoService mercadoPagoService,
     IConfiguration config) : ControllerBase
 {
@@ -40,76 +35,6 @@ public class WebhookController(
             await paymentService.UpdatePaymentStatusAsync(result.MpOrderId, result.Status, cancellationToken);
 
         return Ok();
-    }
-
-    [HttpPost("payments")]
-    public async Task<ActionResult<PaymentWebhookResponse>> ReceiveCardWebhook(
-        [FromQuery] string orderId,
-        [FromBody] WebhookPayload payload,
-        CancellationToken cancellationToken)
-    {
-        if (payload.Secret != config["InfinitePay:WebhookSecret"])
-        {
-            return StatusCode(StatusCodes.Status403Forbidden, new PaymentWebhookResponse { Status = "error", Message = "Invalid webhook." });
-        }
-
-        if (string.IsNullOrWhiteSpace(orderId))
-        {
-            return BadRequest(new PaymentWebhookResponse { Status = "error", Message = "Invalid order ID." });
-        }
-
-        var payment = await paymentRepository.GetByOrderIdAsync(orderId, cancellationToken);
-        var previousStatus = payment?.Status;
-
-        await paymentService.UpdatePaymentStatusAsync(orderId, payload.Status ?? "error", cancellationToken);
-
-        if (payment?.ContributionId != null && previousStatus != "approved" && (payload.Status ?? "error") == "approved")
-        {
-            await contributionService.UpdateStatusAsync(payment.ContributionId.Value, ContributionStatus.Paid, DateTime.UtcNow, cancellationToken);
-        }
-
-        return Ok(new PaymentWebhookResponse { Status = "ok" });
-    }
-
-    [HttpPost("pix/validar")]
-    public ActionResult<PaymentWebhookResponse> ValidatePix([FromQuery] string orderId)
-    {
-        if (string.IsNullOrWhiteSpace(orderId))
-        {
-            return BadRequest(new PaymentWebhookResponse { Status = "error", Message = "Invalid order ID." });
-        }
-
-        return Ok(new PaymentWebhookResponse { Status = "ok" });
-    }
-
-    [HttpPost("pix/confirmar")]
-    public async Task<ActionResult<PaymentWebhookResponse>> ConfirmPix(
-        [FromQuery] string orderId,
-        [FromBody] WebhookPayload payload,
-        CancellationToken cancellationToken)
-    {
-        if (payload.Secret != config["InfinitePay:WebhookSecret"])
-        {
-            return StatusCode(StatusCodes.Status403Forbidden, new PaymentWebhookResponse { Status = "error", Message = "Invalid webhook." });
-        }
-
-        if (string.IsNullOrWhiteSpace(orderId))
-        {
-            return BadRequest(new PaymentWebhookResponse { Status = "error", Message = "Invalid order ID." });
-        }
-
-        var payment = await paymentRepository.GetByOrderIdAsync(orderId, cancellationToken);
-        if (payment != null && payment.Status != "approved")
-        {
-            await paymentService.UpdatePaymentStatusAsync(orderId, "approved", cancellationToken);
-
-            if (payment.ContributionId != null)
-            {
-                await contributionService.UpdateStatusAsync(payment.ContributionId.Value, ContributionStatus.Paid, DateTime.UtcNow, cancellationToken);
-            }
-        }
-
-        return Ok(new PaymentWebhookResponse { Status = "ok" });
     }
 
     private bool ValidateMercadoPagoSignature(HttpRequest request, string? dataId)
@@ -145,6 +70,3 @@ public class WebhookController(
         return hashHex == v1;
     }
 }
-
-
-

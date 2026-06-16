@@ -6,10 +6,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
-using wedding.gift.Application.Webapi.Repositories;
-using wedding.gift.Application.Webapi.Repositories.Interfaces;
-using wedding.gift.Application.Webapi.Services;
-using wedding.gift.Application.Webapi.Services.Interfaces;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.Configurations;
 using wedding.gift.Domain.Model.Entities;
@@ -38,7 +34,7 @@ builder.Services.AddCors(options =>
 
     options.AddPolicy("AngularDev", policy =>
     {
-        policy.WithOrigins("http://localhost:4200")
+        policy.WithOrigins("http://localhost:4200", "http://localhost:4300")
             .AllowAnyHeader()
             .AllowAnyMethod();
     });
@@ -71,6 +67,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection(SmtpOptions.SectionName));
 builder.Services.Configure<ApiOptions>(builder.Configuration.GetSection(ApiOptions.SectionName));
+builder.Services.Configure<GcsOptions>(builder.Configuration.GetSection(GcsOptions.SectionName));
 
 var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
 var signingKey = Encoding.UTF8.GetBytes(jwtOptions.SigningKey);
@@ -93,12 +90,6 @@ builder.Services
     });
 
 builder.Services.AddAuthorization();
-
-builder.Services.AddHttpClient<wedding.gift.Application.Webapi.Services.InfinitePayAuthService>();
-builder.Services.AddHttpClient<wedding.gift.Application.Webapi.Services.InfinitePayService>();
-builder.Services.AddSingleton<wedding.gift.Application.Webapi.Services.Interfaces.IInfinitePayAuthService, wedding.gift.Application.Webapi.Services.InfinitePayAuthService>();
-builder.Services.AddScoped<wedding.gift.Application.Webapi.Services.Interfaces.IInfinitePayService, wedding.gift.Application.Webapi.Services.InfinitePayService>();
-builder.Services.AddScoped<IPagamentoRepository, PagamentoRepository>();
 
 builder.Services.AddHttpClient<MercadoPagoService>();
 builder.Services.AddScoped<IMercadoPagoService, MercadoPagoService>();

@@ -1,3 +1,4 @@
+using Google.Cloud.Storage.V1;
 using Microsoft.Extensions.DependencyInjection;
 using wedding.gift.Services.Contracts;
 using wedding.gift.Services.Implementations.Email;
@@ -13,6 +14,9 @@ public static class DependencyInjectionExtensions
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ICoupleService, CoupleService>();
         services.AddTransient<IEmailService, EmailService>();
+
+        services.AddSingleton(_ => StorageClient.Create());
+        services.AddScoped<IImageUploadService, ImageUploadService>();
 
         return services;
     }
