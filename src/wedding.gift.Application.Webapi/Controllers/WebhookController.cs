@@ -2,7 +2,9 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
+using wedding.gift.Infra.Contracts;
 using wedding.gift.Services.Contracts;
 
 namespace wedding.gift.Application.Webapi.Controllers;
@@ -12,6 +14,8 @@ namespace wedding.gift.Application.Webapi.Controllers;
 [Route("webhook")]
 public class WebhookController(
     IPaymentService paymentService,
+    IContributionService contributionService,
+    IPaymentRepository paymentRepository,
     IMercadoPagoService mercadoPagoService,
     IConfiguration config) : ControllerBase
 {
@@ -54,7 +58,16 @@ public class WebhookController(
             return BadRequest(new PaymentWebhookResponse { Status = "error", Message = "Invalid order ID." });
         }
 
+        var payment = await paymentRepository.GetByOrderIdAsync(orderId, cancellationToken);
+        var previousStatus = payment?.Status;
+
         await paymentService.UpdatePaymentStatusAsync(orderId, payload.Status ?? "error", cancellationToken);
+
+        if (payment?.ContributionId != null && previousStatus != "approved" && (payload.Status ?? "error") == "approved")
+        {
+            await contributionService.UpdateStatusAsync(payment.ContributionId.Value, ContributionStatus.Paid, DateTime.UtcNow, cancellationToken);
+        }
+
         return Ok(new PaymentWebhookResponse { Status = "ok" });
     }
 
@@ -85,7 +98,17 @@ public class WebhookController(
             return BadRequest(new PaymentWebhookResponse { Status = "error", Message = "Invalid order ID." });
         }
 
-        await paymentService.UpdatePaymentStatusAsync(orderId, "approved", cancellationToken);
+        var payment = await paymentRepository.GetByOrderIdAsync(orderId, cancellationToken);
+        if (payment != null && payment.Status != "approved")
+        {
+            await paymentService.UpdatePaymentStatusAsync(orderId, "approved", cancellationToken);
+
+            if (payment.ContributionId != null)
+            {
+                await contributionService.UpdateStatusAsync(payment.ContributionId.Value, ContributionStatus.Paid, DateTime.UtcNow, cancellationToken);
+            }
+        }
+
         return Ok(new PaymentWebhookResponse { Status = "ok" });
     }
 
