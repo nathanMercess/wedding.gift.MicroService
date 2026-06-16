@@ -1,0 +1,54 @@
+name: Deploy API
+
+# Required secrets (configure in Settings → Secrets and variables → Actions):
+#   GCP_SA_KEY  — GCP service account JSON with Artifact Registry push permission
+#   VM_HOST     — External IP of the GCP VM
+#   VM_USER     — SSH username on the VM
+#   VM_SSH_KEY  — Private SSH key for VM access
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    name: Build, Push and Deploy API
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker southamerica-east1-docker.pkg.dev --quiet
+
+      - name: Build API image
+        run: |
+          docker build \
+            -t southamerica-east1-docker.pkg.dev/weddinggift/wedding-gift/api:latest \
+            -t southamerica-east1-docker.pkg.dev/weddinggift/wedding-gift/api:${{ github.sha }} \
+            .
+
+      - name: Push API image
+        run: |
+          docker push southamerica-east1-docker.pkg.dev/weddinggift/wedding-gift/api:latest
+          docker push southamerica-east1-docker.pkg.dev/weddinggift/wedding-gift/api:${{ github.sha }}
+
+      - name: Deploy to VM via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            gcloud auth configure-docker southamerica-east1-docker.pkg.dev --quiet
+            docker pull southamerica-east1-docker.pkg.dev/weddinggift/wedding-gift/api:latest
+            cd /home/nathan66merces/app
+            docker compose up -d api
+            docker image prune -f
