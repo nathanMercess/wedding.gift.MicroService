@@ -10,7 +10,7 @@ public class ImageUploadService(StorageClient storageClient, IOptions<GcsOptions
 {
     private static readonly HashSet<string> AllowedExtensions = [".jpg", ".jpeg", ".png", ".webp"];
     private static readonly HashSet<string> AllowedContentTypes = ["image/jpeg", "image/png", "image/webp"];
-    private const long MaxFileSizeBytes = 5 * 1024 * 1024;
+    private const long MaxFileSizeBytes = 20 * 1024 * 1024;
 
     public async Task<string> UploadImageAsync(Stream content, string fileName, string contentType, long length, CancellationToken cancellationToken)
     {
@@ -21,7 +21,7 @@ public class ImageUploadService(StorageClient storageClient, IOptions<GcsOptions
 
         if (length > MaxFileSizeBytes)
         {
-            throw new BadRequestException("O tamanho máximo permitido é 5MB.");
+            throw new BadRequestException("O tamanho máximo permitido é 20MB.");
         }
 
         var extension = Path.GetExtension(fileName).ToLowerInvariant();
