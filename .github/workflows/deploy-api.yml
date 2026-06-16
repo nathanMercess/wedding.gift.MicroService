@@ -1,11 +1,5 @@
 name: Deploy API
 
-# Required secrets (configure in Settings → Secrets and variables → Actions):
-#   GCP_SA_KEY  — GCP service account JSON with Artifact Registry push permission
-#   VM_HOST     — External IP of the GCP VM
-#   VM_USER     — SSH username on the VM
-#   VM_SSH_KEY  — Private SSH key for VM access
-
 on:
   push:
     branches:
@@ -16,6 +10,10 @@ jobs:
     name: Build, Push and Deploy API
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+      id-token: write  # obrigatório para Workload Identity Federation
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -23,7 +21,8 @@ jobs:
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: "projects/528711077873/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "github-actions@weddinggift.iam.gserviceaccount.com"
 
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker southamerica-east1-docker.pkg.dev --quiet
