@@ -168,7 +168,7 @@ app.UseExceptionHandler(errorApp =>
                         $"[wedding.gift] {exception.GetType().Name}: {exception.Message}",
                         body);
                 }
-                catch { /* silencioso — não pode quebrar a resposta */ }
+                catch { }
             });
         }
 

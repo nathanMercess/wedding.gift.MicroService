@@ -297,10 +297,15 @@ public class AuthServiceTests
         public bool WasCalled { get; private set; }
         public string? LastToEmail { get; private set; }
 
-        public Task SendEmailConfirmationAsync(string toEmail, string toName, string token, CancellationToken cancellationToken)
+        public Task SendEmailConfirmationAsync(string toEmail, string toName, string token, CancellationToken cancellationToken = default)
         {
             WasCalled = true;
             LastToEmail = toEmail;
+            return Task.CompletedTask;
+        }
+
+        public Task SendErrorNotificationAsync(string subject, string body, CancellationToken cancellationToken = default)
+        {
             return Task.CompletedTask;
         }
     }
