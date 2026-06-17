@@ -1,3 +1,4 @@
+using System.Text.Json;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Domain.Model.Entities;
@@ -96,7 +97,10 @@ public static class EntityDtoMappings
             PhotoUrl = entity.PhotoUrl,
             Message = entity.Message,
             PrimaryColor = entity.PrimaryColor,
-            SecondaryColor = entity.SecondaryColor
+            SecondaryColor = entity.SecondaryColor,
+            CarouselPhotos = string.IsNullOrWhiteSpace(entity.CarouselPhotosJson)
+                ? []
+                : JsonSerializer.Deserialize<List<string>>(entity.CarouselPhotosJson) ?? []
         };
     }
 }

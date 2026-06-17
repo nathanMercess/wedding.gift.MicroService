@@ -9,4 +9,5 @@ public class CoupleResponseDto
     public string Message { get; set; } = string.Empty;
     public string PrimaryColor { get; set; } = "#C79A6D";
     public string SecondaryColor { get; set; } = "#F7F0EA";
+    public List<string> CarouselPhotos { get; set; } = [];
 }
