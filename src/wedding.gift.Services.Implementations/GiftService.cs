@@ -56,6 +56,24 @@ public class GiftService(AppDbContext dbContext) : IGiftService
         };
     }
 
+    public async Task<GiftStatsDto> GetStatsAsync(CancellationToken cancellationToken)
+    {
+        var total = await dbContext.Gifts.CountAsync(cancellationToken);
+        var completed = await dbContext.Gifts.CountAsync(x => !x.Available, cancellationToken);
+        var goal = await dbContext.Gifts.SumAsync(x => x.Total, cancellationToken);
+        var raised = await dbContext.Contributions
+            .Where(x => x.Status == ContributionStatus.Paid)
+            .SumAsync(x => x.Amount, cancellationToken);
+
+        return new GiftStatsDto
+        {
+            Total = total,
+            Completed = completed,
+            Raised = raised,
+            Goal = goal,
+        };
+    }
+
     public async Task<Gift> GetByIdAsync(Guid id, CancellationToken cancellationToken)
     {
         var entity = await dbContext.Gifts

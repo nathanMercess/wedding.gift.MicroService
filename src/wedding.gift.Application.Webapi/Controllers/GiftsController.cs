@@ -21,6 +21,15 @@ public class GiftsController(IGiftService giftService) : ApiControllerBase
     }
 
     [AllowAnonymous]
+    [HttpGet("stats")]
+    [ProducesResponseType(typeof(GiftStatsDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<GiftStatsDto>> GetStats(CancellationToken cancellationToken)
+    {
+        var stats = await giftService.GetStatsAsync(cancellationToken);
+        return Ok(stats);
+    }
+
+    [AllowAnonymous]
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(GiftResponseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
