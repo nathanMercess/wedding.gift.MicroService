@@ -27,6 +27,7 @@ public class CoupleService(AppDbContext dbContext) : ICoupleService
         entity.WeddingDate = dto.WeddingDate;
         entity.PhotoUrl = dto.PhotoUrl.Trim();
         entity.Message = dto.Message.Trim();
+        entity.PrimaryColor = string.IsNullOrWhiteSpace(dto.PrimaryColor) ? "#C79A6D" : dto.PrimaryColor.Trim();
 
         await dbContext.SaveChangesAsync(cancellationToken);
 

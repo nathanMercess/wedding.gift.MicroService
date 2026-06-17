@@ -7,6 +7,7 @@ public class Couple
     public DateTime WeddingDate { get; set; }
     public string PhotoUrl { get; set; } = string.Empty;
     public string Message { get; set; } = string.Empty;
+    public string PrimaryColor { get; set; } = "#C79A6D";
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

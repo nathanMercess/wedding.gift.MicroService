@@ -15,4 +15,7 @@ public class CoupleUpdateDto
 
     [MaxLength(1000, ErrorMessage = "A mensagem deve ter no máximo 1000 caracteres.")]
     public string Message { get; set; } = string.Empty;
+
+    [MaxLength(7, ErrorMessage = "A cor primária deve ser um código hex válido (ex: #C79A6D).")]
+    public string PrimaryColor { get; set; } = "#C79A6D";
 }
