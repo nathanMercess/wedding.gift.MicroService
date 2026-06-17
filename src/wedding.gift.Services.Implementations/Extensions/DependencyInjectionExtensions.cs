@@ -22,7 +22,7 @@ public static class DependencyInjectionExtensions
         services.AddHttpClient("enrich", c =>
         {
             c.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (compatible; WeddingGiftBot/1.0)");
-            c.Timeout = TimeSpan.FromSeconds(10);
+            c.Timeout = TimeSpan.FromSeconds(15);
         });
 
         return services;
