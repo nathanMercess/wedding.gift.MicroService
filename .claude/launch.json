@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start", "--prefix", "C:\\meus-projetos\\wedding-gift-presentation"],
+      "port": 4200,
+      "autoPort": false
+    }
+  ]
+}
