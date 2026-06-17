@@ -25,4 +25,5 @@ public class GiftCreateDto
     public string Category { get; set; } = string.Empty;
 
     public bool Available { get; set; } = true;
+    public bool AllowPartialContribution { get; set; } = true;
 }

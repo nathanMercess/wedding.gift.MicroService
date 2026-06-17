@@ -18,6 +18,7 @@ public static class EntityDtoMappings
             Image = dto.Image.Trim(),
             Category = dto.Category.Trim(),
             Available = dto.Available,
+            AllowPartialContribution = dto.AllowPartialContribution,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -32,6 +33,7 @@ public static class EntityDtoMappings
         entity.Image = dto.Image.Trim();
         entity.Category = dto.Category.Trim();
         entity.Available = dto.Available;
+        entity.AllowPartialContribution = dto.AllowPartialContribution;
         entity.UpdatedAt = DateTime.UtcNow;
     }
 
@@ -49,7 +51,8 @@ public static class EntityDtoMappings
                 .Sum(c => c.Amount),
             Image = entity.Image,
             Category = entity.Category,
-            Available = entity.Available
+            Available = entity.Available,
+            AllowPartialContribution = entity.AllowPartialContribution
         };
     }
 

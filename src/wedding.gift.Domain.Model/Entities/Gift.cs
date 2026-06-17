@@ -10,6 +10,7 @@ public class Gift
     public string Image { get; set; } = string.Empty;
     public string Category { get; set; } = string.Empty;
     public bool Available { get; set; } = true;
+    public bool AllowPartialContribution { get; set; } = true;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public ICollection<Contribution> Contributions { get; set; } = new List<Contribution>();

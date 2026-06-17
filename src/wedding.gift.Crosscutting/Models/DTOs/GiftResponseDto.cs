@@ -11,4 +11,5 @@ public class GiftResponseDto
     public string Image { get; set; } = string.Empty;
     public string Category { get; set; } = string.Empty;
     public bool Available { get; set; }
+    public bool AllowPartialContribution { get; set; }
 }
