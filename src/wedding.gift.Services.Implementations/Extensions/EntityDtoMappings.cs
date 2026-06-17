@@ -95,7 +95,8 @@ public static class EntityDtoMappings
             WeddingDate = entity.WeddingDate,
             PhotoUrl = entity.PhotoUrl,
             Message = entity.Message,
-            PrimaryColor = entity.PrimaryColor
+            PrimaryColor = entity.PrimaryColor,
+            SecondaryColor = entity.SecondaryColor
         };
     }
 }

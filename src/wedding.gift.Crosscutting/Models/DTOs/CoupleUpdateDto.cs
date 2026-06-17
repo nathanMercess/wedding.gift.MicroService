@@ -18,4 +18,7 @@ public class CoupleUpdateDto
 
     [MaxLength(7, ErrorMessage = "A cor primária deve ser um código hex válido (ex: #C79A6D).")]
     public string PrimaryColor { get; set; } = "#C79A6D";
+
+    [MaxLength(7, ErrorMessage = "A cor secundária deve ser um código hex válido (ex: #F7F0EA).")]
+    public string SecondaryColor { get; set; } = "#F7F0EA";
 }

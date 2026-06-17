@@ -8,6 +8,7 @@ public class Couple
     public string PhotoUrl { get; set; } = string.Empty;
     public string Message { get; set; } = string.Empty;
     public string PrimaryColor { get; set; } = "#C79A6D";
+    public string SecondaryColor { get; set; } = "#F7F0EA";
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
