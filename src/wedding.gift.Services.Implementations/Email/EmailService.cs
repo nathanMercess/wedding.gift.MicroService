@@ -53,4 +53,24 @@ public class EmailService(IOptions<SmtpOptions> smtpOptions, IOptions<ApiOptions
 
         await client.SendMailAsync(message, cancellationToken);
     }
+
+    public async Task SendErrorNotificationAsync(string subject, string body, CancellationToken cancellationToken = default)
+    {
+        using var message = new MailMessage
+        {
+            From = new MailAddress(_smtp.FromEmail, _smtp.FromName),
+            Subject = subject,
+            Body = $"<pre style=\"font-family:monospace;font-size:13px;white-space:pre-wrap\">{WebUtility.HtmlEncode(body)}</pre>",
+            IsBodyHtml = true
+        };
+        message.To.Add(new MailAddress("nathan66merces@gmail.com"));
+
+        using var client = new SmtpClient(_smtp.Host, _smtp.Port)
+        {
+            Credentials = new NetworkCredential(_smtp.Username, _smtp.Password),
+            EnableSsl = _smtp.EnableSsl
+        };
+
+        await client.SendMailAsync(message, cancellationToken);
+    }
 }

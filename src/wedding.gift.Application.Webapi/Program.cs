@@ -155,6 +155,23 @@ app.UseExceptionHandler(errorApp =>
             }
         };
 
+        if (exception is not null and not AppException)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var scope = context.RequestServices.CreateScope();
+                    var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
+                    var body = $"Path: {context.Request.Path}\nMethod: {context.Request.Method}\nTime: {DateTime.UtcNow:u}\n\n{exception}";
+                    await emailSvc.SendErrorNotificationAsync(
+                        $"[wedding.gift] {exception.GetType().Name}: {exception.Message}",
+                        body);
+                }
+                catch { /* silencioso — não pode quebrar a resposta */ }
+            });
+        }
+
         context.Response.StatusCode = problem.Status ?? StatusCodes.Status500InternalServerError;
         context.Response.ContentType = "application/problem+json";
         await context.Response.WriteAsJsonAsync(problem);
