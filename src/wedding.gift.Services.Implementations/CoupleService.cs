@@ -31,7 +31,10 @@ public class CoupleService(AppDbContext dbContext) : ICoupleService
         entity.PrimaryColor = string.IsNullOrWhiteSpace(dto.PrimaryColor) ? "#C79A6D" : dto.PrimaryColor.Trim();
         entity.SecondaryColor = string.IsNullOrWhiteSpace(dto.SecondaryColor) ? "#F7F0EA" : dto.SecondaryColor.Trim();
 
-        var photos = dto.CarouselPhotos?.Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => p.Trim()).ToList();
+        var photos = dto.CarouselPhotos?
+            .Where(p => !string.IsNullOrWhiteSpace(p.Url))
+            .Select(p => new CarouselPhotoDto { Url = p.Url.Trim(), Tag = p.Tag.Trim(), Title = p.Title.Trim() })
+            .ToList();
         entity.CarouselPhotosJson = photos is { Count: > 0 } ? JsonSerializer.Serialize(photos) : null;
 
         await dbContext.SaveChangesAsync(cancellationToken);

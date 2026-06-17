@@ -22,5 +22,5 @@ public class CoupleUpdateDto
     [MaxLength(7, ErrorMessage = "A cor secundária deve ser um código hex válido (ex: #F7F0EA).")]
     public string SecondaryColor { get; set; } = "#F7F0EA";
 
-    public List<string>? CarouselPhotos { get; set; }
+    public List<CarouselPhotoDto>? CarouselPhotos { get; set; }
 }

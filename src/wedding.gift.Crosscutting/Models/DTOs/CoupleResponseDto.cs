@@ -1,5 +1,12 @@
 namespace wedding.gift.Crosscutting.Models.DTOs;
 
+public class CarouselPhotoDto
+{
+    public string Url { get; set; } = string.Empty;
+    public string Tag { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+}
+
 public class CoupleResponseDto
 {
     public Guid Id { get; set; }
@@ -9,5 +16,5 @@ public class CoupleResponseDto
     public string Message { get; set; } = string.Empty;
     public string PrimaryColor { get; set; } = "#C79A6D";
     public string SecondaryColor { get; set; } = "#F7F0EA";
-    public List<string> CarouselPhotos { get; set; } = [];
+    public List<CarouselPhotoDto> CarouselPhotos { get; set; } = [];
 }

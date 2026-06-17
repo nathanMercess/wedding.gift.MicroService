@@ -98,9 +98,35 @@ public static class EntityDtoMappings
             Message = entity.Message,
             PrimaryColor = entity.PrimaryColor,
             SecondaryColor = entity.SecondaryColor,
-            CarouselPhotos = string.IsNullOrWhiteSpace(entity.CarouselPhotosJson)
-                ? []
-                : JsonSerializer.Deserialize<List<string>>(entity.CarouselPhotosJson) ?? []
+            CarouselPhotos = DeserializeCarouselPhotos(entity.CarouselPhotosJson),
         };
+    }
+
+    private static List<CarouselPhotoDto> DeserializeCarouselPhotos(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        if (root.ValueKind != JsonValueKind.Array) return [];
+
+        var result = new List<CarouselPhotoDto>();
+        foreach (var element in root.EnumerateArray())
+        {
+            if (element.ValueKind == JsonValueKind.String)
+            {
+                result.Add(new CarouselPhotoDto { Url = element.GetString() ?? string.Empty });
+            }
+            else if (element.ValueKind == JsonValueKind.Object)
+            {
+                result.Add(new CarouselPhotoDto
+                {
+                    Url = element.TryGetProperty("Url", out var url) ? url.GetString() ?? string.Empty : string.Empty,
+                    Tag = element.TryGetProperty("Tag", out var tag) ? tag.GetString() ?? string.Empty : string.Empty,
+                    Title = element.TryGetProperty("Title", out var title) ? title.GetString() ?? string.Empty : string.Empty,
+                });
+            }
+        }
+        return result;
     }
 }
