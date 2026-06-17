@@ -5,7 +5,7 @@ namespace wedding.gift.Services.Contracts;
 
 public interface IGiftService
 {
-    Task<IReadOnlyList<Gift>> GetAllAsync(string? category, string? search, bool? available, int? page, int? pageSize, CancellationToken cancellationToken);
+    Task<PagedResult<GiftResponseDto>> GetAllAsync(GiftQueryParams query, CancellationToken cancellationToken);
     Task<Gift> GetByIdAsync(Guid id, CancellationToken cancellationToken);
     Task<Gift> CreateAsync(GiftCreateDto dto, CancellationToken cancellationToken);
     Task<Gift> UpdateAsync(Guid id, GiftUpdateDto dto, CancellationToken cancellationToken);

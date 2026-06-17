@@ -11,46 +11,49 @@ namespace wedding.gift.Services.Implementations;
 
 public class GiftService(AppDbContext dbContext) : IGiftService
 {
-    public async Task<IReadOnlyList<Gift>> GetAllAsync(string? category, string? search, bool? available, int? page, int? pageSize, CancellationToken cancellationToken)
+    public async Task<PagedResult<GiftResponseDto>> GetAllAsync(GiftQueryParams queryParams, CancellationToken cancellationToken)
     {
+        if (queryParams.Page < 1)
+            throw new BadRequestException("O parâmetro 'page' deve ser maior ou igual a 1.");
+
+        if (queryParams.PageSize < 1 || queryParams.PageSize > 100)
+            throw new BadRequestException("O parâmetro 'pageSize' deve estar entre 1 e 100.");
+
         IQueryable<Gift> query = dbContext.Gifts.Include(x => x.Contributions).AsNoTracking();
 
-        if (!string.IsNullOrWhiteSpace(category))
+        if (!string.IsNullOrWhiteSpace(queryParams.Category))
+            query = query.Where(x => x.Category == queryParams.Category);
+
+        if (!string.IsNullOrWhiteSpace(queryParams.Search))
+            query = query.Where(x => x.Name.Contains(queryParams.Search) || x.Description.Contains(queryParams.Search));
+
+        if (queryParams.OnlyAvailable.HasValue)
+            query = query.Where(x => x.Available == queryParams.OnlyAvailable.Value);
+
+        query = (queryParams.OrderBy?.ToLower(), queryParams.OrderDir?.ToLower()) switch
         {
-            query = query.Where(x => x.Category == category);
-        }
+            ("price", "desc") => query.OrderByDescending(x => x.Price),
+            ("price", _) => query.OrderBy(x => x.Price),
+            ("available", "desc") => query.OrderByDescending(x => x.Available),
+            ("available", _) => query.OrderBy(x => x.Available),
+            (_, "desc") => query.OrderByDescending(x => x.Name),
+            _ => query.OrderBy(x => x.Name),
+        };
 
-        if (!string.IsNullOrWhiteSpace(search))
+        var totalCount = await query.CountAsync(cancellationToken);
+
+        var items = await query
+            .Skip((queryParams.Page - 1) * queryParams.PageSize)
+            .Take(queryParams.PageSize)
+            .ToListAsync(cancellationToken);
+
+        return new PagedResult<GiftResponseDto>
         {
-            query = query.Where(x => x.Name.Contains(search) || x.Description.Contains(search));
-        }
-
-        if (available.HasValue)
-        {
-            query = query.Where(x => x.Available == available.Value);
-        }
-
-        query = query.OrderBy(x => x.Name);
-
-        if (page.HasValue || pageSize.HasValue)
-        {
-            var safePage = page.GetValueOrDefault(1);
-            var safePageSize = pageSize.GetValueOrDefault(10);
-
-            if (safePage < 1)
-            {
-                throw new BadRequestException("O parâmetro 'page' deve ser maior ou igual a 1.");
-            }
-
-            if (safePageSize < 1 || safePageSize > 100)
-            {
-                throw new BadRequestException("O parâmetro 'pageSize' deve estar entre 1 e 100.");
-            }
-
-            query = query.Skip((safePage - 1) * safePageSize).Take(safePageSize);
-        }
-
-        return await query.ToListAsync(cancellationToken);
+            Items = items.Select(g => g.ToResponseDto()),
+            TotalCount = totalCount,
+            Page = queryParams.Page,
+            PageSize = queryParams.PageSize
+        };
     }
 
     public async Task<Gift> GetByIdAsync(Guid id, CancellationToken cancellationToken)

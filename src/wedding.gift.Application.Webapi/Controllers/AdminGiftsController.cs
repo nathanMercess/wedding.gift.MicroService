@@ -13,17 +13,13 @@ namespace wedding.gift.Application.Webapi.Controllers;
 public class AdminGiftsController(IGiftService giftService) : ControllerBase
 {
     [HttpGet]
-    [ProducesResponseType(typeof(IEnumerable<GiftResponseDto>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<IEnumerable<GiftResponseDto>>> GetAll(
-        [FromQuery] string? category,
-        [FromQuery] string? search,
-        [FromQuery] bool? available,
-        [FromQuery] int? page,
-        [FromQuery] int? pageSize,
+    [ProducesResponseType(typeof(PagedResult<GiftResponseDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<PagedResult<GiftResponseDto>>> GetAll(
+        [FromQuery] GiftQueryParams query,
         CancellationToken cancellationToken)
     {
-        var gifts = await giftService.GetAllAsync(category, search, available, page, pageSize, cancellationToken);
-        return Ok(gifts.Select(x => x.ToResponseDto()));
+        var result = await giftService.GetAllAsync(query, cancellationToken);
+        return Ok(result);
     }
 
     [HttpPost]
