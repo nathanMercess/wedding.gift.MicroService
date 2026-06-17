@@ -17,6 +17,13 @@ public static class DependencyInjectionExtensions
 
         services.AddSingleton(_ => StorageClient.Create());
         services.AddScoped<IImageUploadService, ImageUploadService>();
+        services.AddScoped<IGiftEnrichService, GiftEnrichService>();
+
+        services.AddHttpClient("enrich", c =>
+        {
+            c.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (compatible; WeddingGiftBot/1.0)");
+            c.Timeout = TimeSpan.FromSeconds(10);
+        });
 
         return services;
     }

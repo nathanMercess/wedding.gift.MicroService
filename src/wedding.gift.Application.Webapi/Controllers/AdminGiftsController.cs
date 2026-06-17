@@ -10,7 +10,7 @@ namespace wedding.gift.Application.Webapi.Controllers;
 [ApiController]
 [Authorize(Roles = UserRoles.Admin)]
 [Route("admin/gifts")]
-public class AdminGiftsController(IGiftService giftService) : ControllerBase
+public class AdminGiftsController(IGiftService giftService, IGiftEnrichService giftEnrichService) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(PagedResult<GiftResponseDto>), StatusCodes.Status200OK)]
@@ -57,5 +57,14 @@ public class AdminGiftsController(IGiftService giftService) : ControllerBase
     {
         await giftService.DeleteAsync(id, cancellationToken);
         return NoContent();
+    }
+
+    [HttpPost("enrich")]
+    [ProducesResponseType(typeof(GiftEnrichResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<GiftEnrichResponseDto>> Enrich([FromBody] GiftEnrichRequestDto dto, CancellationToken cancellationToken)
+    {
+        var result = await giftEnrichService.EnrichAsync(dto.Url, cancellationToken);
+        return Ok(result);
     }
 }
