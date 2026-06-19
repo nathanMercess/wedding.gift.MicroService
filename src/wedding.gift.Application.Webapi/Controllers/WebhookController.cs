@@ -10,9 +10,10 @@ namespace wedding.gift.Application.Webapi.Controllers;
 [AllowAnonymous]
 [Route("webhook")]
 public class WebhookController(
-    IPaymentService paymentService,
-    IMercadoPagoService mercadoPagoService,
-    IConfiguration config) : ControllerBase
+    IBackgroundTaskQueue queue,
+    IConfiguration config,
+    IWebHostEnvironment env,
+    ILogger<WebhookController> logger) : ControllerBase
 {
     [HttpPost("mercadopago")]
     public async Task<IActionResult> ReceiveMercadoPagoNotification(
@@ -29,10 +30,20 @@ public class WebhookController(
         if (string.IsNullOrWhiteSpace(dataId))
             return Ok();
 
-        var result = await mercadoPagoService.GetOrderStatusAsync(dataId, cancellationToken);
+        // Desacopla o processamento e responde 200 IMEDIATAMENTE — evita que o MP
+        // cancele/reenvie a notificação por demora (timeout preventivo).
+        await queue.EnqueueAsync(async (sp, ct) =>
+        {
+            var mercadoPago = sp.GetRequiredService<IMercadoPagoService>();
+            var payments = sp.GetRequiredService<IPaymentService>();
 
-        if (!string.IsNullOrWhiteSpace(result.MpOrderId))
-            await paymentService.UpdatePaymentStatusAsync(result.MpOrderId, result.Status, cancellationToken);
+            // Regra de Ouro: confirma o status REAL via GET no Mercado Pago,
+            // sem confiar cegamente no payload do webhook.
+            var status = await mercadoPago.GetOrderStatusAsync(dataId, ct);
+
+            if (!string.IsNullOrWhiteSpace(status.MpOrderId))
+                await payments.ConfirmPaymentAsync(status.MpOrderId, status.Status, ct);
+        });
 
         return Ok();
     }
@@ -40,8 +51,16 @@ public class WebhookController(
     private bool ValidateMercadoPagoSignature(HttpRequest request, string? dataId)
     {
         var secret = config["MercadoPago:WebhookSecret"];
+
         if (string.IsNullOrWhiteSpace(secret))
-            return true;
+        {
+            // FAIL-CLOSED: sem segredo configurado, só liberamos em Development.
+            if (env.IsDevelopment())
+                return true;
+
+            logger.LogError("MercadoPago:WebhookSecret não configurado — rejeitando webhook (fail-closed).");
+            return false;
+        }
 
         if (!request.Headers.TryGetValue("x-signature", out var signatureHeader))
             return false;
@@ -49,9 +68,8 @@ public class WebhookController(
         if (!request.Headers.TryGetValue("x-request-id", out var requestIdHeader))
             return false;
 
-        var parts = signatureHeader.ToString().Split(',');
         string? ts = null, v1 = null;
-        foreach (var part in parts)
+        foreach (var part in signatureHeader.ToString().Split(','))
         {
             var kv = part.Split('=', 2);
             if (kv.Length != 2) continue;
@@ -59,14 +77,25 @@ public class WebhookController(
             if (kv[0].Trim() == "v1") v1 = kv[1].Trim();
         }
 
-        if (ts == null || v1 == null) return false;
+        if (ts is null || v1 is null)
+            return false;
 
         var manifest = $"id:{dataId};request-id:{requestIdHeader};ts:{ts};";
 
         using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
-        var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(manifest));
-        var hashHex = Convert.ToHexString(hash).ToLowerInvariant();
+        var expected = hmac.ComputeHash(Encoding.UTF8.GetBytes(manifest));
 
-        return hashHex == v1;
+        byte[] provided;
+        try
+        {
+            provided = Convert.FromHexString(v1);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+
+        // Comparação em tempo constante (evita timing attack).
+        return CryptographicOperations.FixedTimeEquals(expected, provided);
     }
 }

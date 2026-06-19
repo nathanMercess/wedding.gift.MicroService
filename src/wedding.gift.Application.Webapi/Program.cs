@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
+using Polly;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.Configurations;
 using wedding.gift.Domain.Model.Entities;
@@ -91,19 +92,19 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
-builder.Services.AddHttpClient<MercadoPagoService>();
-builder.Services.AddScoped<IMercadoPagoService, MercadoPagoService>();
+// Cliente tipado único + timeout + retry com backoff exponencial para instabilidades do MP (500/502/503/timeout).
+// O retry é seguro porque a X-Idempotency-Key é determinística (não recobra).
+builder.Services
+    .AddHttpClient<IMercadoPagoService, MercadoPagoService>(client => client.Timeout = TimeSpan.FromSeconds(20))
+    .AddTransientHttpErrorPolicy(policy => policy.WaitAndRetryAsync(
+        3, retryAttempt => TimeSpan.FromMilliseconds(300 * Math.Pow(2, retryAttempt))));
 
-builder.Services.AddHttpClient("PaymentService");
-builder.Services.AddScoped<wedding.gift.Services.Contracts.IMercadoPagoService>(sp =>
-{
-    var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
-    var httpClient = httpClientFactory.CreateClient("PaymentService");
-    var configuration = sp.GetRequiredService<IConfiguration>();
-    return new wedding.gift.Services.Implementations.MercadoPagoService(httpClient, configuration);
-});
 builder.Services.AddScoped<wedding.gift.Infra.Contracts.IPaymentRepository, wedding.gift.Infra.Implementations.Repositories.PaymentRepository>();
 builder.Services.AddScoped<wedding.gift.Services.Contracts.IPaymentService, wedding.gift.Services.Implementations.PaymentService>();
+
+// Fila em processo p/ desacoplar webhooks e e-mails de notificação do request HTTP.
+builder.Services.AddSingleton<wedding.gift.Services.Contracts.IBackgroundTaskQueue, wedding.gift.Application.Webapi.Infrastructure.BackgroundTaskQueue>();
+builder.Services.AddHostedService<wedding.gift.Application.Webapi.Infrastructure.QueuedHostedService>();
 
 builder.Services.AddSwaggerGen(options =>
 {
@@ -138,6 +139,33 @@ app.UseExceptionHandler(errorApp =>
     errorApp.Run(async context =>
     {
         var exception = context.Features.Get<IExceptionHandlerFeature>()?.Error;
+        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+        var correlationId = context.TraceIdentifier;
+
+        if (exception is AppException appEx)
+        {
+            // Erro de negócio esperado: log em Warning, sem e-mail de alerta.
+            logger.LogWarning(exception, "Erro de negócio {Status} em {Path}. CorrelationId={CorrelationId}",
+                appEx.StatusCode, context.Request.Path, correlationId);
+        }
+        else if (exception is not null)
+        {
+            // 1) FONTE DE VERDADE: sempre loga (vai pro sink/monitoramento mesmo se o e-mail falhar).
+            logger.LogError(exception, "Erro não tratado em {Path}. CorrelationId={CorrelationId}",
+                context.Request.Path, correlationId);
+
+            // 2) Notificação por e-mail: desacoplada (fila) e best-effort — a falha é logada pelo worker, nunca engolida.
+            var queue = context.RequestServices.GetRequiredService<IBackgroundTaskQueue>();
+            var subject = $"[wedding.gift] {exception.GetType().Name}: {exception.Message}";
+            var body = $"CorrelationId: {correlationId}\nPath: {context.Request.Path}\n" +
+                       $"Method: {context.Request.Method}\nTime: {DateTime.UtcNow:u}\n\n{exception}";
+
+            await queue.EnqueueAsync(async (sp, ct) =>
+            {
+                var emailSvc = sp.GetRequiredService<IEmailService>();
+                await emailSvc.SendErrorNotificationAsync(subject, body, ct);
+            });
+        }
 
         var problem = exception switch
         {
@@ -154,23 +182,7 @@ app.UseExceptionHandler(errorApp =>
                 Detail = "Ocorreu um erro inesperado."
             }
         };
-
-        if (exception is not null and not AppException)
-        {
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    using var scope = context.RequestServices.CreateScope();
-                    var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
-                    var body = $"Path: {context.Request.Path}\nMethod: {context.Request.Method}\nTime: {DateTime.UtcNow:u}\n\n{exception}";
-                    await emailSvc.SendErrorNotificationAsync(
-                        $"[wedding.gift] {exception.GetType().Name}: {exception.Message}",
-                        body);
-                }
-                catch { }
-            });
-        }
+        problem.Extensions["correlationId"] = correlationId;
 
         context.Response.StatusCode = problem.Status ?? StatusCodes.Status500InternalServerError;
         context.Response.ContentType = "application/problem+json";

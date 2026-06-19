@@ -9,6 +9,9 @@ public class PaymentResponseDto
     public string Nsu { get; set; } = string.Empty;
     public string? MpOrderId { get; set; }
     public string? MpPaymentId { get; set; }
+
+    /// <summary>x-request-id da resposta do Mercado Pago — usar em chamados de suporte.</summary>
+    public string? MpRequestId { get; set; }
     public string QrCode { get; set; } = string.Empty;
     public string? QrCodeBase64 { get; set; }
 

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using wedding.gift.Application.Webapi.Controllers.Base;
+using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Services.Contracts;
 
@@ -19,8 +20,7 @@ public class PaymentController(IPaymentService paymentService) : ApiControllerBa
 
         if (result.Status == "error")
         {
-            if (!string.IsNullOrWhiteSpace(result.Message) &&
-                (result.Message.Contains("required") || result.Message.Contains("Invalid")))
+            if (result.ErrorCode == PaymentErrorCodes.ValidationError)
                 return BadRequest(result);
 
             return StatusCode(StatusCodes.Status502BadGateway, result);
@@ -40,8 +40,7 @@ public class PaymentController(IPaymentService paymentService) : ApiControllerBa
 
         if (result.Status == "error")
         {
-            if (!string.IsNullOrWhiteSpace(result.Message) &&
-                (result.Message.Contains("required") || result.Message.Contains("Invalid")))
+            if (result.ErrorCode == PaymentErrorCodes.ValidationError)
                 return BadRequest(result);
 
             return StatusCode(StatusCodes.Status502BadGateway, result);
@@ -60,7 +59,7 @@ public class PaymentController(IPaymentService paymentService) : ApiControllerBa
 
         if (result.Status == "error")
         {
-            if (!string.IsNullOrWhiteSpace(result.Message) && result.Message.Contains("required"))
+            if (result.ErrorCode == PaymentErrorCodes.ValidationError)
                 return BadRequest(result);
 
             return StatusCode(StatusCodes.Status502BadGateway, result);

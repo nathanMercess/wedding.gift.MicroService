@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Domain.Model.Entities;
@@ -9,7 +10,8 @@ namespace wedding.gift.Services.Implementations;
 public class PaymentService(
     IMercadoPagoService mercadoPagoService,
     IPaymentRepository paymentRepository,
-    IContributionService contributionService) : IPaymentService
+    IContributionService contributionService,
+    ILogger<PaymentService> logger) : IPaymentService
 {
     public async Task<PaymentResponseDto> ProcessCardPaymentAsync(
         CardPaymentRequestDto request,
@@ -175,11 +177,31 @@ public class PaymentService(
         return result;
     }
 
-    public async Task UpdatePaymentStatusAsync(
-        string orderId,
+    public async Task ConfirmPaymentAsync(
+        string mpOrderId,
         string status,
         CancellationToken cancellationToken)
     {
-        await paymentRepository.UpdateStatusAsync(orderId, status, null, cancellationToken);
+        if (string.IsNullOrWhiteSpace(mpOrderId))
+            return;
+
+        var payment = await paymentRepository.GetByMpOrderIdAsync(mpOrderId, cancellationToken);
+
+        if (payment is null)
+        {
+            logger.LogWarning("Webhook: pagamento com MpOrderId={MpOrderId} não encontrado para confirmar.", mpOrderId);
+            return;
+        }
+
+        // Atualiza o Payment pelo OrderId REAL (o webhook traz o MpOrderId, não o OrderId).
+        await paymentRepository.UpdateStatusAsync(payment.OrderId, status, payment.StatusDetail, cancellationToken);
+
+        // Quando aprovado, promove a contribuição (Pending -> Paid), o que recalcula a
+        // disponibilidade do presente. Sem isso, um PIX aprovado nunca "concluía" o presente.
+        if (status == "approved" && payment.ContributionId.HasValue)
+        {
+            await contributionService.UpdateStatusAsync(
+                payment.ContributionId.Value, ContributionStatus.Paid, DateTime.UtcNow, cancellationToken);
+        }
     }
 }

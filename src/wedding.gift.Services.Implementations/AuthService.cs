@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using wedding.gift.Crosscutting.Constants;
@@ -11,12 +12,13 @@ using wedding.gift.Crosscutting.Models.DTOs.Auth;
 using wedding.gift.Domain.Model.Entities;
 using wedding.gift.Infra.Implementations.DataContext;
 using wedding.gift.Services.Contracts;
+using wedding.gift.Services.Implementations.Email;
 using wedding.gift.Services.Implementations.Exceptions;
 using wedding.gift.Services.Implementations.Security;
 
 namespace wedding.gift.Services.Implementations;
 
-public class AuthService(AppDbContext dbContext, IOptions<JwtOptions> jwtOptions, IEmailService emailService) : IAuthService
+public class AuthService(AppDbContext dbContext, IOptions<JwtOptions> jwtOptions, IEmailService emailService, ILogger<AuthService>? logger = null) : IAuthService
 {
     private readonly JwtOptions _jwtOptions = jwtOptions.Value;
 
@@ -128,7 +130,16 @@ public class AuthService(AppDbContext dbContext, IOptions<JwtOptions> jwtOptions
         dbContext.Users.Add(user);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        await emailService.SendEmailConfirmationAsync(user.Email, user.Name, confirmationToken, cancellationToken);
+        // Conta já persistida. Se o e-mail falhar, NÃO derruba o cadastro (evita 500 + usuário órfão):
+        // loga e segue — o usuário pode solicitar reenvio depois.
+        try
+        {
+            await emailService.SendEmailConfirmationAsync(user.Email, user.Name, confirmationToken, cancellationToken);
+        }
+        catch (EmailDeliveryException ex)
+        {
+            logger?.LogError(ex, "Usuário {UserId} criado, mas o e-mail de confirmação falhou.", user.Id);
+        }
 
         return new RegisterResponseDto
         {
