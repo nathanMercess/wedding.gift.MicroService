@@ -14,4 +14,7 @@ public class SmtpOptions
 
     /// <summary>Destinatário das notificações de erro do sistema. Cai para <see cref="FromEmail"/> se vazio.</summary>
     public string? ErrorNotificationRecipient { get; set; }
+
+    /// <summary>Destinatário das notificações de nova contribuição (o casal). Cai para <see cref="FromEmail"/> se vazio.</summary>
+    public string? CoupleNotificationRecipient { get; set; }
 }

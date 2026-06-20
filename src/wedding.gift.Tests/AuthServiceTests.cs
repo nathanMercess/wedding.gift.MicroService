@@ -308,5 +308,10 @@ public class AuthServiceTests
         {
             return Task.CompletedTask;
         }
+
+        public Task SendContributionNotificationAsync(string contributorName, decimal amount, CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
     }
 }

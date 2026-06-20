@@ -1,9 +1,11 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Domain.Model.Entities;
 using wedding.gift.Infra.Contracts;
 using wedding.gift.Services.Contracts;
+using wedding.gift.Services.Implementations.Email;
 
 namespace wedding.gift.Services.Implementations;
 
@@ -11,6 +13,8 @@ public class PaymentService(
     IMercadoPagoService mercadoPagoService,
     IPaymentRepository paymentRepository,
     IContributionService contributionService,
+    IEmailService emailService,
+    IBackgroundTaskQueue backgroundTaskQueue,
     ILogger<PaymentService> logger) : IPaymentService
 {
     public async Task<PaymentResponseDto> ProcessCardPaymentAsync(
@@ -67,6 +71,16 @@ public class PaymentService(
             }, cancellationToken);
 
             contributionId = contribution.Id;
+
+            // Cartão aprovado de forma síncrona (não passa pelo webhook/ConfirmPaymentAsync).
+            // Enfileira a notificação p/ NÃO bloquear a resposta do pagamento com o SMTP.
+            var contributorName = request.ContributorName;
+            var amount = request.Amount;
+            await backgroundTaskQueue.EnqueueAsync(async (sp, ct) =>
+            {
+                var email = sp.GetRequiredService<IEmailService>();
+                await email.SendContributionNotificationAsync(contributorName, amount, ct);
+            });
         }
 
         await paymentRepository.SaveAsync(new Payment
@@ -193,6 +207,10 @@ public class PaymentService(
             return;
         }
 
+        // Idempotência: webhook duplicado no mesmo status é ignorado (evita repromover/reenviar e-mail).
+        if (string.Equals(payment.Status, status, StringComparison.OrdinalIgnoreCase))
+            return;
+
         // Atualiza o Payment pelo OrderId REAL (o webhook traz o MpOrderId, não o OrderId).
         await paymentRepository.UpdateStatusAsync(payment.OrderId, status, payment.StatusDetail, cancellationToken);
 
@@ -202,6 +220,17 @@ public class PaymentService(
         {
             await contributionService.UpdateStatusAsync(
                 payment.ContributionId.Value, ContributionStatus.Paid, DateTime.UtcNow, cancellationToken);
+
+            // Notificação SOMENTE no approved confirmado (nunca pending/rejected). Já roda no worker
+            // de background; falha de e-mail é logada e não derruba a confirmação do pagamento.
+            try
+            {
+                await emailService.SendContributionNotificationAsync(payment.ContributorName, payment.Amount, cancellationToken);
+            }
+            catch (EmailDeliveryException ex)
+            {
+                logger.LogError(ex, "Contribuição {ContributionId} confirmada, mas a notificação por e-mail falhou.", payment.ContributionId);
+            }
         }
     }
 }

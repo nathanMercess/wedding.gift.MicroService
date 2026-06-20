@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Mail;
 using Microsoft.Extensions.Logging;
@@ -52,6 +53,27 @@ public class EmailService(
         var html = $"<pre style=\"font-family:monospace;font-size:13px;white-space:pre-wrap\">{WebUtility.HtmlEncode(body)}</pre>";
 
         return SendAsync(recipient, "Suporte", subject, html, cancellationToken);
+    }
+
+    public Task SendContributionNotificationAsync(string contributorName, decimal amount, CancellationToken cancellationToken = default)
+    {
+        var recipient = string.IsNullOrWhiteSpace(_smtp.CoupleNotificationRecipient)
+            ? _smtp.FromEmail
+            : _smtp.CoupleNotificationRecipient;
+
+        var valor = amount.ToString("C", new CultureInfo("pt-BR"));
+
+        var body = $"""
+            <html>
+            <body style="font-family: Arial, sans-serif; color: #333;">
+                <h2>Nova contribuição recebida 🎉</h2>
+                <p><strong>{WebUtility.HtmlEncode(contributorName)}</strong> contribuiu com <strong>{valor}</strong> na sua lista de presentes.</p>
+                <p style="color:#888;font-size:12px;">Notificação automática — Wedding Gift.</p>
+            </body>
+            </html>
+            """;
+
+        return SendAsync(recipient, "Casal", "Nova contribuição recebida — Wedding Gift", body, cancellationToken);
     }
 
     private async Task SendAsync(string toEmail, string toName, string subject, string htmlBody, CancellationToken cancellationToken)
