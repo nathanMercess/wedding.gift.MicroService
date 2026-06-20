@@ -233,7 +233,8 @@ static async Task EnsureBootstrapAdminAsync(IServiceProvider services, IConfigur
         PasswordHash = hash,
         PasswordSalt = salt,
         Role = UserRoles.Admin,
-        IsActive = true
+        IsActive = true,
+        IsEmailConfirmed = true
     });
 
     await dbContext.SaveChangesAsync();

@@ -19,7 +19,10 @@ public class CoupleController(ICoupleService coupleService) : ApiControllerBase
 
         if (couple is null)
         {
-            return NotFound();
+            // Sem casal cadastrado ainda (ex.: deploy novo): devolve um casal VAZIO (200)
+            // em vez de 404 — assim o admin abre o painel e consegue configurar o casal,
+            // e o site do convidado não quebra. (BUG: o 404 travava o dashboard inteiro.)
+            return Ok(new CoupleResponseDto());
         }
 
         return Ok(couple.ToResponseDto());
