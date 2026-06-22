@@ -30,21 +30,15 @@ public class GiftService(AppDbContext dbContext) : IGiftService
         if (queryParams.OnlyAvailable.HasValue)
             query = query.Where(x => x.Available == queryParams.OnlyAvailable.Value);
 
-        string sortBy = queryParams?.OrderBy?.Trim().ToLowerInvariant();
-        
-        string sortDir = queryParams?.OrderDir?.Trim().ToLowerInvariant();
-
-        query = (sortBy, sortDir) switch
+        query = (queryParams.OrderBy, queryParams.OrderDir) switch
         {
-            ("price", "desc") => query.OrderByDescending(x => x.Price),
-            ("price", _) => query.OrderBy(x => x.Price),
+            (GiftSortField.Price, SortDirection.Desc) => query.OrderByDescending(x => x.Price),
+            (GiftSortField.Price, _) => query.OrderBy(x => x.Price),
 
-            ("available", "desc") => query.OrderByDescending(x => x.Available),
-            ("available", _) => query.OrderBy(x => x.Available),
+            (GiftSortField.Available, SortDirection.Desc) => query.OrderByDescending(x => x.Available),
+            (GiftSortField.Available, _) => query.OrderBy(x => x.Available),
 
-            // O descarte _ no primeiro parâmetro garante que qualquer string desconhecida
-            // (ou null) caia no default de ordenação por Nome.
-            (_, "desc") => query.OrderByDescending(x => x.Name),
+            (GiftSortField.Name, SortDirection.Desc) => query.OrderByDescending(x => x.Name),
             _ => query.OrderBy(x => x.Name)
         };
 
