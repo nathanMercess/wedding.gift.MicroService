@@ -32,11 +32,25 @@ public class GiftService(AppDbContext dbContext) : IGiftService
 
         query = (queryParams.OrderBy, queryParams.OrderDir) switch
         {
-            (GiftSortField.Price, SortDirection.Desc) => query.OrderByDescending(x => x.Price),
-            (GiftSortField.Price, _) => query.OrderBy(x => x.Price),
+            (GiftSortField.Price, SortDirection.Desc) => query.OrderByDescending(x => x.Price).ThenBy(x => x.Name),
+            (GiftSortField.Price, _) => query.OrderBy(x => x.Price).ThenBy(x => x.Name),
 
-            (GiftSortField.Available, SortDirection.Desc) => query.OrderByDescending(x => x.Available),
-            (GiftSortField.Available, _) => query.OrderBy(x => x.Available),
+            (GiftSortField.Total, SortDirection.Desc) => query.OrderByDescending(x => x.Total).ThenBy(x => x.Name),
+            (GiftSortField.Total, _) => query.OrderBy(x => x.Total).ThenBy(x => x.Name),
+
+            (GiftSortField.Raised, SortDirection.Desc) => query
+                .OrderByDescending(x => x.Contributions
+                    .Where(c => c.Status == ContributionStatus.Paid)
+                    .Sum(c => c.Amount))
+                .ThenBy(x => x.Name),
+            (GiftSortField.Raised, _) => query
+                .OrderBy(x => x.Contributions
+                    .Where(c => c.Status == ContributionStatus.Paid)
+                    .Sum(c => c.Amount))
+                .ThenBy(x => x.Name),
+
+            (GiftSortField.Available, SortDirection.Desc) => query.OrderByDescending(x => x.Available).ThenBy(x => x.Name),
+            (GiftSortField.Available, _) => query.OrderBy(x => x.Available).ThenBy(x => x.Name),
 
             (GiftSortField.Name, SortDirection.Desc) => query.OrderByDescending(x => x.Name),
             _ => query.OrderBy(x => x.Name)

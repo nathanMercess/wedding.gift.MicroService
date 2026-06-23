@@ -4,6 +4,8 @@ public enum GiftSortField
 {
     Name,
     Price,
+    Total,
+    Raised,
     Available
 }
 
