@@ -86,12 +86,45 @@ public class GiftServiceTests
         Assert.Equal([2m, 10m, 100.50m], result.Items.Select(x => x.Raised));
     }
 
+    [Fact]
+    public async Task GetAllAsync_DeveMarcarFullyFundedSemIndisponibilizarPresente()
+    {
+        var context = CreateContext();
+        var gift = SeedGift(context, "Completo", price: 100m);
+        SeedContribution(context, gift.Id, 100m);
+        var service = new GiftService(context);
+
+        var result = await service.GetAllAsync(new GiftQueryParams(), CancellationToken.None);
+        var item = Assert.Single(result.Items);
+
+        Assert.True(item.Available);
+        Assert.True(item.FullyFunded);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_DeveContarCompletedPorValorArrecadado()
+    {
+        var context = CreateContext();
+        var completed = SeedGift(context, "Completo", price: 100m);
+        var unavailable = SeedGift(context, "Indisponivel", price: 100m, available: false);
+        SeedContribution(context, completed.Id, 100m);
+        SeedContribution(context, unavailable.Id, 50m);
+        var service = new GiftService(context);
+
+        var stats = await service.GetStatsAsync(CancellationToken.None);
+
+        Assert.Equal(2, stats.Total);
+        Assert.Equal(1, stats.Completed);
+        Assert.Equal(150m, stats.Raised);
+        Assert.Equal(200m, stats.Goal);
+    }
+
     private static AppDbContext CreateContext() =>
         new(new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options);
 
-    private static Gift SeedGift(AppDbContext context, string name, decimal price, decimal? total = null)
+    private static Gift SeedGift(AppDbContext context, string name, decimal price, decimal? total = null, bool available = true)
     {
         var gift = new Gift
         {
@@ -102,7 +135,7 @@ public class GiftServiceTests
             Total = total ?? price,
             Image = $"{name}.jpg",
             Category = "Casa",
-            Available = true,
+            Available = available,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };

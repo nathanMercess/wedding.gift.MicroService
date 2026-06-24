@@ -40,6 +40,10 @@ public static class EntityDtoMappings
 
     public static GiftResponseDto ToResponseDto(this Gift entity)
     {
+        var raised = entity.Contributions
+            .Where(c => c.Status == ContributionStatus.Paid)
+            .Sum(c => c.Amount);
+
         return new GiftResponseDto
         {
             Id = entity.Id,
@@ -47,9 +51,8 @@ public static class EntityDtoMappings
             Description = entity.Description,
             Price = entity.Price,
             Total = entity.Total,
-            Raised = entity.Contributions
-                .Where(c => c.Status == ContributionStatus.Paid)
-                .Sum(c => c.Amount),
+            Raised = raised,
+            FullyFunded = raised >= entity.Total,
             Image = entity.Image,
             Category = entity.Category,
             Available = entity.Available,

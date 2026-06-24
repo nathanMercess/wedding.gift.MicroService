@@ -50,11 +50,6 @@ public class ContributionService(AppDbContext dbContext) : IContributionService
         dbContext.Contributions.Add(entity);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        if (entity.Status == ContributionStatus.Paid)
-        {
-            await RecalculateGiftAvailabilityAsync(gift, cancellationToken);
-        }
-
         return entity;
     }
 
@@ -78,29 +73,5 @@ public class ContributionService(AppDbContext dbContext) : IContributionService
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        if (status != previousStatus && (status == ContributionStatus.Paid || previousStatus == ContributionStatus.Paid))
-        {
-            var gift = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == entity.GiftId, cancellationToken);
-            if (gift != null)
-            {
-                await RecalculateGiftAvailabilityAsync(gift, cancellationToken);
-            }
-        }
-    }
-
-    private async Task RecalculateGiftAvailabilityAsync(Gift gift, CancellationToken cancellationToken)
-    {
-        var paidTotal = await dbContext.Contributions
-            .Where(x => x.GiftId == gift.Id && x.Status == ContributionStatus.Paid)
-            .SumAsync(x => x.Amount, cancellationToken);
-
-        var shouldBeAvailable = paidTotal < gift.Total;
-
-        if (gift.Available != shouldBeAvailable)
-        {
-            gift.Available = shouldBeAvailable;
-            gift.UpdatedAt = DateTime.UtcNow;
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
     }
 }

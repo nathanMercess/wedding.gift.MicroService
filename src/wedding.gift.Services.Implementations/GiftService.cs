@@ -75,7 +75,10 @@ public class GiftService(AppDbContext dbContext) : IGiftService
     public async Task<GiftStatsDto> GetStatsAsync(CancellationToken cancellationToken)
     {
         var total = await dbContext.Gifts.CountAsync(cancellationToken);
-        var completed = await dbContext.Gifts.CountAsync(x => !x.Available, cancellationToken);
+        var completed = await dbContext.Gifts
+            .CountAsync(g => g.Contributions
+                .Where(c => c.Status == ContributionStatus.Paid)
+                .Sum(c => c.Amount) >= g.Total, cancellationToken);
         var goal = await dbContext.Gifts.SumAsync(x => x.Total, cancellationToken);
         var raised = await dbContext.Contributions
             .Where(x => x.Status == ContributionStatus.Paid)
@@ -113,12 +116,6 @@ public class GiftService(AppDbContext dbContext) : IGiftService
                      ?? throw new NotFoundException($"Presente com id '{id}' não foi encontrado.");
 
         entity.ApplyUpdate(dto);
-
-        var paidTotal = await dbContext.Contributions
-            .Where(x => x.GiftId == id && x.Status == ContributionStatus.Paid)
-            .SumAsync(x => x.Amount, cancellationToken);
-
-        entity.Available = paidTotal < entity.Total;
 
         await dbContext.SaveChangesAsync(cancellationToken);
 

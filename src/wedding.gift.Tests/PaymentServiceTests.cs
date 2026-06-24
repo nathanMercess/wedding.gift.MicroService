@@ -31,7 +31,7 @@ public class PaymentServiceTests
         Assert.Single(repo.Saved);
         Assert.Equal("approved", repo.Saved[0].Status);
         Assert.NotNull(repo.Saved[0].ContributionId);
-        Assert.False(context.Gifts.Single().Available);
+        Assert.True(context.Gifts.Single().Available);
         Assert.Equal(2, queue.Items.Count);
     }
 
@@ -106,7 +106,7 @@ public class PaymentServiceTests
     }
 
     [Fact]
-    public async Task ConfirmPaymentAsync_DevePromoverContribuicaoEConcluirPresente_QuandoAprovado()
+    public async Task ConfirmPaymentAsync_DevePromoverContribuicaoSemIndisponibilizarPresente_QuandoAprovado()
     {
         var context = CreateContext();
         var gift = SeedGift(context, total: 200m);
@@ -141,7 +141,7 @@ public class PaymentServiceTests
         Assert.Equal("ord_1", repo.LastUpdateOrderId);
         Assert.Equal("approved", repo.LastUpdateStatus);
         Assert.Equal(ContributionStatus.Paid, context.Contributions.Single().Status);
-        Assert.False(context.Gifts.Single().Available);
+        Assert.True(context.Gifts.Single().Available);
         Assert.Equal(1, email.NotificationCount);
     }
 

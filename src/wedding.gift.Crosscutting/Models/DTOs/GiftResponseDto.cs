@@ -8,6 +8,7 @@ public class GiftResponseDto
     public decimal Price { get; set; }
     public decimal Total { get; set; }
     public decimal Raised { get; set; }
+    public bool FullyFunded { get; set; }
     public string Image { get; set; } = string.Empty;
     public string Category { get; set; } = string.Empty;
     public bool Available { get; set; }
