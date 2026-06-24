@@ -17,7 +17,7 @@ public static class EntityDtoMappings
             Price = dto.Price,
             Total = dto.Total > 0 ? dto.Total : dto.Price,
             Image = dto.Image.Trim(),
-            Category = dto.Category.Trim(),
+            Category = dto.Category?.Trim() ?? string.Empty,
             Available = dto.Available,
             AllowPartialContribution = dto.AllowPartialContribution,
             CreatedAt = DateTime.UtcNow,
@@ -32,7 +32,7 @@ public static class EntityDtoMappings
         entity.Price = dto.Price;
         entity.Total = dto.Total > 0 ? dto.Total : dto.Price;
         entity.Image = dto.Image.Trim();
-        entity.Category = dto.Category.Trim();
+        entity.Category = dto.Category?.Trim() ?? string.Empty;
         entity.Available = dto.Available;
         entity.AllowPartialContribution = dto.AllowPartialContribution;
         entity.UpdatedAt = DateTime.UtcNow;

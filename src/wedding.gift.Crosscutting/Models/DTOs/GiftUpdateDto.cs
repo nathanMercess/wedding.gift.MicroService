@@ -20,9 +20,8 @@ public class GiftUpdateDto
     [MaxLength(500, ErrorMessage = "A URL da imagem deve ter no máximo 500 caracteres.")]
     public string Image { get; set; } = string.Empty;
 
-    [Required(ErrorMessage = "A categoria é obrigatória.")]
     [MaxLength(80, ErrorMessage = "A categoria deve ter no máximo 80 caracteres.")]
-    public string Category { get; set; } = string.Empty;
+    public string? Category { get; set; }
 
     public bool Available { get; set; }
     public bool AllowPartialContribution { get; set; } = true;

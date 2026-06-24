@@ -11,6 +11,25 @@ namespace wedding.gift.Tests;
 public class GiftServiceTests
 {
     [Fact]
+    public async Task CreateAsync_DeveAceitarCategoriaOpcional_QuandoNaoInformada()
+    {
+        var context = CreateContext();
+        var service = new GiftService(context);
+
+        var created = await service.CreateAsync(new GiftCreateDto
+        {
+            Name = "Presente sem categoria",
+            Description = "Teste",
+            Price = 100m,
+            Total = 100m,
+            Image = "image.jpg"
+        }, CancellationToken.None);
+
+        Assert.Equal(string.Empty, created.Category);
+        Assert.Equal(string.Empty, context.Gifts.Single().Category);
+    }
+
+    [Fact]
     public async Task GetAllAsync_DeveOrdenarPorPrecoComoDecimal()
     {
         var context = CreateContext();
