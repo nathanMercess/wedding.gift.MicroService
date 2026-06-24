@@ -92,8 +92,6 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
-// Cliente tipado único + timeout + retry com backoff exponencial para instabilidades do MP (500/502/503/timeout).
-// O retry é seguro porque a X-Idempotency-Key é determinística (não recobra).
 builder.Services
     .AddHttpClient<IMercadoPagoService, MercadoPagoService>(client => client.Timeout = TimeSpan.FromSeconds(20))
     .AddTransientHttpErrorPolicy(policy => policy.WaitAndRetryAsync(
@@ -102,7 +100,6 @@ builder.Services
 builder.Services.AddScoped<wedding.gift.Infra.Contracts.IPaymentRepository, wedding.gift.Infra.Implementations.Repositories.PaymentRepository>();
 builder.Services.AddScoped<wedding.gift.Services.Contracts.IPaymentService, wedding.gift.Services.Implementations.PaymentService>();
 
-// Fila em processo p/ desacoplar webhooks e e-mails de notificação do request HTTP.
 builder.Services.AddSingleton<wedding.gift.Services.Contracts.IBackgroundTaskQueue, wedding.gift.Application.Webapi.Infrastructure.BackgroundTaskQueue>();
 builder.Services.AddHostedService<wedding.gift.Application.Webapi.Infrastructure.QueuedHostedService>();
 
@@ -119,7 +116,6 @@ builder.Services.AddSwaggerGen(options =>
         Scheme = "bearer",
         BearerFormat = "JWT"
     });
-
 });
 
 builder.Services.AddServices();
@@ -141,21 +137,21 @@ app.UseExceptionHandler(errorApp =>
         var exception = context.Features.Get<IExceptionHandlerFeature>()?.Error;
         var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
         var correlationId = context.TraceIdentifier;
+        var queue = context.RequestServices.GetRequiredService<IBackgroundTaskQueue>();
 
         if (exception is AppException appEx)
         {
-            // Erro de negócio esperado: log em Warning, sem e-mail de alerta.
             logger.LogWarning(exception, "Erro de negócio {Status} em {Path}. CorrelationId={CorrelationId}",
                 appEx.StatusCode, context.Request.Path, correlationId);
         }
         else if (exception is not null)
         {
-            // 1) FONTE DE VERDADE: sempre loga (vai pro sink/monitoramento mesmo se o e-mail falhar).
             logger.LogError(exception, "Erro não tratado em {Path}. CorrelationId={CorrelationId}",
                 context.Request.Path, correlationId);
+        }
 
-            // 2) Notificação por e-mail: desacoplada (fila) e best-effort — a falha é logada pelo worker, nunca engolida.
-            var queue = context.RequestServices.GetRequiredService<IBackgroundTaskQueue>();
+        if (exception is not null)
+        {
             var subject = $"[wedding.gift] {exception.GetType().Name}: {exception.Message}";
             var body = $"CorrelationId: {correlationId}\nPath: {context.Request.Path}\n" +
                        $"Method: {context.Request.Method}\nTime: {DateTime.UtcNow:u}\n\n{exception}";
@@ -191,13 +187,10 @@ app.UseExceptionHandler(errorApp =>
 });
 
 app.UseCors("AngularDev");
-
 app.UseSwagger();
 app.UseSwaggerUI();
-
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapControllers();
 
 app.Run();

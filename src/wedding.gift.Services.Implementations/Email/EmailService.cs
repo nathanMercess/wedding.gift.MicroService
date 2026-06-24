@@ -55,6 +55,17 @@ public class EmailService(
         return SendAsync(recipient, "Suporte", subject, html, cancellationToken);
     }
 
+    public Task SendPaymentAttemptNotificationAsync(string subject, string body, CancellationToken cancellationToken = default)
+    {
+        var recipient = string.IsNullOrWhiteSpace(_smtp.ErrorNotificationRecipient)
+            ? _smtp.FromEmail
+            : _smtp.ErrorNotificationRecipient;
+
+        var html = $"<pre style=\"font-family:monospace;font-size:13px;white-space:pre-wrap\">{WebUtility.HtmlEncode(body)}</pre>";
+
+        return SendAsync(recipient, "Suporte", subject, html, cancellationToken);
+    }
+
     public Task SendContributionNotificationAsync(string contributorName, decimal amount, CancellationToken cancellationToken = default)
     {
         var recipient = string.IsNullOrWhiteSpace(_smtp.CoupleNotificationRecipient)

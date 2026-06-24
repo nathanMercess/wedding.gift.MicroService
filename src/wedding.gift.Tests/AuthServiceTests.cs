@@ -313,5 +313,10 @@ public class AuthServiceTests
         {
             return Task.CompletedTask;
         }
+
+        public Task SendPaymentAttemptNotificationAsync(string subject, string body, CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
     }
 }

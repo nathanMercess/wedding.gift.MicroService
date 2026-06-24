@@ -31,10 +31,8 @@ public class PaymentServiceTests
         Assert.Single(repo.Saved);
         Assert.Equal("approved", repo.Saved[0].Status);
         Assert.NotNull(repo.Saved[0].ContributionId);
-        // 500 pagos de 500 -> presente concluído
         Assert.False(context.Gifts.Single().Available);
-        // cartão aprovado enfileira a notificação (sem bloquear a resposta)
-        Assert.Single(queue.Items);
+        Assert.Equal(2, queue.Items.Count);
     }
 
     [Fact]
@@ -64,15 +62,15 @@ public class PaymentServiceTests
         Assert.Equal("rejected", repo.Saved[0].Status);
         Assert.Null(repo.Saved[0].ContributionId);
         Assert.True(context.Gifts.Single().Available);
-        // recusado não enfileira notificação
-        Assert.Empty(queue.Items);
+        Assert.Single(queue.Items);
     }
 
     [Fact]
     public async Task ProcessCardPaymentAsync_DeveRetornarValidationError_QuandoCampoObrigatorioFaltando()
     {
         var context = CreateContext();
-        var service = CreateService(context, new FakeMercadoPago(), new FakePaymentRepository());
+        var queue = new FakeQueue();
+        var service = CreateService(context, new FakeMercadoPago(), new FakePaymentRepository(), queue: queue);
 
         var request = Card(Guid.NewGuid());
         request.PayerEmail = "";
@@ -82,6 +80,7 @@ public class PaymentServiceTests
         Assert.Equal("error", result.Status);
         Assert.Equal(PaymentErrorCodes.ValidationError, result.ErrorCode);
         Assert.Empty(context.Contributions);
+        Assert.Equal(2, queue.Items.Count);
     }
 
     [Fact]
@@ -94,15 +93,16 @@ public class PaymentServiceTests
         {
             PixResult = new PaymentResponseDto { Status = "pending", MpOrderId = "mp_pix", QrCodeBase64 = "qr==" }
         };
-        var service = CreateService(context, mp, repo);
+        var queue = new FakeQueue();
+        var service = CreateService(context, mp, repo, queue: queue);
 
         var result = await service.ProcessPixPaymentAsync(Pix(gift.Id), CancellationToken.None);
 
         Assert.Equal("pending", result.Status);
         var contribution = Assert.Single(context.Contributions);
         Assert.Equal(ContributionStatus.Pending, contribution.Status);
-        // pendente não conta como pago -> presente segue disponível
         Assert.True(context.Gifts.Single().Available);
+        Assert.Single(queue.Items);
     }
 
     [Fact]
@@ -138,13 +138,10 @@ public class PaymentServiceTests
 
         await service.ConfirmPaymentAsync("mp_pix", "approved", CancellationToken.None);
 
-        // usou o OrderId REAL (não o MpOrderId) para atualizar o Payment
         Assert.Equal("ord_1", repo.LastUpdateOrderId);
         Assert.Equal("approved", repo.LastUpdateStatus);
-        // contribuição promovida -> presente concluído
         Assert.Equal(ContributionStatus.Paid, context.Contributions.Single().Status);
         Assert.False(context.Gifts.Single().Available);
-        // notifica SOMENTE no approved confirmado
         Assert.Equal(1, email.NotificationCount);
     }
 
@@ -197,8 +194,6 @@ public class PaymentServiceTests
 
         Assert.Null(repo.LastUpdateStatus);
     }
-
-    // ───────── Helpers ─────────
 
     private static AppDbContext CreateContext() =>
         new(new DbContextOptionsBuilder<AppDbContext>()
@@ -289,6 +284,7 @@ public class PaymentServiceTests
     private sealed class FakeEmail : IEmailService
     {
         public int NotificationCount;
+        public int AttemptCount;
 
         public Task SendErrorNotificationAsync(string subject, string body, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
@@ -299,6 +295,12 @@ public class PaymentServiceTests
         public Task SendContributionNotificationAsync(string contributorName, decimal amount, CancellationToken cancellationToken = default)
         {
             NotificationCount++;
+            return Task.CompletedTask;
+        }
+
+        public Task SendPaymentAttemptNotificationAsync(string subject, string body, CancellationToken cancellationToken = default)
+        {
+            AttemptCount++;
             return Task.CompletedTask;
         }
     }

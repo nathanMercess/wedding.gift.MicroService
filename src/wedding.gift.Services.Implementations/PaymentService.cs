@@ -21,40 +21,49 @@ public class PaymentService(
         CardPaymentRequestDto request,
         CancellationToken cancellationToken)
     {
+        await QueuePaymentAttemptNotificationAsync(
+            "card",
+            request.ContributorName,
+            request.GiftId,
+            request.Amount,
+            request.OrderId,
+            request.PayerEmail,
+            cancellationToken);
+
         if (request.GiftId == Guid.Empty)
-            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "GiftId is required." };
+            return await BuildErrorResponseAsync("card", "validation", "GiftId is required.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         if (string.IsNullOrWhiteSpace(request.ContributorName))
-            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "ContributorName is required." };
+            return await BuildErrorResponseAsync("card", "validation", "ContributorName is required.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         if (string.IsNullOrWhiteSpace(request.CardToken))
-            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "CardToken is required." };
+            return await BuildErrorResponseAsync("card", "validation", "CardToken is required.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         if (string.IsNullOrWhiteSpace(request.OrderId))
-            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "OrderId is required." };
+            return await BuildErrorResponseAsync("card", "validation", "OrderId is required.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         if (request.Amount <= 0)
-            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "Invalid amount." };
+            return await BuildErrorResponseAsync("card", "validation", "Invalid amount.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         if (request.Installments <= 0)
-            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "Invalid installments." };
+            return await BuildErrorResponseAsync("card", "validation", "Invalid installments.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         if (request.Method != "credit_card" && request.Method != "debit_card")
-            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "Invalid method." };
+            return await BuildErrorResponseAsync("card", "validation", "Invalid method.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         if (string.IsNullOrWhiteSpace(request.PaymentMethodId))
-            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "PaymentMethodId is required." };
+            return await BuildErrorResponseAsync("card", "validation", "PaymentMethodId is required.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         if (string.IsNullOrWhiteSpace(request.PayerEmail))
-            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "PayerEmail is required." };
+            return await BuildErrorResponseAsync("card", "validation", "PayerEmail is required.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         if (string.IsNullOrWhiteSpace(request.PayerDocNumber))
-            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "PayerDocNumber is required." };
+            return await BuildErrorResponseAsync("card", "validation", "PayerDocNumber is required.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         var result = await mercadoPagoService.CreateCardOrderAsync(request, cancellationToken);
 
         if (result.Status == "error")
-            return result;
+            return await BuildErrorResponseAsync("card", "mercado_pago", result, cancellationToken);
 
         Guid? contributionId = null;
 
@@ -72,8 +81,6 @@ public class PaymentService(
 
             contributionId = contribution.Id;
 
-            // Cartão aprovado de forma síncrona (não passa pelo webhook/ConfirmPaymentAsync).
-            // Enfileira a notificação p/ NÃO bloquear a resposta do pagamento com o SMTP.
             var contributorName = request.ContributorName;
             var amount = request.Amount;
             await backgroundTaskQueue.EnqueueAsync(async (sp, ct) =>
@@ -108,28 +115,37 @@ public class PaymentService(
         PixPaymentRequestDto request,
         CancellationToken cancellationToken)
     {
+        await QueuePaymentAttemptNotificationAsync(
+            "pix",
+            request.ContributorName,
+            request.GiftId,
+            request.Amount,
+            request.OrderId,
+            request.PayerEmail,
+            cancellationToken);
+
         if (request.GiftId == Guid.Empty)
-            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "GiftId is required." };
+            return await BuildErrorResponseAsync("pix", "validation", "GiftId is required.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         if (string.IsNullOrWhiteSpace(request.ContributorName))
-            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "ContributorName is required." };
+            return await BuildErrorResponseAsync("pix", "validation", "ContributorName is required.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         if (string.IsNullOrWhiteSpace(request.OrderId))
-            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "OrderId is required." };
+            return await BuildErrorResponseAsync("pix", "validation", "OrderId is required.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         if (request.Amount <= 0)
-            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "Invalid amount." };
+            return await BuildErrorResponseAsync("pix", "validation", "Invalid amount.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         if (string.IsNullOrWhiteSpace(request.PayerEmail))
-            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "PayerEmail is required." };
+            return await BuildErrorResponseAsync("pix", "validation", "PayerEmail is required.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         if (string.IsNullOrWhiteSpace(request.PayerDocNumber))
-            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "PayerDocNumber (CPF) is required for Pix." };
+            return await BuildErrorResponseAsync("pix", "validation", "PayerDocNumber (CPF) is required for Pix.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         var result = await mercadoPagoService.CreatePixOrderAsync(request, cancellationToken);
 
         if (result.Status == "error")
-            return result;
+            return await BuildErrorResponseAsync("pix", "mercado_pago", result, cancellationToken);
 
         var contribution = await contributionService.CreateAsync(new ContributionCreateDto
         {
@@ -168,7 +184,7 @@ public class PaymentService(
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(mpOrderId))
-            return new PaymentResponseDto { Status = "error", ErrorCode = PaymentErrorCodes.ValidationError, Message = "MpOrderId is required." };
+            return await BuildErrorResponseAsync("status", "validation", "MpOrderId is required.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         var payment = await paymentRepository.GetByMpOrderIdAsync(mpOrderId, cancellationToken);
 
@@ -183,7 +199,7 @@ public class PaymentService(
         var result = await mercadoPagoService.GetOrderStatusAsync(mpOrderId, cancellationToken);
 
         if (result.Status == "error")
-            return result;
+            return await BuildErrorResponseAsync("status", "mercado_pago", result, cancellationToken);
 
         if (payment != null && payment.Status != result.Status)
             await paymentRepository.UpdateStatusAsync(payment.OrderId, result.Status, result.StatusDetail, cancellationToken);
@@ -203,34 +219,118 @@ public class PaymentService(
 
         if (payment is null)
         {
-            logger.LogWarning("Webhook: pagamento com MpOrderId={MpOrderId} não encontrado para confirmar.", mpOrderId);
+            logger.LogWarning("Webhook: pagamento com MpOrderId={MpOrderId} nao encontrado para confirmar.", mpOrderId);
             return;
         }
 
-        // Idempotência: webhook duplicado no mesmo status é ignorado (evita repromover/reenviar e-mail).
         if (string.Equals(payment.Status, status, StringComparison.OrdinalIgnoreCase))
             return;
 
-        // Atualiza o Payment pelo OrderId REAL (o webhook traz o MpOrderId, não o OrderId).
         await paymentRepository.UpdateStatusAsync(payment.OrderId, status, payment.StatusDetail, cancellationToken);
 
-        // Quando aprovado, promove a contribuição (Pending -> Paid), o que recalcula a
-        // disponibilidade do presente. Sem isso, um PIX aprovado nunca "concluía" o presente.
         if (status == "approved" && payment.ContributionId.HasValue)
         {
             await contributionService.UpdateStatusAsync(
                 payment.ContributionId.Value, ContributionStatus.Paid, DateTime.UtcNow, cancellationToken);
 
-            // Notificação SOMENTE no approved confirmado (nunca pending/rejected). Já roda no worker
-            // de background; falha de e-mail é logada e não derruba a confirmação do pagamento.
             try
             {
                 await emailService.SendContributionNotificationAsync(payment.ContributorName, payment.Amount, cancellationToken);
             }
             catch (EmailDeliveryException ex)
             {
-                logger.LogError(ex, "Contribuição {ContributionId} confirmada, mas a notificação por e-mail falhou.", payment.ContributionId);
+                logger.LogError(ex, "Contribution {ContributionId} confirmed, but email notification failed.", payment.ContributionId);
             }
         }
     }
+
+    private ValueTask QueuePaymentAttemptNotificationAsync(
+        string paymentMethod,
+        string? contributorName,
+        Guid giftId,
+        decimal amount,
+        string? orderId,
+        string? payerEmail,
+        CancellationToken cancellationToken)
+    {
+        var subject = $"[wedding.gift] Payment attempt ({paymentMethod})";
+        var body = $"""
+            Payment attempt received.
+
+            Method: {paymentMethod}
+            Contributor: {NormalizeValue(contributorName)}
+            GiftId: {giftId}
+            Amount: {amount}
+            OrderId: {NormalizeValue(orderId)}
+            PayerEmail: {NormalizeValue(payerEmail)}
+            UTC time: {DateTime.UtcNow:u}
+            """;
+
+        return backgroundTaskQueue.EnqueueAsync(async (sp, ct) =>
+        {
+            var email = sp.GetRequiredService<IEmailService>();
+            await email.SendPaymentAttemptNotificationAsync(subject, body, ct);
+        });
+    }
+
+    private ValueTask QueuePaymentErrorNotificationAsync(
+        string paymentMethod,
+        string stage,
+        string message,
+        string? details,
+        CancellationToken cancellationToken)
+    {
+        var subject = $"[wedding.gift] Payment error ({paymentMethod})";
+        var body = $"""
+            Payment flow failure.
+
+            Method: {paymentMethod}
+            Stage: {stage}
+            Message: {message}
+            Details: {NormalizeValue(details)}
+            UTC time: {DateTime.UtcNow:u}
+            """;
+
+        return backgroundTaskQueue.EnqueueAsync(async (sp, ct) =>
+        {
+            var email = sp.GetRequiredService<IEmailService>();
+            await email.SendErrorNotificationAsync(subject, body, ct);
+        });
+    }
+
+    private async Task<PaymentResponseDto> BuildErrorResponseAsync(
+        string paymentMethod,
+        string stage,
+        string message,
+        string? errorCode,
+        CancellationToken cancellationToken)
+    {
+        await QueuePaymentErrorNotificationAsync(paymentMethod, stage, message, errorCode, cancellationToken);
+
+        return new PaymentResponseDto
+        {
+            Status = "error",
+            ErrorCode = errorCode,
+            Message = message
+        };
+    }
+
+    private async Task<PaymentResponseDto> BuildErrorResponseAsync(
+        string paymentMethod,
+        string stage,
+        PaymentResponseDto result,
+        CancellationToken cancellationToken)
+    {
+        await QueuePaymentErrorNotificationAsync(
+            paymentMethod,
+            stage,
+            result.Message,
+            $"Status: {result.Status}\nErrorCode: {result.ErrorCode}\nStatusDetail: {result.StatusDetail}\nMpOrderId: {result.MpOrderId}\nMpPaymentId: {result.MpPaymentId}\nMpRequestId: {result.MpRequestId}",
+            cancellationToken);
+
+        return result;
+    }
+
+    private static string NormalizeValue(string? value)
+        => string.IsNullOrWhiteSpace(value) ? "-" : value.Trim();
 }
