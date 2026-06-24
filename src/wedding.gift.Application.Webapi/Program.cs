@@ -138,51 +138,55 @@ if (runMigrations)
     await db.Database.MigrateAsync();
 }
 
-app.MapGet("/debug/smtp-config", (IConfiguration configuration) =>
+app.MapPost("/debug/send-test-email", async (IConfiguration configuration) =>
 {
-    var host = configuration["Smtp:Host"];
-    var port = configuration["Smtp:Port"];
-    var username = configuration["Smtp:Username"];
-    var fromEmail = configuration["Smtp:FromEmail"];
-    var fromName = configuration["Smtp:FromName"];
-    var enableSsl = configuration["Smtp:EnableSsl"];
-    var password = configuration["Smtp:Password"];
-
-    string? fromEmailParseError = null;
-    string? usernameParseError = null;
-
     try
     {
-        _ = new System.Net.Mail.MailAddress(fromEmail ?? string.Empty, fromName);
+        var host = configuration["Smtp:Host"];
+        var port = int.Parse(configuration["Smtp:Port"] ?? "587");
+        var username = configuration["Smtp:Username"];
+        var password = configuration["Smtp:Password"];
+        var fromEmail = configuration["Smtp:FromEmail"];
+        var fromName = configuration["Smtp:FromName"];
+        var enableSsl = bool.Parse(configuration["Smtp:EnableSsl"] ?? "true");
+
+        using var client = new System.Net.Mail.SmtpClient(host, port)
+        {
+            Credentials = new System.Net.NetworkCredential(username, password),
+            EnableSsl = enableSsl,
+            Timeout = 30000
+        };
+
+        using var message = new System.Net.Mail.MailMessage
+        {
+            From = new System.Net.Mail.MailAddress(fromEmail!, fromName),
+            Subject = "Teste SMTP Cloud Run",
+            Body = "E-mail de teste enviado pela API no Cloud Run."
+        };
+
+        message.To.Add("nathan66merces@gmail.com");
+
+        await client.SendMailAsync(message);
+
+        return Results.Ok(new
+        {
+            email = "sent",
+            host,
+            port,
+            username,
+            fromEmail,
+            fromName,
+            enableSsl
+        });
     }
     catch (Exception ex)
     {
-        fromEmailParseError = ex.Message;
+        return Results.Problem(
+            title: "SMTP test failed",
+            detail: ex.ToString(),
+            statusCode: 500
+        );
     }
-
-    try
-    {
-        _ = new System.Net.Mail.MailAddress(username ?? string.Empty);
-    }
-    catch (Exception ex)
-    {
-        usernameParseError = ex.Message;
-    }
-
-    return Results.Ok(new
-    {
-        host,
-        port,
-        username,
-        fromEmail,
-        fromName,
-        enableSsl,
-        hasPassword = !string.IsNullOrWhiteSpace(password),
-        fromEmailIsValid = fromEmailParseError is null,
-        usernameIsValid = usernameParseError is null,
-        fromEmailParseError,
-        usernameParseError
-    });
 });
 
 await EnsureBootstrapAdminAsync(app.Services, builder.Configuration);
