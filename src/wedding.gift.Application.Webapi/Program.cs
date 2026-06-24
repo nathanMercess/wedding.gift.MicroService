@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
@@ -58,6 +59,12 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
             Title = "Erro de validação",
             Detail = "Verifique os campos enviados e tente novamente."
         };
+
+        _ = QueueValidationNotificationAsync(
+            context.HttpContext.RequestServices,
+            context.HttpContext.Request.Method,
+            context.HttpContext.Request.Path.Value ?? string.Empty,
+            context.ModelState);
 
         return new BadRequestObjectResult(details);
     };
@@ -231,4 +238,34 @@ static async Task EnsureBootstrapAdminAsync(IServiceProvider services, IConfigur
     });
 
     await dbContext.SaveChangesAsync();
+}
+
+static async Task QueueValidationNotificationAsync(
+    IServiceProvider services,
+    string method,
+    string path,
+    ModelStateDictionary modelState)
+{
+    var queue = services.GetRequiredService<IBackgroundTaskQueue>();
+    var errors = modelState
+        .Where(x => x.Value?.Errors.Count > 0)
+        .SelectMany(x => x.Value!.Errors.Select(error => $"{x.Key}: {error.ErrorMessage}"))
+        .ToArray();
+
+    var body = $"""
+        Erro de validação recebido.
+
+        Path: {path}
+        Method: {method}
+        Time: {DateTime.UtcNow:u}
+
+        Erros:
+        {string.Join(Environment.NewLine, errors)}
+        """;
+
+    await queue.EnqueueAsync(async (sp, ct) =>
+    {
+        var emailSvc = sp.GetRequiredService<IEmailService>();
+        await emailSvc.SendErrorNotificationAsync("[wedding.gift] Erro de validação", body, ct);
+    });
 }
