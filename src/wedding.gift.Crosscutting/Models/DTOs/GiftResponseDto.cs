@@ -13,4 +13,6 @@ public class GiftResponseDto
     public string Category { get; set; } = string.Empty;
     public bool Available { get; set; }
     public bool AllowPartialContribution { get; set; }
+    public decimal CreditCardFeePercent { get; set; }
+    public int CreditCardMaxInstallments { get; set; }
 }

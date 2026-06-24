@@ -8,6 +8,7 @@ public class CardPaymentRequestDto
     public required string CardToken { get; set; }
     public required string OrderId { get; set; }
     public decimal Amount { get; set; }
+    public decimal NetAmount { get; set; }
     public int Installments { get; set; }
     public required string Method { get; set; }
     public required string PaymentMethodId { get; set; }

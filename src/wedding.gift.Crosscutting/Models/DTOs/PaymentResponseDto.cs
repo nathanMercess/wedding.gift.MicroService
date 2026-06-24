@@ -9,6 +9,7 @@ public class PaymentResponseDto
     public string Nsu { get; set; } = string.Empty;
     public string? MpOrderId { get; set; }
     public string? MpPaymentId { get; set; }
+    public bool? ContributionCreated { get; set; }
 
     /// <summary>x-request-id da resposta do Mercado Pago — usar em chamados de suporte.</summary>
     public string? MpRequestId { get; set; }

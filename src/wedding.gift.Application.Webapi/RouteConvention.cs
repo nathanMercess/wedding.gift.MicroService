@@ -8,6 +8,12 @@ public class RouteConvention(string prefix) : IControllerModelConvention
         {
             if (selector.AttributeRouteModel != null)
             {
+                if (selector.AttributeRouteModel.Template.StartsWith("~/", StringComparison.Ordinal))
+                {
+                    selector.AttributeRouteModel.Template = selector.AttributeRouteModel.Template[2..];
+                    continue;
+                }
+
                 selector.AttributeRouteModel.Template =
                     $"{prefix}/{selector.AttributeRouteModel.Template}";
             }

@@ -1,9 +1,12 @@
+using System.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Domain.Model.Entities;
 using wedding.gift.Infra.Contracts;
+using wedding.gift.Infra.Implementations.DataContext;
 using wedding.gift.Services.Contracts;
 using wedding.gift.Services.Implementations.Email;
 
@@ -11,6 +14,7 @@ namespace wedding.gift.Services.Implementations;
 
 public class PaymentService(
     IMercadoPagoService mercadoPagoService,
+    AppDbContext dbContext,
     IPaymentRepository paymentRepository,
     IContributionService contributionService,
     IEmailService emailService,
@@ -45,6 +49,12 @@ public class PaymentService(
         if (request.Amount <= 0)
             return await BuildErrorResponseAsync("card", "validation", "Invalid amount.", PaymentErrorCodes.ValidationError, cancellationToken);
 
+        if (request.NetAmount <= 0)
+            return await BuildErrorResponseAsync("card", "validation", "Invalid net amount.", PaymentErrorCodes.ValidationError, cancellationToken);
+
+        if (request.Amount < request.NetAmount)
+            return await BuildErrorResponseAsync("card", "validation", "Amount cannot be less than net amount.", PaymentErrorCodes.ValidationError, cancellationToken);
+
         if (request.Installments <= 0)
             return await BuildErrorResponseAsync("card", "validation", "Invalid installments.", PaymentErrorCodes.ValidationError, cancellationToken);
 
@@ -60,6 +70,43 @@ public class PaymentService(
         if (string.IsNullOrWhiteSpace(request.PayerDocNumber))
             return await BuildErrorResponseAsync("card", "validation", "PayerDocNumber is required.", PaymentErrorCodes.ValidationError, cancellationToken);
 
+        var gift = await dbContext.Gifts
+            .Include(x => x.Contributions)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == request.GiftId, cancellationToken);
+
+        if (gift is null)
+            return await BuildErrorResponseAsync("card", "validation", "Gift not found.", PaymentErrorCodes.ValidationError, cancellationToken);
+
+        if (!gift.Available)
+            return await BuildErrorResponseAsync("card", "validation", "Gift is not available.", PaymentErrorCodes.ValidationError, cancellationToken);
+
+        var raised = gift.Contributions
+            .Where(x => x.Status == ContributionStatus.Paid)
+            .Sum(x => x.Amount);
+        var remainingAmount = gift.Total - raised;
+
+        if (request.NetAmount > remainingAmount)
+            return await BuildErrorResponseAsync("card", "validation", "Net amount exceeds remaining gift amount.", PaymentErrorCodes.ValidationError, cancellationToken);
+
+        if (request.Method == "credit_card")
+        {
+            if (request.Installments > gift.CreditCardMaxInstallments)
+                return await BuildErrorResponseAsync("card", "validation", "Installments exceed the gift credit card limit.", PaymentErrorCodes.ValidationError, cancellationToken);
+
+            if (gift.CreditCardFeePercent >= 100)
+                return await BuildErrorResponseAsync("card", "validation", "Invalid gift credit card fee.", PaymentErrorCodes.ValidationError, cancellationToken);
+
+            var expectedAmount = CalculateExpectedCardAmount(request.NetAmount, gift.CreditCardFeePercent);
+
+            if (Math.Abs(expectedAmount - request.Amount) > 0.01m)
+                return await BuildErrorResponseAsync("card", "validation", "Amount does not match the configured credit card fee.", PaymentErrorCodes.ValidationError, cancellationToken);
+        }
+        else if (Math.Abs(request.NetAmount - request.Amount) > 0.01m)
+        {
+            return await BuildErrorResponseAsync("card", "validation", "Debit card amount must match net amount.", PaymentErrorCodes.ValidationError, cancellationToken);
+        }
+
         var result = await mercadoPagoService.CreateCardOrderAsync(request, cancellationToken);
 
         if (result.Status == "error")
@@ -73,7 +120,8 @@ public class PaymentService(
             {
                 GiftId = request.GiftId,
                 ContributorName = request.ContributorName,
-                Amount = request.Amount,
+                Message = request.Message?.Trim() ?? string.Empty,
+                Amount = request.NetAmount,
                 PaymentMethod = request.Method,
                 Status = ContributionStatus.Paid,
                 PaidAt = DateTime.UtcNow
@@ -82,7 +130,7 @@ public class PaymentService(
             contributionId = contribution.Id;
 
             var contributorName = request.ContributorName;
-            var amount = request.Amount;
+            var amount = request.NetAmount;
             await backgroundTaskQueue.EnqueueAsync(async (sp, ct) =>
             {
                 var email = sp.GetRequiredService<IEmailService>();
@@ -95,7 +143,12 @@ public class PaymentService(
             Id = Guid.NewGuid(),
             GiftId = request.GiftId,
             ContributorName = request.ContributorName,
+            Message = request.Message?.Trim() ?? string.Empty,
+            PayerEmail = request.PayerEmail,
+            PayerDocType = request.PayerDocType,
+            PayerDocNumber = request.PayerDocNumber,
             ContributionId = contributionId,
+            ContributionCreated = contributionId.HasValue,
             OrderId = request.OrderId,
             Method = request.Method,
             Amount = request.Amount,
@@ -147,22 +200,16 @@ public class PaymentService(
         if (result.Status == "error")
             return await BuildErrorResponseAsync("pix", "mercado_pago", result, cancellationToken);
 
-        var contribution = await contributionService.CreateAsync(new ContributionCreateDto
-        {
-            GiftId = request.GiftId,
-            ContributorName = request.ContributorName,
-            Amount = request.Amount,
-            PaymentMethod = "pix",
-            Status = ContributionStatus.Pending,
-            PaidAt = default
-        }, cancellationToken);
-
         await paymentRepository.SaveAsync(new Payment
         {
             Id = Guid.NewGuid(),
             GiftId = request.GiftId,
             ContributorName = request.ContributorName,
-            ContributionId = contribution.Id,
+            Message = request.Message?.Trim() ?? string.Empty,
+            PayerEmail = request.PayerEmail,
+            PayerDocType = request.PayerDocType,
+            PayerDocNumber = request.PayerDocNumber,
+            ContributionCreated = false,
             OrderId = request.OrderId,
             Method = "pix",
             Amount = request.Amount,
@@ -175,6 +222,9 @@ public class PaymentService(
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         }, cancellationToken);
+
+        if (result.Status == "approved" && !string.IsNullOrWhiteSpace(result.MpOrderId))
+            await ProcessApprovedPixPaymentAsync(result.MpOrderId, cancellationToken);
 
         return result;
     }
@@ -189,12 +239,20 @@ public class PaymentService(
         var payment = await paymentRepository.GetByMpOrderIdAsync(mpOrderId, cancellationToken);
 
         if (payment?.Status == "approved")
+        {
+            if (!payment.ContributionCreated)
+                await ProcessApprovedPixPaymentAsync(mpOrderId, cancellationToken);
+
+            payment = await paymentRepository.GetByMpOrderIdAsync(mpOrderId, cancellationToken);
+
             return new PaymentResponseDto
             {
                 Status = "approved",
                 MpOrderId = mpOrderId,
-                StatusDetail = payment.StatusDetail
+                StatusDetail = payment?.StatusDetail,
+                ContributionCreated = payment?.ContributionCreated
             };
+        }
 
         var result = await mercadoPagoService.GetOrderStatusAsync(mpOrderId, cancellationToken);
 
@@ -204,7 +262,144 @@ public class PaymentService(
         if (payment != null && payment.Status != result.Status)
             await paymentRepository.UpdateStatusAsync(payment.OrderId, result.Status, result.StatusDetail, cancellationToken);
 
+        if (result.Status == "approved")
+        {
+            await ProcessApprovedPixPaymentAsync(mpOrderId, cancellationToken);
+
+            var processedPayment = await paymentRepository.GetByMpOrderIdAsync(mpOrderId, cancellationToken);
+            result.ContributionCreated = processedPayment?.ContributionCreated;
+        }
+
         return result;
+    }
+
+    public async Task ProcessApprovedPixPaymentAsync(
+        string mpOrderId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(mpOrderId))
+            return;
+
+        var existingPayment = await dbContext.Payments
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.MpOrderId == mpOrderId, cancellationToken);
+
+        if (existingPayment is null)
+        {
+            logger.LogError("Pix aprovado com MpOrderId={MpOrderId}, mas a intencao de pagamento nao foi encontrada.", mpOrderId);
+            return;
+        }
+
+        if (existingPayment.Method != "pix")
+            return;
+
+        if (!string.Equals(existingPayment.Status, "approved", StringComparison.OrdinalIgnoreCase))
+        {
+            var providerStatus = await mercadoPagoService.GetOrderStatusAsync(mpOrderId, cancellationToken);
+
+            if (providerStatus.Status == "error")
+                return;
+
+            var paymentToUpdate = await dbContext.Payments
+                .FirstOrDefaultAsync(x => x.MpOrderId == mpOrderId, cancellationToken);
+
+            if (paymentToUpdate is null)
+            {
+                logger.LogError("Pix aprovado com MpOrderId={MpOrderId}, mas a intencao de pagamento nao foi encontrada ao atualizar status.", mpOrderId);
+                return;
+            }
+
+            paymentToUpdate.Status = providerStatus.Status;
+            paymentToUpdate.StatusDetail = providerStatus.StatusDetail;
+            paymentToUpdate.MpPaymentId = providerStatus.MpPaymentId ?? paymentToUpdate.MpPaymentId;
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            existingPayment = await dbContext.Payments
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.MpOrderId == mpOrderId, cancellationToken);
+        }
+
+        if (existingPayment?.ContributionCreated == true)
+            return;
+
+        if (!string.Equals(existingPayment?.Status, "approved", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
+            : null;
+
+        var payment = await dbContext.Payments
+            .FirstOrDefaultAsync(x => x.MpOrderId == mpOrderId, cancellationToken);
+
+        if (payment is null)
+        {
+            logger.LogError("Pix aprovado com MpOrderId={MpOrderId}, mas a intencao de pagamento nao foi encontrada dentro da transacao.", mpOrderId);
+            return;
+        }
+
+        if (payment.ContributionCreated)
+            return;
+
+        if (!string.Equals(payment.Status, "approved", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var giftExists = await dbContext.Gifts.AnyAsync(x => x.Id == payment.GiftId, cancellationToken);
+
+        if (!giftExists)
+        {
+            logger.LogError(
+                "Pix aprovado com MpOrderId={MpOrderId}, OrderId={OrderId}, GiftId={GiftId}, mas o presente nao foi encontrado.",
+                payment.MpOrderId,
+                payment.OrderId,
+                payment.GiftId);
+            return;
+        }
+
+        var contribution = new Contribution
+        {
+            Id = Guid.NewGuid(),
+            GiftId = payment.GiftId,
+            ContributorName = payment.ContributorName.Trim(),
+            Message = payment.Message.Trim(),
+            Amount = payment.Amount,
+            PaymentMethod = "pix",
+            PaidAt = DateTime.UtcNow,
+            Status = ContributionStatus.Paid
+        };
+
+        dbContext.Contributions.Add(contribution);
+
+        payment.ContributionId = contribution.Id;
+        payment.ContributionCreated = true;
+        payment.Status = "approved";
+
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "Erro ao registrar contribuicao Pix aprovada. MpOrderId={MpOrderId}, OrderId={OrderId}, GiftId={GiftId}.",
+                payment.MpOrderId,
+                payment.OrderId,
+                payment.GiftId);
+            throw;
+        }
+
+        try
+        {
+            await emailService.SendContributionNotificationAsync(payment.ContributorName, payment.Amount, cancellationToken);
+        }
+        catch (EmailDeliveryException ex)
+        {
+            logger.LogError(ex, "Contribution {ContributionId} confirmed, but email notification failed.", payment.ContributionId);
+        }
     }
 
     public async Task ConfirmPaymentAsync(
@@ -215,7 +410,8 @@ public class PaymentService(
         if (string.IsNullOrWhiteSpace(mpOrderId))
             return;
 
-        var payment = await paymentRepository.GetByMpOrderIdAsync(mpOrderId, cancellationToken);
+        var payment = await dbContext.Payments
+            .FirstOrDefaultAsync(x => x.MpOrderId == mpOrderId, cancellationToken);
 
         if (payment is null)
         {
@@ -223,25 +419,14 @@ public class PaymentService(
             return;
         }
 
-        if (string.Equals(payment.Status, status, StringComparison.OrdinalIgnoreCase))
-            return;
-
-        await paymentRepository.UpdateStatusAsync(payment.OrderId, status, payment.StatusDetail, cancellationToken);
-
-        if (status == "approved" && payment.ContributionId.HasValue)
+        if (!string.Equals(payment.Status, status, StringComparison.OrdinalIgnoreCase))
         {
-            await contributionService.UpdateStatusAsync(
-                payment.ContributionId.Value, ContributionStatus.Paid, DateTime.UtcNow, cancellationToken);
-
-            try
-            {
-                await emailService.SendContributionNotificationAsync(payment.ContributorName, payment.Amount, cancellationToken);
-            }
-            catch (EmailDeliveryException ex)
-            {
-                logger.LogError(ex, "Contribution {ContributionId} confirmed, but email notification failed.", payment.ContributionId);
-            }
+            payment.Status = status;
+            await dbContext.SaveChangesAsync(cancellationToken);
         }
+
+        if (status == "approved")
+            await ProcessApprovedPixPaymentAsync(mpOrderId, cancellationToken);
     }
 
     private ValueTask QueuePaymentAttemptNotificationAsync(
@@ -333,4 +518,13 @@ public class PaymentService(
 
     private static string NormalizeValue(string? value)
         => string.IsNullOrWhiteSpace(value) ? "-" : value.Trim();
+
+    private static decimal CalculateExpectedCardAmount(decimal netAmount, decimal feePercent)
+    {
+        if (feePercent <= 0)
+            return Math.Round(netAmount, 2, MidpointRounding.AwayFromZero);
+
+        var feeFactor = 1 - (feePercent / 100);
+        return Math.Round(netAmount / feeFactor, 2, MidpointRounding.AwayFromZero);
+    }
 }

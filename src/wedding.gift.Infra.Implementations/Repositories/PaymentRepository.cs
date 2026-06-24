@@ -16,18 +16,21 @@ public class PaymentRepository(AppDbContext context) : IPaymentRepository
     public async Task<Payment?> GetByNsuAsync(string nsu, CancellationToken cancellationToken)
     {
         return await context.Payments
+            .AsNoTracking()
             .FirstOrDefaultAsync(p => p.Nsu == nsu, cancellationToken);
     }
 
     public async Task<Payment?> GetByMpOrderIdAsync(string mpOrderId, CancellationToken cancellationToken)
     {
         return await context.Payments
+            .AsNoTracking()
             .FirstOrDefaultAsync(p => p.MpOrderId == mpOrderId, cancellationToken);
     }
 
     public async Task<Payment?> GetByOrderIdAsync(string orderId, CancellationToken cancellationToken)
     {
         return await context.Payments
+            .AsNoTracking()
             .FirstOrDefaultAsync(p => p.OrderId == orderId, cancellationToken);
     }
 

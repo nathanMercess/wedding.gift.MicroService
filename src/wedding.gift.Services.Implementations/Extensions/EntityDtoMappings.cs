@@ -20,6 +20,8 @@ public static class EntityDtoMappings
             Category = dto.Category?.Trim() ?? string.Empty,
             Available = dto.Available,
             AllowPartialContribution = dto.AllowPartialContribution,
+            CreditCardFeePercent = dto.CreditCardFeePercent,
+            CreditCardMaxInstallments = dto.CreditCardMaxInstallments,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -35,6 +37,8 @@ public static class EntityDtoMappings
         entity.Category = dto.Category?.Trim() ?? string.Empty;
         entity.Available = dto.Available;
         entity.AllowPartialContribution = dto.AllowPartialContribution;
+        entity.CreditCardFeePercent = dto.CreditCardFeePercent;
+        entity.CreditCardMaxInstallments = dto.CreditCardMaxInstallments;
         entity.UpdatedAt = DateTime.UtcNow;
     }
 
@@ -56,7 +60,9 @@ public static class EntityDtoMappings
             Image = entity.Image,
             Category = entity.Category,
             Available = entity.Available,
-            AllowPartialContribution = entity.AllowPartialContribution
+            AllowPartialContribution = entity.AllowPartialContribution,
+            CreditCardFeePercent = entity.CreditCardFeePercent,
+            CreditCardMaxInstallments = entity.CreditCardMaxInstallments
         };
     }
 

@@ -26,13 +26,95 @@ public class PaymentServiceTests
         var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 500m), CancellationToken.None);
 
         Assert.Equal("approved", result.Status);
+        Assert.Equal(500m, mp.LastCardRequest.Amount);
+        Assert.Equal(500m, mp.LastCardRequest.NetAmount);
         var contribution = Assert.Single(context.Contributions);
         Assert.Equal(ContributionStatus.Paid, contribution.Status);
+        Assert.Equal(500m, contribution.Amount);
         Assert.Single(repo.Saved);
         Assert.Equal("approved", repo.Saved[0].Status);
         Assert.NotNull(repo.Saved[0].ContributionId);
         Assert.True(context.Gifts.Single().Available);
         Assert.Equal(2, queue.Items.Count);
+    }
+
+    [Fact]
+    public async Task ProcessCardPaymentAsync_DeveCobrarValorBrutoEContribuirValorLiquido_QuandoTaxaConfigurada()
+    {
+        var context = CreateContext();
+        var gift = SeedGift(context, total: 500m, creditCardFeePercent: 18m, creditCardMaxInstallments: 12);
+        var repo = new FakePaymentRepository();
+        var mp = new FakeMercadoPago { CardResult = new PaymentResponseDto { Status = "approved", MpOrderId = "mp_1" } };
+        var service = CreateService(context, mp, repo);
+
+        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 609.76m, netAmount: 500m, installments: 12), CancellationToken.None);
+
+        Assert.Equal("approved", result.Status);
+        Assert.Equal(609.76m, mp.LastCardRequest.Amount);
+        Assert.Equal(500m, context.Contributions.Single().Amount);
+        Assert.Equal(609.76m, repo.Saved.Single().Amount);
+    }
+
+    [Fact]
+    public async Task ProcessCardPaymentAsync_DeveRetornarValidationError_QuandoValorBrutoDivergeDaTaxa()
+    {
+        var context = CreateContext();
+        var gift = SeedGift(context, total: 500m, creditCardFeePercent: 18m);
+        var repo = new FakePaymentRepository();
+        var mp = new FakeMercadoPago();
+        var service = CreateService(context, mp, repo);
+
+        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 600m, netAmount: 500m), CancellationToken.None);
+
+        Assert.Equal("error", result.Status);
+        Assert.Equal(PaymentErrorCodes.ValidationError, result.ErrorCode);
+        Assert.Null(mp.LastCardRequest);
+        Assert.Empty(context.Contributions);
+        Assert.Empty(repo.Saved);
+    }
+
+    [Fact]
+    public async Task ProcessCardPaymentAsync_DeveRetornarValidationError_QuandoParcelasExcedemLimiteDoPresente()
+    {
+        var context = CreateContext();
+        var gift = SeedGift(context, creditCardMaxInstallments: 3);
+        var repo = new FakePaymentRepository();
+        var mp = new FakeMercadoPago();
+        var service = CreateService(context, mp, repo);
+
+        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 100m, netAmount: 100m, installments: 4), CancellationToken.None);
+
+        Assert.Equal("error", result.Status);
+        Assert.Equal(PaymentErrorCodes.ValidationError, result.ErrorCode);
+        Assert.Null(mp.LastCardRequest);
+    }
+
+    [Fact]
+    public async Task ProcessCardPaymentAsync_DeveRetornarValidationError_QuandoValorLiquidoExcedeRestante()
+    {
+        var context = CreateContext();
+        var gift = SeedGift(context, total: 500m);
+        context.Contributions.Add(new Contribution
+        {
+            Id = Guid.NewGuid(),
+            GiftId = gift.Id,
+            ContributorName = "Bruno",
+            Amount = 100m,
+            PaymentMethod = "pix",
+            PaidAt = DateTime.UtcNow,
+            Status = ContributionStatus.Paid
+        });
+        await context.SaveChangesAsync();
+        var repo = new FakePaymentRepository();
+        var mp = new FakeMercadoPago();
+        var service = CreateService(context, mp, repo);
+
+        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 401m, netAmount: 401m), CancellationToken.None);
+
+        Assert.Equal("error", result.Status);
+        Assert.Equal(PaymentErrorCodes.ValidationError, result.ErrorCode);
+        Assert.Null(mp.LastCardRequest);
+        Assert.Empty(repo.Saved);
     }
 
     [Fact]
@@ -84,7 +166,7 @@ public class PaymentServiceTests
     }
 
     [Fact]
-    public async Task ProcessPixPaymentAsync_DeveCriarContribuicaoPendente_SemConsumirPresente()
+    public async Task ProcessPixPaymentAsync_DeveSalvarIntencaoPendente_SemCriarContribuicao()
     {
         var context = CreateContext();
         var gift = SeedGift(context);
@@ -99,48 +181,51 @@ public class PaymentServiceTests
         var result = await service.ProcessPixPaymentAsync(Pix(gift.Id), CancellationToken.None);
 
         Assert.Equal("pending", result.Status);
-        var contribution = Assert.Single(context.Contributions);
-        Assert.Equal(ContributionStatus.Pending, contribution.Status);
+        Assert.Empty(context.Contributions);
+        var payment = Assert.Single(repo.Saved);
+        Assert.Equal("pending", payment.Status);
+        Assert.False(payment.ContributionCreated);
+        Assert.Null(payment.ContributionId);
         Assert.True(context.Gifts.Single().Available);
         Assert.Single(queue.Items);
     }
 
     [Fact]
-    public async Task ConfirmPaymentAsync_DevePromoverContribuicaoSemIndisponibilizarPresente_QuandoAprovado()
+    public async Task ProcessApprovedPixPaymentAsync_DeveCriarContribuicaoUmaVez_QuandoAprovado()
     {
         var context = CreateContext();
         var gift = SeedGift(context, total: 200m);
-
-        var contribution = new Contribution
-        {
-            Id = Guid.NewGuid(),
-            GiftId = gift.Id,
-            ContributorName = "Ana",
-            Amount = 200m,
-            PaymentMethod = "pix",
-            Status = ContributionStatus.Pending
-        };
-        context.Contributions.Add(contribution);
-        await context.SaveChangesAsync();
 
         var payment = new Payment
         {
             Id = Guid.NewGuid(),
             GiftId = gift.Id,
+            ContributorName = "Ana",
+            Message = "Parabens",
+            Amount = 200m,
+            Method = "pix",
             OrderId = "ord_1",
             MpOrderId = "mp_pix",
-            ContributionId = contribution.Id,
-            Status = "pending"
+            Status = "approved",
+            PayerEmail = "ana@test.com",
+            PayerDocType = "CPF",
+            PayerDocNumber = "12345678909"
         };
-        var repo = new FakePaymentRepository { ByMpOrderId = payment };
+        context.Payments.Add(payment);
+        await context.SaveChangesAsync();
+
+        var repo = new FakePaymentRepository();
         var email = new FakeEmail();
         var service = CreateService(context, new FakeMercadoPago(), repo, email);
 
-        await service.ConfirmPaymentAsync("mp_pix", "approved", CancellationToken.None);
+        await service.ProcessApprovedPixPaymentAsync("mp_pix", CancellationToken.None);
+        await service.ProcessApprovedPixPaymentAsync("mp_pix", CancellationToken.None);
 
-        Assert.Equal("ord_1", repo.LastUpdateOrderId);
-        Assert.Equal("approved", repo.LastUpdateStatus);
+        var savedPayment = context.Payments.Single();
+        Assert.True(savedPayment.ContributionCreated);
+        Assert.NotNull(savedPayment.ContributionId);
         Assert.Equal(ContributionStatus.Paid, context.Contributions.Single().Status);
+        Assert.Equal("Parabens", context.Contributions.Single().Message);
         Assert.True(context.Gifts.Single().Available);
         Assert.Equal(1, email.NotificationCount);
     }
@@ -151,35 +236,31 @@ public class PaymentServiceTests
         var context = CreateContext();
         var gift = SeedGift(context, total: 200m);
 
-        var contribution = new Contribution
+        var payment = new Payment
         {
             Id = Guid.NewGuid(),
             GiftId = gift.Id,
             ContributorName = "Ana",
             Amount = 200m,
-            PaymentMethod = "pix",
-            Status = ContributionStatus.Pending
-        };
-        context.Contributions.Add(contribution);
-        await context.SaveChangesAsync();
-
-        var payment = new Payment
-        {
-            Id = Guid.NewGuid(),
-            GiftId = gift.Id,
+            Method = "pix",
             OrderId = "ord_2",
             MpOrderId = "mp_pix2",
-            ContributionId = contribution.Id,
-            Status = "pending"
+            Status = "pending",
+            PayerEmail = "ana@test.com",
+            PayerDocType = "CPF",
+            PayerDocNumber = "12345678909"
         };
-        var repo = new FakePaymentRepository { ByMpOrderId = payment };
+        context.Payments.Add(payment);
+        await context.SaveChangesAsync();
+
+        var repo = new FakePaymentRepository();
         var email = new FakeEmail();
         var service = CreateService(context, new FakeMercadoPago(), repo, email);
 
         await service.ConfirmPaymentAsync("mp_pix2", "rejected", CancellationToken.None);
 
-        Assert.Equal("rejected", repo.LastUpdateStatus);
-        Assert.Equal(ContributionStatus.Pending, context.Contributions.Single().Status);
+        Assert.Equal("rejected", context.Payments.Single().Status);
+        Assert.Empty(context.Contributions);
         Assert.Equal(0, email.NotificationCount);
     }
 
@@ -201,24 +282,41 @@ public class PaymentServiceTests
             .Options);
 
     private static PaymentService CreateService(AppDbContext context, IMercadoPagoService mp, IPaymentRepository repo, IEmailService? email = null, IBackgroundTaskQueue? queue = null) =>
-        new(mp, repo, new ContributionService(context), email ?? new FakeEmail(), queue ?? new FakeQueue(), NullLogger<PaymentService>.Instance);
+        new(mp, context, repo, new ContributionService(context), email ?? new FakeEmail(), queue ?? new FakeQueue(), NullLogger<PaymentService>.Instance);
 
-    private static Gift SeedGift(AppDbContext context, decimal total = 500m)
+    private static Gift SeedGift(
+        AppDbContext context,
+        decimal total = 500m,
+        decimal creditCardFeePercent = 0m,
+        int creditCardMaxInstallments = 12)
     {
-        var gift = new Gift { Id = Guid.NewGuid(), Name = "Jogo de panelas", Total = total, Available = true };
+        var gift = new Gift
+        {
+            Id = Guid.NewGuid(),
+            Name = "Jogo de panelas",
+            Total = total,
+            Available = true,
+            CreditCardFeePercent = creditCardFeePercent,
+            CreditCardMaxInstallments = creditCardMaxInstallments
+        };
         context.Gifts.Add(gift);
         context.SaveChanges();
         return gift;
     }
 
-    private static CardPaymentRequestDto Card(Guid giftId, decimal amount = 100m) => new()
+    private static CardPaymentRequestDto Card(
+        Guid giftId,
+        decimal amount = 100m,
+        decimal netAmount = -1m,
+        int installments = 1) => new()
     {
         GiftId = giftId,
         ContributorName = "Ana",
         CardToken = "tok_123",
         OrderId = Guid.NewGuid().ToString(),
         Amount = amount,
-        Installments = 1,
+        NetAmount = netAmount < 0 ? amount : netAmount,
+        Installments = installments,
         Method = "credit_card",
         PaymentMethodId = "visa",
         PayerEmail = "ana@test.com",
@@ -240,9 +338,13 @@ public class PaymentServiceTests
         public PaymentResponseDto CardResult = new() { Status = "approved", MpOrderId = "mp" };
         public PaymentResponseDto PixResult = new() { Status = "pending", MpOrderId = "mp" };
         public PaymentResponseDto StatusResult = new() { Status = "approved", MpOrderId = "mp" };
+        public CardPaymentRequestDto LastCardRequest = null!;
 
         public Task<PaymentResponseDto> CreateCardOrderAsync(CardPaymentRequestDto request, CancellationToken cancellationToken)
-            => Task.FromResult(CardResult);
+        {
+            LastCardRequest = request;
+            return Task.FromResult(CardResult);
+        }
 
         public Task<PaymentResponseDto> CreatePixOrderAsync(PixPaymentRequestDto request, CancellationToken cancellationToken)
             => Task.FromResult(PixResult);

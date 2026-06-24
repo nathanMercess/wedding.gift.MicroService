@@ -5,8 +5,13 @@ public class Payment
     public Guid Id { get; set; }
     public Guid GiftId { get; set; }
     public string ContributorName { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public string PayerEmail { get; set; } = string.Empty;
+    public string PayerDocType { get; set; } = string.Empty;
+    public string PayerDocNumber { get; set; } = string.Empty;
     public Guid? ContributionId { get; set; }
     public Contribution? Contribution { get; set; }
+    public bool ContributionCreated { get; set; }
     public string OrderId { get; set; } = string.Empty;
     public string Method { get; set; } = string.Empty;
     public decimal Amount { get; set; }

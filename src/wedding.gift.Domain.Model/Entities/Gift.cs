@@ -11,6 +11,8 @@ public class Gift
     public string Category { get; set; } = string.Empty;
     public bool Available { get; set; } = true;
     public bool AllowPartialContribution { get; set; } = true;
+    public decimal CreditCardFeePercent { get; set; }
+    public int CreditCardMaxInstallments { get; set; } = 12;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public ICollection<Contribution> Contributions { get; set; } = new List<Contribution>();
