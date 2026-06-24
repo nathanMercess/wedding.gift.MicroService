@@ -23,10 +23,10 @@ public class PaymentServiceTests
         var queue = new FakeQueue();
         var service = CreateService(context, mp, repo, queue: queue);
 
-        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 500m), CancellationToken.None);
+        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 643.17m, netAmount: 500m), CancellationToken.None);
 
         Assert.Equal("approved", result.Status);
-        Assert.Equal(500m, mp.LastCardRequest.Amount);
+        Assert.Equal(643.17m, mp.LastCardRequest.Amount);
         Assert.Equal(500m, mp.LastCardRequest.NetAmount);
         var contribution = Assert.Single(context.Contributions);
         Assert.Equal(ContributionStatus.Paid, contribution.Status);
@@ -39,27 +39,43 @@ public class PaymentServiceTests
     }
 
     [Fact]
-    public async Task ProcessCardPaymentAsync_DeveCobrarValorBrutoEContribuirValorLiquido_QuandoTaxaConfigurada()
+    public async Task ProcessCardPaymentAsync_DeveCobrarValorBrutoGlobalEContribuirValorLiquido_QuandoCredito()
     {
         var context = CreateContext();
-        var gift = SeedGift(context, total: 500m, creditCardFeePercent: 18m, creditCardMaxInstallments: 12);
+        var gift = SeedGift(context, total: 500m);
         var repo = new FakePaymentRepository();
         var mp = new FakeMercadoPago { CardResult = new PaymentResponseDto { Status = "approved", MpOrderId = "mp_1" } };
         var service = CreateService(context, mp, repo);
 
-        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 609.76m, netAmount: 500m, installments: 12), CancellationToken.None);
+        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 643.17m, netAmount: 500m, installments: 12), CancellationToken.None);
 
         Assert.Equal("approved", result.Status);
-        Assert.Equal(609.76m, mp.LastCardRequest.Amount);
+        Assert.Equal(643.17m, mp.LastCardRequest.Amount);
         Assert.Equal(500m, context.Contributions.Single().Amount);
-        Assert.Equal(609.76m, repo.Saved.Single().Amount);
+        Assert.Equal(643.17m, repo.Saved.Single().Amount);
+    }
+
+    [Fact]
+    public async Task ProcessCardPaymentAsync_DeveAceitarValorLiquidoIgualAoBruto_QuandoDebito()
+    {
+        var context = CreateContext();
+        var gift = SeedGift(context, total: 500m);
+        var repo = new FakePaymentRepository();
+        var mp = new FakeMercadoPago { CardResult = new PaymentResponseDto { Status = "approved", MpOrderId = "mp_1" } };
+        var service = CreateService(context, mp, repo);
+
+        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 500m, netAmount: 500m, method: "debit_card"), CancellationToken.None);
+
+        Assert.Equal("approved", result.Status);
+        Assert.Equal(500m, mp.LastCardRequest.Amount);
+        Assert.Equal(500m, context.Contributions.Single().Amount);
     }
 
     [Fact]
     public async Task ProcessCardPaymentAsync_DeveRetornarValidationError_QuandoValorBrutoDivergeDaTaxa()
     {
         var context = CreateContext();
-        var gift = SeedGift(context, total: 500m, creditCardFeePercent: 18m);
+        var gift = SeedGift(context, total: 500m);
         var repo = new FakePaymentRepository();
         var mp = new FakeMercadoPago();
         var service = CreateService(context, mp, repo);
@@ -77,12 +93,12 @@ public class PaymentServiceTests
     public async Task ProcessCardPaymentAsync_DeveRetornarValidationError_QuandoParcelasExcedemLimiteDoPresente()
     {
         var context = CreateContext();
-        var gift = SeedGift(context, creditCardMaxInstallments: 3);
+        var gift = SeedGift(context);
         var repo = new FakePaymentRepository();
         var mp = new FakeMercadoPago();
         var service = CreateService(context, mp, repo);
 
-        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 100m, netAmount: 100m, installments: 4), CancellationToken.None);
+        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 128.63m, netAmount: 100m, installments: 13), CancellationToken.None);
 
         Assert.Equal("error", result.Status);
         Assert.Equal(PaymentErrorCodes.ValidationError, result.ErrorCode);
@@ -136,7 +152,7 @@ public class PaymentServiceTests
         var queue = new FakeQueue();
         var service = CreateService(context, mp, repo, queue: queue);
 
-        var result = await service.ProcessCardPaymentAsync(Card(gift.Id), CancellationToken.None);
+        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 128.63m, netAmount: 100m), CancellationToken.None);
 
         Assert.Equal("rejected", result.Status);
         Assert.Empty(context.Contributions);
@@ -284,20 +300,14 @@ public class PaymentServiceTests
     private static PaymentService CreateService(AppDbContext context, IMercadoPagoService mp, IPaymentRepository repo, IEmailService? email = null, IBackgroundTaskQueue? queue = null) =>
         new(mp, context, repo, new ContributionService(context), email ?? new FakeEmail(), queue ?? new FakeQueue(), NullLogger<PaymentService>.Instance);
 
-    private static Gift SeedGift(
-        AppDbContext context,
-        decimal total = 500m,
-        decimal creditCardFeePercent = 0m,
-        int creditCardMaxInstallments = 12)
+    private static Gift SeedGift(AppDbContext context, decimal total = 500m)
     {
         var gift = new Gift
         {
             Id = Guid.NewGuid(),
             Name = "Jogo de panelas",
             Total = total,
-            Available = true,
-            CreditCardFeePercent = creditCardFeePercent,
-            CreditCardMaxInstallments = creditCardMaxInstallments
+            Available = true
         };
         context.Gifts.Add(gift);
         context.SaveChanges();
@@ -308,7 +318,8 @@ public class PaymentServiceTests
         Guid giftId,
         decimal amount = 100m,
         decimal netAmount = -1m,
-        int installments = 1) => new()
+        int installments = 1,
+        string method = "credit_card") => new()
     {
         GiftId = giftId,
         ContributorName = "Ana",
@@ -317,7 +328,7 @@ public class PaymentServiceTests
         Amount = amount,
         NetAmount = netAmount < 0 ? amount : netAmount,
         Installments = installments,
-        Method = "credit_card",
+        Method = method,
         PaymentMethodId = "visa",
         PayerEmail = "ana@test.com",
         PayerDocNumber = "12345678909"

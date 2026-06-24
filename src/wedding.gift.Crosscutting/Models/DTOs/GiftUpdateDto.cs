@@ -25,10 +25,4 @@ public class GiftUpdateDto
 
     public bool Available { get; set; }
     public bool AllowPartialContribution { get; set; } = true;
-
-    [Range(0, 99.99, ErrorMessage = "A taxa do cartÃ£o deve estar entre 0 e 99,99%.")]
-    public decimal CreditCardFeePercent { get; set; }
-
-    [Range(1, int.MaxValue, ErrorMessage = "O mÃ¡ximo de parcelas no cartÃ£o deve ser maior ou igual a 1.")]
-    public int CreditCardMaxInstallments { get; set; } = 12;
 }

@@ -17,8 +17,6 @@ public class GiftMapping : IEntityTypeConfiguration<Gift>
         builder.Property(x => x.Image).HasMaxLength(500);
         builder.Property(x => x.Category).IsRequired().HasMaxLength(80);
         builder.Property(x => x.Available).HasDefaultValue(true);
-        builder.Property(x => x.CreditCardFeePercent).HasColumnType("decimal(5,2)").HasDefaultValue(0m).IsRequired();
-        builder.Property(x => x.CreditCardMaxInstallments).HasDefaultValue(12).IsRequired();
         builder.Property(x => x.CreatedAt).IsRequired();
         builder.Property(x => x.UpdatedAt).IsRequired();
 

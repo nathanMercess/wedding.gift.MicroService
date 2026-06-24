@@ -59,7 +59,7 @@ namespace wedding.gift.Infra.Implementations.Migrations
 
                     b.HasIndex("GiftId");
 
-                    b.ToTable("Contributions");
+                    b.ToTable("Contributions", (string)null);
                 });
 
             modelBuilder.Entity("wedding.gift.Domain.Model.Entities.Couple", b =>
@@ -101,7 +101,7 @@ namespace wedding.gift.Infra.Implementations.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Couples");
+                    b.ToTable("Couples", (string)null);
                 });
 
             modelBuilder.Entity("wedding.gift.Domain.Model.Entities.Gift", b =>
@@ -125,16 +125,6 @@ namespace wedding.gift.Infra.Implementations.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
-
-                    b.Property<decimal>("CreditCardFeePercent")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("decimal(5,2)")
-                        .HasDefaultValue(0m);
-
-                    b.Property<int>("CreditCardMaxInstallments")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(12);
 
                     b.Property<string>("Description")
                         .IsRequired()
@@ -161,7 +151,7 @@ namespace wedding.gift.Infra.Implementations.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Gifts");
+                    b.ToTable("Gifts", (string)null);
 
                     b.HasData(
                         new
@@ -171,8 +161,6 @@ namespace wedding.gift.Infra.Implementations.Migrations
                             Available = true,
                             Category = "Cozinha",
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            CreditCardFeePercent = 0m,
-                            CreditCardMaxInstallments = 12,
                             Description = "Conjunto com 5 panelas em inox para o dia a dia.",
                             Image = "https://images.example.com/panelas-inox.jpg",
                             Name = "Jogo de Panelas Inox",
@@ -187,8 +175,6 @@ namespace wedding.gift.Infra.Implementations.Migrations
                             Available = true,
                             Category = "Eletrodomésticos",
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            CreditCardFeePercent = 0m,
-                            CreditCardMaxInstallments = 12,
                             Description = "Liquidificador potente com copo de vidro.",
                             Image = "https://images.example.com/liquidificador.jpg",
                             Name = "Liquidificador 1200W",
@@ -203,8 +189,6 @@ namespace wedding.gift.Infra.Implementations.Migrations
                             Available = true,
                             Category = "Quarto",
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            CreditCardFeePercent = 0m,
-                            CreditCardMaxInstallments = 12,
                             Description = "Kit completo 400 fios para cama queen.",
                             Image = "https://images.example.com/jogo-cama.jpg",
                             Name = "Jogo de Cama Queen",
@@ -219,8 +203,6 @@ namespace wedding.gift.Infra.Implementations.Migrations
                             Available = true,
                             Category = "Mesa",
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            CreditCardFeePercent = 0m,
-                            CreditCardMaxInstallments = 12,
                             Description = "Conjunto de jantar em porcelana branca.",
                             Image = "https://images.example.com/aparelho-jantar.jpg",
                             Name = "Aparelho de Jantar 20 Peças",
@@ -235,8 +217,6 @@ namespace wedding.gift.Infra.Implementations.Migrations
                             Available = true,
                             Category = "Casa",
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            CreditCardFeePercent = 0m,
-                            CreditCardMaxInstallments = 12,
                             Description = "Aspirador inteligente com base carregadora.",
                             Image = "https://images.example.com/aspirador-robo.jpg",
                             Name = "Aspirador Robô",
@@ -251,8 +231,6 @@ namespace wedding.gift.Infra.Implementations.Migrations
                             Available = true,
                             Category = "Cozinha",
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            CreditCardFeePercent = 0m,
-                            CreditCardMaxInstallments = 12,
                             Description = "Cafeteira automática para cápsulas e pó.",
                             Image = "https://images.example.com/cafeteira.jpg",
                             Name = "Cafeteira Expresso",
@@ -437,7 +415,7 @@ namespace wedding.gift.Infra.Implementations.Migrations
                     b.HasIndex("NormalizedEmail")
                         .IsUnique();
 
-                    b.ToTable("Users");
+                    b.ToTable("Users", (string)null);
                 });
 
             modelBuilder.Entity("wedding.gift.Domain.Model.Entities.Contribution", b =>

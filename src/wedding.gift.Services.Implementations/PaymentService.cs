@@ -21,6 +21,24 @@ public class PaymentService(
     IBackgroundTaskQueue backgroundTaskQueue,
     ILogger<PaymentService> logger) : IPaymentService
 {
+    private const int CreditCardMaxInstallments = 12;
+    private const decimal CreditCardFeePercentForBrickAmount = 22.26m;
+    private static readonly IReadOnlyDictionary<int, decimal> CreditCardFeePercentByInstallment = new Dictionary<int, decimal>
+    {
+        [1] = 7.97m,
+        [2] = 7.51m,
+        [3] = 9.60m,
+        [4] = 11.67m,
+        [5] = 13.64m,
+        [6] = 14.94m,
+        [7] = 16.22m,
+        [8] = 17.48m,
+        [9] = 18.71m,
+        [10] = 18.91m,
+        [11] = 21.10m,
+        [12] = CreditCardFeePercentForBrickAmount
+    };
+
     public async Task<PaymentResponseDto> ProcessCardPaymentAsync(
         CardPaymentRequestDto request,
         CancellationToken cancellationToken)
@@ -58,6 +76,9 @@ public class PaymentService(
         if (request.Installments <= 0)
             return await BuildErrorResponseAsync("card", "validation", "Invalid installments.", PaymentErrorCodes.ValidationError, cancellationToken);
 
+        if (request.Installments > CreditCardMaxInstallments)
+            return await BuildErrorResponseAsync("card", "validation", "Installments exceed the card limit.", PaymentErrorCodes.ValidationError, cancellationToken);
+
         if (request.Method != "credit_card" && request.Method != "debit_card")
             return await BuildErrorResponseAsync("card", "validation", "Invalid method.", PaymentErrorCodes.ValidationError, cancellationToken);
 
@@ -91,13 +112,10 @@ public class PaymentService(
 
         if (request.Method == "credit_card")
         {
-            if (request.Installments > gift.CreditCardMaxInstallments)
-                return await BuildErrorResponseAsync("card", "validation", "Installments exceed the gift credit card limit.", PaymentErrorCodes.ValidationError, cancellationToken);
+            if (!CreditCardFeePercentByInstallment.ContainsKey(request.Installments))
+                return await BuildErrorResponseAsync("card", "validation", "Installments exceed the card limit.", PaymentErrorCodes.ValidationError, cancellationToken);
 
-            if (gift.CreditCardFeePercent >= 100)
-                return await BuildErrorResponseAsync("card", "validation", "Invalid gift credit card fee.", PaymentErrorCodes.ValidationError, cancellationToken);
-
-            var expectedAmount = CalculateExpectedCardAmount(request.NetAmount, gift.CreditCardFeePercent);
+            var expectedAmount = CalculateExpectedCardAmount(request.NetAmount, CreditCardFeePercentForBrickAmount);
 
             if (Math.Abs(expectedAmount - request.Amount) > 0.01m)
                 return await BuildErrorResponseAsync("card", "validation", "Amount does not match the configured credit card fee.", PaymentErrorCodes.ValidationError, cancellationToken);
