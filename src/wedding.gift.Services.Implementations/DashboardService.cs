@@ -38,6 +38,11 @@ public class DashboardService(AppDbContext dbContext) : IDashboardService
             .AsNoTracking()
             .ToListAsync(cancellationToken);
 
+        var requestLogs = await dbContext.ApiRequestLogs
+            .AsNoTracking()
+            .Where(x => x.StartedAtUtc >= fromUtc && x.StartedAtUtc <= now)
+            .ToListAsync(cancellationToken);
+
         var giftNames = gifts.ToDictionary(x => x.Id, x => x.Name);
         var giftFunding = BuildGiftFunding(gifts);
         var paidContributions = contributions
@@ -58,6 +63,8 @@ public class DashboardService(AppDbContext dbContext) : IDashboardService
         var failedPayments = payments.Where(x => IsFailedPayment(x.Status)).ToList();
         var categorizedPaymentCount = approvedPayments.Count + pendingPayments.Count + failedPayments.Count;
         var approvedWithoutContribution = approvedPayments.Count(x => !x.ContributionCreated);
+        var serverErrorRequests = requestLogs.Count(x => x.StatusCode >= 500);
+        var slowRequests = requestLogs.Count(x => x.DurationMilliseconds >= 1000);
         var contributionMessages = BuildContributionMessages(contributions, giftNames);
         var paymentMessages = BuildPaymentIntentMessages(payments, giftNames);
         var allMessages = contributionMessages
@@ -125,33 +132,48 @@ public class DashboardService(AppDbContext dbContext) : IDashboardService
                 PaymentIntentMessages = paymentMessages.Count,
                 LatestMessageAtUtc = allMessages.FirstOrDefault()?.CreatedAtUtc
             },
+            Requests = BuildRequestSummary(requestLogs),
             Monitoring = new DashboardMonitoringDto
             {
                 DatabaseStatus = "Online",
-                ApplicationLogsStatus = "Pendente de validacao",
+                ApplicationLogsStatus = "ApiRequestLogs ativo",
                 MetricsStatus = "Pendente de validacao",
                 PendingPayments = pendingPayments.Count,
                 PendingPixPayments = pendingPayments.Count(x => string.Equals(x.Method, "pix", StringComparison.OrdinalIgnoreCase)),
                 FailedPayments = failedPayments.Count,
                 ApprovedPaymentsWithoutContribution = approvedWithoutContribution,
+                ServerErrorRequests = serverErrorRequests,
+                SlowRequests = slowRequests,
+                AverageRequestDurationMilliseconds = CalculateAverageDuration(requestLogs),
                 LastPaymentAtUtc = payments.OrderByDescending(x => x.CreatedAt).FirstOrDefault()?.CreatedAt,
                 LastContributionAtUtc = contributions.OrderByDescending(x => x.PaidAt).FirstOrDefault()?.PaidAt,
+                LastRequestAtUtc = requestLogs.OrderByDescending(x => x.StartedAtUtc).FirstOrDefault()?.StartedAtUtc,
                 Notes =
                 [
                     "Falhas e sucessos representam pagamentos persistidos no banco.",
-                    "Logs da aplicacao, metricas APM e traces distribuidos: Pendente de validacao."
+                    "Requests da API sao persistidos em ApiRequestLogs sem body, tokens, cookies ou headers sensiveis.",
+                    "Metricas APM e traces distribuidos: Pendente de validacao."
                 ]
             },
             ContributionsByDay = BuildContributionsByDay(periodPaidContributions, fromUtc, query.Days),
             PaymentsByStatus = BuildPaymentsByStatus(payments),
             PaymentsByMethod = BuildPaymentsByMethod(payments),
             GiftsByCategory = BuildGiftsByCategory(giftFunding),
+            RequestsByStatus = BuildRequestsByStatus(requestLogs),
+            RequestsByPath = BuildRequestsByPath(requestLogs)
+                .Take(query.RecentItems)
+                .ToList(),
             TopGiftsByRaised = giftFunding
                 .OrderByDescending(x => x.Raised)
                 .ThenBy(x => x.GiftName)
                 .Take(query.RecentItems)
                 .ToList(),
             RecentMessages = allMessages.Take(query.RecentItems).ToList(),
+            RecentRequests = requestLogs
+                .OrderByDescending(x => x.StartedAtUtc)
+                .Take(query.RecentItems)
+                .Select(ToRequestActivityDto)
+                .ToList(),
             RecentPayments = payments
                 .OrderByDescending(x => x.UpdatedAt)
                 .ThenByDescending(x => x.CreatedAt)
@@ -169,6 +191,30 @@ public class DashboardService(AppDbContext dbContext) : IDashboardService
                 .Take(query.RecentItems)
                 .Select(x => ToContributionActivityDto(x, giftNames))
                 .ToList()
+        };
+    }
+
+    private static DashboardRequestSummaryDto BuildRequestSummary(IReadOnlyCollection<ApiRequestLog> requestLogs)
+    {
+        var successful = requestLogs.Count(x => x.StatusCode < 400);
+        var clientErrors = requestLogs.Count(x => x.StatusCode >= 400 && x.StatusCode < 500);
+        var serverErrors = requestLogs.Count(x => x.StatusCode >= 500);
+
+        return new DashboardRequestSummaryDto
+        {
+            Total = requestLogs.Count,
+            Successful = successful,
+            ClientErrors = clientErrors,
+            ServerErrors = serverErrors,
+            Authenticated = requestLogs.Count(x => x.IsAuthenticated),
+            Anonymous = requestLogs.Count(x => !x.IsAuthenticated),
+            SlowRequests = requestLogs.Count(x => x.DurationMilliseconds >= 1000),
+            SuccessRate = CalculatePercent(successful, requestLogs.Count),
+            ClientErrorRate = CalculatePercent(clientErrors, requestLogs.Count),
+            ServerErrorRate = CalculatePercent(serverErrors, requestLogs.Count),
+            AverageDurationMilliseconds = CalculateAverageDuration(requestLogs),
+            MaxDurationMilliseconds = requestLogs.Count == 0 ? 0 : requestLogs.Max(x => x.DurationMilliseconds),
+            LastRequestAtUtc = requestLogs.OrderByDescending(x => x.StartedAtUtc).FirstOrDefault()?.StartedAtUtc
         };
     }
 
@@ -297,6 +343,39 @@ public class DashboardService(AppDbContext dbContext) : IDashboardService
             .ToList();
     }
 
+    private static List<DashboardRequestStatusChartDto> BuildRequestsByStatus(IEnumerable<ApiRequestLog> requestLogs)
+    {
+        return requestLogs
+            .GroupBy(x => GetStatusGroup(x.StatusCode))
+            .Select(x => new DashboardRequestStatusChartDto
+            {
+                StatusGroup = x.Key,
+                Count = x.Count(),
+                AverageDurationMilliseconds = CalculateAverageDuration(x)
+            })
+            .OrderBy(x => x.StatusGroup)
+            .ToList();
+    }
+
+    private static List<DashboardRequestPathChartDto> BuildRequestsByPath(IEnumerable<ApiRequestLog> requestLogs)
+    {
+        return requestLogs
+            .GroupBy(x => new { x.Method, x.Path })
+            .Select(x => new DashboardRequestPathChartDto
+            {
+                Method = x.Key.Method,
+                Path = x.Key.Path,
+                Count = x.Count(),
+                ServerErrors = x.Count(r => r.StatusCode >= 500),
+                AverageDurationMilliseconds = CalculateAverageDuration(x),
+                MaxDurationMilliseconds = x.Max(r => r.DurationMilliseconds)
+            })
+            .OrderByDescending(x => x.Count)
+            .ThenByDescending(x => x.AverageDurationMilliseconds)
+            .ThenBy(x => x.Path)
+            .ToList();
+    }
+
     private static List<DashboardMessageDto> BuildContributionMessages(
         IEnumerable<Contribution> contributions,
         IReadOnlyDictionary<Guid, string> giftNames)
@@ -381,6 +460,25 @@ public class DashboardService(AppDbContext dbContext) : IDashboardService
         };
     }
 
+    private static DashboardApiRequestActivityDto ToRequestActivityDto(ApiRequestLog requestLog)
+    {
+        return new DashboardApiRequestActivityDto
+        {
+            Id = requestLog.Id,
+            Method = requestLog.Method,
+            Path = requestLog.Path,
+            StatusCode = requestLog.StatusCode,
+            IsSuccess = requestLog.IsSuccess,
+            IsAuthenticated = requestLog.IsAuthenticated,
+            UserRole = requestLog.UserRole,
+            DurationMilliseconds = requestLog.DurationMilliseconds,
+            CorrelationId = requestLog.CorrelationId,
+            ExceptionType = requestLog.ExceptionType,
+            ExceptionMessage = requestLog.ExceptionMessage,
+            StartedAtUtc = requestLog.StartedAtUtc
+        };
+    }
+
     private static int CountUniqueContributors(IEnumerable<Contribution> contributions)
     {
         return contributions
@@ -419,6 +517,22 @@ public class DashboardService(AppDbContext dbContext) : IDashboardService
         }
 
         return Math.Round(current / total * 100, 2);
+    }
+
+    private static decimal CalculateAverageDuration(IEnumerable<ApiRequestLog> requestLogs)
+    {
+        var items = requestLogs.ToList();
+        return items.Count == 0 ? 0 : Math.Round((decimal)items.Average(x => x.DurationMilliseconds), 2);
+    }
+
+    private static string GetStatusGroup(int statusCode)
+    {
+        if (statusCode <= 0)
+        {
+            return "unknown";
+        }
+
+        return $"{statusCode / 100}xx";
     }
 
     private static string GetGiftName(IReadOnlyDictionary<Guid, string> giftNames, Guid giftId)

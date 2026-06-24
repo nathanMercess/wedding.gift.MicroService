@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using Polly;
+using wedding.gift.Application.Webapi.Infrastructure;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.Configurations;
 using wedding.gift.Domain.Model.Entities;
@@ -197,6 +198,7 @@ app.UseCors("AngularDev");
 app.UseSwagger();
 app.UseSwaggerUI();
 app.UseAuthentication();
+app.UseMiddleware<ApiRequestLoggingMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 

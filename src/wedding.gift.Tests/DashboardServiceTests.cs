@@ -108,6 +108,50 @@ public class DashboardServiceTests
                 UpdatedAt = now
             });
 
+        context.ApiRequestLogs.AddRange(
+            new ApiRequestLog
+            {
+                Id = Guid.NewGuid(),
+                StartedAtUtc = now.AddMinutes(-3),
+                CompletedAtUtc = now.AddMinutes(-3).AddMilliseconds(120),
+                DurationMilliseconds = 120,
+                Method = "GET",
+                Path = "/api/gifts",
+                StatusCode = 200,
+                IsSuccess = true,
+                IsAuthenticated = false,
+                CorrelationId = "req_200"
+            },
+            new ApiRequestLog
+            {
+                Id = Guid.NewGuid(),
+                StartedAtUtc = now.AddMinutes(-2),
+                CompletedAtUtc = now.AddMinutes(-2).AddMilliseconds(250),
+                DurationMilliseconds = 250,
+                Method = "GET",
+                Path = "/api/admin/dashboard",
+                StatusCode = 403,
+                IsSuccess = false,
+                IsAuthenticated = true,
+                UserRole = UserRoles.Admin,
+                CorrelationId = "req_403"
+            },
+            new ApiRequestLog
+            {
+                Id = Guid.NewGuid(),
+                StartedAtUtc = now.AddMinutes(-1),
+                CompletedAtUtc = now.AddMinutes(-1).AddMilliseconds(1250),
+                DurationMilliseconds = 1250,
+                Method = "POST",
+                Path = "/api/payment/pix",
+                StatusCode = 500,
+                IsSuccess = false,
+                IsAuthenticated = false,
+                CorrelationId = "req_500",
+                ExceptionType = "InvalidOperationException",
+                ExceptionMessage = "Falha inesperada"
+            });
+
         await context.SaveChangesAsync();
         var service = new DashboardService(context);
 
@@ -139,7 +183,22 @@ public class DashboardServiceTests
         Assert.Contains(dashboard.PaymentsByStatus, x => x.Status == "pending" && x.Count == 1);
         Assert.Contains(dashboard.PaymentsByStatus, x => x.Status == "rejected" && x.Count == 1);
         Assert.Single(dashboard.RecentFailedPayments);
-        Assert.Equal("Pendente de validacao", dashboard.Monitoring.ApplicationLogsStatus);
+        Assert.Equal(3, dashboard.Requests.Total);
+        Assert.Equal(1, dashboard.Requests.Successful);
+        Assert.Equal(1, dashboard.Requests.ClientErrors);
+        Assert.Equal(1, dashboard.Requests.ServerErrors);
+        Assert.Equal(33.33m, dashboard.Requests.SuccessRate);
+        Assert.Equal(540m, dashboard.Requests.AverageDurationMilliseconds);
+        Assert.Equal(1250, dashboard.Requests.MaxDurationMilliseconds);
+        Assert.Equal(1, dashboard.Requests.SlowRequests);
+        Assert.Contains(dashboard.RequestsByStatus, x => x.StatusGroup == "2xx" && x.Count == 1);
+        Assert.Contains(dashboard.RequestsByStatus, x => x.StatusGroup == "4xx" && x.Count == 1);
+        Assert.Contains(dashboard.RequestsByStatus, x => x.StatusGroup == "5xx" && x.Count == 1);
+        Assert.Contains(dashboard.RequestsByPath, x => x.Path == "/api/payment/pix" && x.ServerErrors == 1);
+        Assert.Equal("req_500", dashboard.RecentRequests.First().CorrelationId);
+        Assert.Equal("ApiRequestLogs ativo", dashboard.Monitoring.ApplicationLogsStatus);
+        Assert.Equal(1, dashboard.Monitoring.ServerErrorRequests);
+        Assert.Equal(1, dashboard.Monitoring.SlowRequests);
     }
 
     [Fact]

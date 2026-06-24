@@ -9,13 +9,17 @@ public class DashboardResponseDto
     public DashboardContributionSummaryDto Contributions { get; set; } = new();
     public DashboardPaymentSummaryDto Payments { get; set; } = new();
     public DashboardMessageSummaryDto Messages { get; set; } = new();
+    public DashboardRequestSummaryDto Requests { get; set; } = new();
     public DashboardMonitoringDto Monitoring { get; set; } = new();
     public List<DashboardTimeSeriesPointDto> ContributionsByDay { get; set; } = [];
     public List<DashboardStatusChartDto> PaymentsByStatus { get; set; } = [];
     public List<DashboardPaymentMethodChartDto> PaymentsByMethod { get; set; } = [];
     public List<DashboardCategoryChartDto> GiftsByCategory { get; set; } = [];
+    public List<DashboardRequestStatusChartDto> RequestsByStatus { get; set; } = [];
+    public List<DashboardRequestPathChartDto> RequestsByPath { get; set; } = [];
     public List<DashboardGiftFundingDto> TopGiftsByRaised { get; set; } = [];
     public List<DashboardMessageDto> RecentMessages { get; set; } = [];
+    public List<DashboardApiRequestActivityDto> RecentRequests { get; set; } = [];
     public List<DashboardPaymentActivityDto> RecentPayments { get; set; } = [];
     public List<DashboardPaymentActivityDto> RecentFailedPayments { get; set; } = [];
     public List<DashboardContributionActivityDto> RecentContributions { get; set; } = [];
@@ -96,6 +100,23 @@ public class DashboardMessageSummaryDto
     public DateTime? LatestMessageAtUtc { get; set; }
 }
 
+public class DashboardRequestSummaryDto
+{
+    public int Total { get; set; }
+    public int Successful { get; set; }
+    public int ClientErrors { get; set; }
+    public int ServerErrors { get; set; }
+    public int Authenticated { get; set; }
+    public int Anonymous { get; set; }
+    public int SlowRequests { get; set; }
+    public decimal SuccessRate { get; set; }
+    public decimal ClientErrorRate { get; set; }
+    public decimal ServerErrorRate { get; set; }
+    public decimal AverageDurationMilliseconds { get; set; }
+    public long MaxDurationMilliseconds { get; set; }
+    public DateTime? LastRequestAtUtc { get; set; }
+}
+
 public class DashboardMonitoringDto
 {
     public string DatabaseStatus { get; set; } = string.Empty;
@@ -105,8 +126,12 @@ public class DashboardMonitoringDto
     public int PendingPixPayments { get; set; }
     public int FailedPayments { get; set; }
     public int ApprovedPaymentsWithoutContribution { get; set; }
+    public int ServerErrorRequests { get; set; }
+    public int SlowRequests { get; set; }
+    public decimal AverageRequestDurationMilliseconds { get; set; }
     public DateTime? LastPaymentAtUtc { get; set; }
     public DateTime? LastContributionAtUtc { get; set; }
+    public DateTime? LastRequestAtUtc { get; set; }
     public List<string> Notes { get; set; } = [];
 }
 
@@ -137,6 +162,23 @@ public class DashboardCategoryChartDto
     public int Count { get; set; }
     public decimal GoalAmount { get; set; }
     public decimal RaisedAmount { get; set; }
+}
+
+public class DashboardRequestStatusChartDto
+{
+    public string StatusGroup { get; set; } = string.Empty;
+    public int Count { get; set; }
+    public decimal AverageDurationMilliseconds { get; set; }
+}
+
+public class DashboardRequestPathChartDto
+{
+    public string Method { get; set; } = string.Empty;
+    public string Path { get; set; } = string.Empty;
+    public int Count { get; set; }
+    public int ServerErrors { get; set; }
+    public decimal AverageDurationMilliseconds { get; set; }
+    public long MaxDurationMilliseconds { get; set; }
 }
 
 public class DashboardGiftFundingDto
@@ -183,6 +225,22 @@ public class DashboardPaymentActivityDto
     public bool ContributionCreated { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime UpdatedAtUtc { get; set; }
+}
+
+public class DashboardApiRequestActivityDto
+{
+    public Guid Id { get; set; }
+    public string Method { get; set; } = string.Empty;
+    public string Path { get; set; } = string.Empty;
+    public int StatusCode { get; set; }
+    public bool IsSuccess { get; set; }
+    public bool IsAuthenticated { get; set; }
+    public string UserRole { get; set; } = string.Empty;
+    public long DurationMilliseconds { get; set; }
+    public string CorrelationId { get; set; } = string.Empty;
+    public string ExceptionType { get; set; } = string.Empty;
+    public string ExceptionMessage { get; set; } = string.Empty;
+    public DateTime StartedAtUtc { get; set; }
 }
 
 public class DashboardContributionActivityDto
