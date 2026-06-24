@@ -13,6 +13,7 @@ public static class DependencyInjectionExtensions
         services.AddScoped<IContributionService, ContributionService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ICoupleService, CoupleService>();
+        services.AddScoped<IDashboardService, DashboardService>();
         services.AddTransient<IEmailService, EmailService>();
 
         services.AddSingleton(_ => StorageClient.Create());
