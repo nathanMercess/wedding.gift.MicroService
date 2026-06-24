@@ -29,7 +29,7 @@ public class ContributionsController(IContributionService contributionService) :
         return Ok(contribution.ToResponseDto());
     }
 
-    [Authorize(Roles = UserRoles.Admin)]
+    [Authorize(Roles = UserRoles.AdminOrSuperAdmin)]
     [HttpPost]
     [ProducesResponseType(typeof(ContributionResponseDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]

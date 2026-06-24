@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using wedding.gift.Application.Webapi.Controllers.Base;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Services.Contracts;
@@ -7,10 +8,9 @@ using wedding.gift.Services.Implementations.Extensions;
 
 namespace wedding.gift.Application.Webapi.Controllers;
 
-[ApiController]
-[Authorize(Roles = UserRoles.Admin)]
+[Authorize(Roles = UserRoles.AdminOrSuperAdmin)]
 [Route("admin/gifts")]
-public class AdminGiftsController(IGiftService giftService, IGiftEnrichService giftEnrichService) : ControllerBase
+public class AdminGiftsController(IGiftService giftService, IGiftEnrichService giftEnrichService) : ApiControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(PagedResult<GiftResponseDto>), StatusCodes.Status200OK)]

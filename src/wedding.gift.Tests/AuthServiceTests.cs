@@ -56,6 +56,40 @@ public class AuthServiceTests
     }
 
     [Fact]
+    public async Task LoginAsync_DeveRetornarRoleSuperAdmin_QuandoUsuarioForSuperAdmin()
+    {
+        var context = CreateContext();
+        var (hash, salt) = PasswordHasher.HashPassword("SenhaForte123!");
+
+        context.Users.Add(new User
+        {
+            Id = Guid.NewGuid(),
+            Name = "Super Admin",
+            Email = "super-admin@weddinggift.com",
+            NormalizedEmail = "super-admin@weddinggift.com",
+            PasswordHash = hash,
+            PasswordSalt = salt,
+            Role = UserRoles.SuperAdmin,
+            IsActive = true,
+            IsEmailConfirmed = true
+        });
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+
+        var result = await service.LoginAsync(new LoginRequestDto
+        {
+            Email = "super-admin@weddinggift.com",
+            Password = "SenhaForte123!"
+        }, CancellationToken.None);
+
+        Assert.Equal(UserRoles.SuperAdmin, result.Role);
+
+        var token = new JwtSecurityTokenHandler().ReadJwtToken(result.AccessToken);
+        Assert.Contains(token.Claims, c => c.Type == ClaimTypes.Role && c.Value == UserRoles.SuperAdmin);
+    }
+
+    [Fact]
     public async Task LoginAsync_DeveLancarUnauthorized_QuandoSenhaInvalida()
     {
         var context = CreateContext();

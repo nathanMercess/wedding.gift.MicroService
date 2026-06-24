@@ -215,6 +215,7 @@ static async Task EnsureBootstrapAdminAsync(IServiceProvider services, IConfigur
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
     var normalizedEmail = options.Email.Trim().ToLowerInvariant();
+    var role = GetBootstrapAdminRole(options.Role);
     var exists = await dbContext.Users.AnyAsync(x => x.NormalizedEmail == normalizedEmail);
 
     if (exists)
@@ -232,12 +233,34 @@ static async Task EnsureBootstrapAdminAsync(IServiceProvider services, IConfigur
         NormalizedEmail = normalizedEmail,
         PasswordHash = hash,
         PasswordSalt = salt,
-        Role = UserRoles.Admin,
+        Role = role,
         IsActive = true,
         IsEmailConfirmed = true
     });
 
     await dbContext.SaveChangesAsync();
+}
+
+static string GetBootstrapAdminRole(string role)
+{
+    if (string.IsNullOrWhiteSpace(role))
+    {
+        return UserRoles.Admin;
+    }
+
+    var normalizedRole = role.Trim();
+
+    if (string.Equals(normalizedRole, UserRoles.Admin, StringComparison.OrdinalIgnoreCase))
+    {
+        return UserRoles.Admin;
+    }
+
+    if (string.Equals(normalizedRole, UserRoles.SuperAdmin, StringComparison.OrdinalIgnoreCase))
+    {
+        return UserRoles.SuperAdmin;
+    }
+
+    throw new BadRequestException("Role do usuario bootstrap invalida. Use Admin ou SuperAdmin.");
 }
 
 static async Task QueueValidationNotificationAsync(
