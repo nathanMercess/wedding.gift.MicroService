@@ -83,11 +83,17 @@ public class GiftService(AppDbContext dbContext) : IGiftService
         var raised = await dbContext.Contributions
             .Where(x => x.Status == ContributionStatus.Paid)
             .SumAsync(x => x.Amount, cancellationToken);
+        var contributors = await dbContext.Contributions
+            .Where(x => x.Status == ContributionStatus.Paid)
+            .Select(x => x.ContributorName.Trim().ToLower())
+            .Distinct()
+            .CountAsync(cancellationToken);
 
         return new GiftStatsDto
         {
             Total = total,
             Completed = completed,
+            Contributors = contributors,
             Raised = raised,
             Goal = goal,
         };
