@@ -40,7 +40,7 @@ public static class EntityDtoMappings
 
     public static GiftResponseDto ToResponseDto(this Gift entity)
     {
-        var raised = entity.Contributions
+        decimal raised = entity.Contributions
             .Where(c => c.Status == ContributionStatus.Paid)
             .Sum(c => c.Amount);
 
@@ -109,12 +109,12 @@ public static class EntityDtoMappings
     {
         if (string.IsNullOrWhiteSpace(json)) return [];
 
-        using var doc = JsonDocument.Parse(json);
-        var root = doc.RootElement;
+        using JsonDocument doc = JsonDocument.Parse(json);
+        JsonElement root = doc.RootElement;
         if (root.ValueKind != JsonValueKind.Array) return [];
 
-        var result = new List<CarouselPhotoDto>();
-        foreach (var element in root.EnumerateArray())
+        List<CarouselPhotoDto> result = new List<CarouselPhotoDto>();
+        foreach (JsonElement element in root.EnumerateArray())
         {
             if (element.ValueKind == JsonValueKind.String)
             {
@@ -124,9 +124,9 @@ public static class EntityDtoMappings
             {
                 result.Add(new CarouselPhotoDto
                 {
-                    Url = element.TryGetProperty("Url", out var url) ? url.GetString() ?? string.Empty : string.Empty,
-                    Tag = element.TryGetProperty("Tag", out var tag) ? tag.GetString() ?? string.Empty : string.Empty,
-                    Title = element.TryGetProperty("Title", out var title) ? title.GetString() ?? string.Empty : string.Empty,
+                    Url = element.TryGetProperty("Url", out JsonElement url) ? url.GetString() ?? string.Empty : string.Empty,
+                    Tag = element.TryGetProperty("Tag", out JsonElement tag) ? tag.GetString() ?? string.Empty : string.Empty,
+                    Title = element.TryGetProperty("Title", out JsonElement title) ? title.GetString() ?? string.Empty : string.Empty,
                 });
             }
         }

@@ -34,7 +34,7 @@ public static class PasswordHasher
         }
 
         byte[] computed = Rfc2898DeriveBytes.Pbkdf2(password, saltBytes, Iterations, HashAlgorithmName.SHA512, KeySize);
-        var expected = Convert.FromBase64String(storedHash);
+        byte[] expected = Convert.FromBase64String(storedHash);
         return CryptographicOperations.FixedTimeEquals(computed, expected);
     }
 }
