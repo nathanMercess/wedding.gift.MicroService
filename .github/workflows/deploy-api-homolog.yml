@@ -15,7 +15,7 @@ jobs:
 
     env:
       PROJECT_ID: weddinggift
-      REGION: southamerica-east1
+      REGION: us-central1
       REPOSITORY: wedding-gift
       IMAGE_NAME: api
       SERVICE_NAME: wedding-gift-api-homolog
