@@ -142,17 +142,20 @@ app.MapGet("/health/db", async (AppDbContext db) =>
 {
     try
     {
-        var canConnect = await db.Database.CanConnectAsync();
+        await db.Database.OpenConnectionAsync();
+        await db.Database.CloseConnectionAsync();
 
-        return canConnect
-            ? Results.Ok(new { database = "ok" })
-            : Results.Problem("Database connection failed");
+        return Results.Ok(new
+        {
+            database = "ok",
+            message = "Database connection successful"
+        });
     }
     catch (Exception ex)
     {
         return Results.Problem(
-            detail: ex.ToString(),
             title: "Database connection exception",
+            detail: ex.ToString(),
             statusCode: 500
         );
     }
