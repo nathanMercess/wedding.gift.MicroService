@@ -161,6 +161,23 @@ app.MapGet("/health/db", async (AppDbContext db) =>
     }
 });
 
+app.MapGet("/debug/db-config", (IConfiguration configuration) =>
+{
+    var connectionString = configuration.GetConnectionString("DefaultConnection");
+
+    if (string.IsNullOrWhiteSpace(connectionString))
+        return Results.Problem("Connection string not found");
+
+    var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(connectionString);
+
+    return Results.Ok(new
+    {
+        dataSource = builder.DataSource,
+        initialCatalog = builder.InitialCatalog,
+        userId = builder.UserID
+    });
+});
+
 await EnsureBootstrapAdminAsync(app.Services, builder.Configuration);
 
 app.UseExceptionHandler(errorApp =>
