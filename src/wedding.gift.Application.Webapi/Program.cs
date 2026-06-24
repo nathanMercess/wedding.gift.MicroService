@@ -138,6 +138,15 @@ if (runMigrations)
     await db.Database.MigrateAsync();
 }
 
+app.MapGet("/health/db", async (AppDbContext db) =>
+{
+    var canConnect = await db.Database.CanConnectAsync();
+
+    return canConnect
+        ? Results.Ok(new { database = "ok" })
+        : Results.Problem("Database connection failed");
+});
+
 await EnsureBootstrapAdminAsync(app.Services, builder.Configuration);
 
 app.UseExceptionHandler(errorApp =>
