@@ -138,43 +138,50 @@ if (runMigrations)
     await db.Database.MigrateAsync();
 }
 
-app.MapGet("/health/db", async (AppDbContext db) =>
+app.MapGet("/debug/smtp-config", (IConfiguration configuration) =>
 {
+    var host = configuration["Smtp:Host"];
+    var port = configuration["Smtp:Port"];
+    var username = configuration["Smtp:Username"];
+    var fromEmail = configuration["Smtp:FromEmail"];
+    var fromName = configuration["Smtp:FromName"];
+    var enableSsl = configuration["Smtp:EnableSsl"];
+    var password = configuration["Smtp:Password"];
+
+    string? fromEmailParseError = null;
+    string? usernameParseError = null;
+
     try
     {
-        await db.Database.OpenConnectionAsync();
-        await db.Database.CloseConnectionAsync();
-
-        return Results.Ok(new
-        {
-            database = "ok",
-            message = "Database connection successful"
-        });
+        _ = new System.Net.Mail.MailAddress(fromEmail ?? string.Empty, fromName);
     }
     catch (Exception ex)
     {
-        return Results.Problem(
-            title: "Database connection exception",
-            detail: ex.ToString(),
-            statusCode: 500
-        );
+        fromEmailParseError = ex.Message;
     }
-});
 
-app.MapGet("/debug/db-config", (IConfiguration configuration) =>
-{
-    var connectionString = configuration.GetConnectionString("DefaultConnection");
-
-    if (string.IsNullOrWhiteSpace(connectionString))
-        return Results.Problem("Connection string not found");
-
-    var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(connectionString);
+    try
+    {
+        _ = new System.Net.Mail.MailAddress(username ?? string.Empty);
+    }
+    catch (Exception ex)
+    {
+        usernameParseError = ex.Message;
+    }
 
     return Results.Ok(new
     {
-        dataSource = builder.DataSource,
-        initialCatalog = builder.InitialCatalog,
-        userId = builder.UserID
+        host,
+        port,
+        username,
+        fromEmail,
+        fromName,
+        enableSsl,
+        hasPassword = !string.IsNullOrWhiteSpace(password),
+        fromEmailIsValid = fromEmailParseError is null,
+        usernameIsValid = usernameParseError is null,
+        fromEmailParseError,
+        usernameParseError
     });
 });
 
