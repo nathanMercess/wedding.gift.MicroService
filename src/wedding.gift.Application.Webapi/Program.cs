@@ -140,11 +140,22 @@ if (runMigrations)
 
 app.MapGet("/health/db", async (AppDbContext db) =>
 {
-    var canConnect = await db.Database.CanConnectAsync();
+    try
+    {
+        var canConnect = await db.Database.CanConnectAsync();
 
-    return canConnect
-        ? Results.Ok(new { database = "ok" })
-        : Results.Problem("Database connection failed");
+        return canConnect
+            ? Results.Ok(new { database = "ok" })
+            : Results.Problem("Database connection failed");
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(
+            detail: ex.ToString(),
+            title: "Database connection exception",
+            statusCode: 500
+        );
+    }
 });
 
 await EnsureBootstrapAdminAsync(app.Services, builder.Configuration);
