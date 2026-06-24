@@ -5,7 +5,7 @@ using wedding.gift.Domain.Model.Entities;
 
 namespace wedding.gift.Infra.Implementations.Mappings;
 
-public class UserMapping : IEntityTypeConfiguration<User>
+public sealed class UserMapping : IEntityTypeConfiguration<User>
 {
     public void Configure(EntityTypeBuilder<User> builder)
     {

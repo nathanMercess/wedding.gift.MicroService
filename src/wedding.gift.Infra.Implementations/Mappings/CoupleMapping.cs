@@ -4,7 +4,7 @@ using wedding.gift.Domain.Model.Entities;
 
 namespace wedding.gift.Infra.Implementations.Mappings;
 
-public class CoupleMapping : IEntityTypeConfiguration<Couple>
+public sealed class CoupleMapping : IEntityTypeConfiguration<Couple>
 {
     public void Configure(EntityTypeBuilder<Couple> builder)
     {

@@ -4,7 +4,7 @@ using wedding.gift.Domain.Model.Entities;
 
 namespace wedding.gift.Infra.Implementations.Mappings;
 
-public class ContributionMapping : IEntityTypeConfiguration<Contribution>
+public sealed class ContributionMapping : IEntityTypeConfiguration<Contribution>
 {
     public void Configure(EntityTypeBuilder<Contribution> builder)
     {

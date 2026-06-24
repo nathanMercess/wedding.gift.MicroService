@@ -4,7 +4,7 @@ using wedding.gift.Domain.Model.Entities;
 
 namespace wedding.gift.Infra.Implementations.Mappings;
 
-public class GiftMapping : IEntityTypeConfiguration<Gift>
+public sealed class GiftMapping : IEntityTypeConfiguration<Gift>
 {
     public void Configure(EntityTypeBuilder<Gift> builder)
     {
@@ -25,7 +25,7 @@ public class GiftMapping : IEntityTypeConfiguration<Gift>
 
     private static IEnumerable<Gift> GetSeedGifts()
     {
-        var createdAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        DateTime createdAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
         return
         [

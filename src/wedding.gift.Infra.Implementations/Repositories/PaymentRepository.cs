@@ -5,7 +5,7 @@ using wedding.gift.Infra.Implementations.DataContext;
 
 namespace wedding.gift.Infra.Implementations.Repositories;
 
-public class PaymentRepository(AppDbContext context) : IPaymentRepository
+public sealed class PaymentRepository(AppDbContext context) : IPaymentRepository
 {
     public async Task SaveAsync(Payment payment, CancellationToken cancellationToken)
     {
@@ -36,7 +36,7 @@ public class PaymentRepository(AppDbContext context) : IPaymentRepository
 
     public async Task UpdateStatusAsync(string orderId, string status, string? statusDetail, CancellationToken cancellationToken)
     {
-        var payment = await context.Payments
+        Payment payment = await context.Payments
             .FirstOrDefaultAsync(p => p.OrderId == orderId, cancellationToken);
 
         if (payment != null)

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using wedding.gift.Domain.Model.Entities;
 
 namespace wedding.gift.Infra.Implementations.DataContext;
@@ -20,9 +21,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        var utcNow = DateTime.UtcNow;
+        DateTime utcNow = DateTime.UtcNow;
 
-        foreach (var entry in ChangeTracker.Entries<Gift>())
+        foreach (EntityEntry<Gift> entry in ChangeTracker.Entries<Gift>())
         {
             if (entry.State == EntityState.Added)
             {
@@ -35,7 +36,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             }
         }
 
-        foreach (var entry in ChangeTracker.Entries<User>())
+        foreach (EntityEntry<User> entry in ChangeTracker.Entries<User>())
         {
             if (entry.State == EntityState.Added)
             {
@@ -48,7 +49,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             }
         }
 
-        foreach (var entry in ChangeTracker.Entries<Couple>())
+        foreach (EntityEntry<Couple> entry in ChangeTracker.Entries<Couple>())
         {
             if (entry.State == EntityState.Added)
             {
@@ -61,7 +62,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             }
         }
 
-        foreach (var entry in ChangeTracker.Entries<Payment>())
+        foreach (EntityEntry<Payment> entry in ChangeTracker.Entries<Payment>())
         {
             if (entry.State == EntityState.Added)
             {

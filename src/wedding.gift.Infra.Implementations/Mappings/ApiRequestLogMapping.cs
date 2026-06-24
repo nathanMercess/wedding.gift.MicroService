@@ -4,7 +4,7 @@ using wedding.gift.Domain.Model.Entities;
 
 namespace wedding.gift.Infra.Implementations.Mappings;
 
-public class ApiRequestLogMapping : IEntityTypeConfiguration<ApiRequestLog>
+public sealed class ApiRequestLogMapping : IEntityTypeConfiguration<ApiRequestLog>
 {
     public void Configure(EntityTypeBuilder<ApiRequestLog> builder)
     {

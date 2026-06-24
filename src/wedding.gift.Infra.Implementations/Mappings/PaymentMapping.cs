@@ -4,7 +4,7 @@ using wedding.gift.Domain.Model.Entities;
 
 namespace wedding.gift.Infra.Implementations.Mappings;
 
-public class PaymentMapping : IEntityTypeConfiguration<Payment>
+public sealed class PaymentMapping : IEntityTypeConfiguration<Payment>
 {
     public void Configure(EntityTypeBuilder<Payment> builder)
     {
