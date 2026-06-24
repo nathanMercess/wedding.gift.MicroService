@@ -1,6 +1,6 @@
 namespace wedding.gift.Domain.Model.Entities;
 
-public class ApiRequestLog
+public sealed class ApiRequestLog
 {
     public Guid Id { get; set; }
     public DateTime StartedAtUtc { get; set; }

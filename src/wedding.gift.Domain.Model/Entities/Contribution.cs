@@ -2,7 +2,7 @@ using wedding.gift.Crosscutting.Constants;
 
 namespace wedding.gift.Domain.Model.Entities;
 
-public class Contribution
+public sealed class Contribution
 {
     public Guid Id { get; set; }
     public Guid GiftId { get; set; }

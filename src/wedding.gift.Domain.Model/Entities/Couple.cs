@@ -1,6 +1,6 @@
 namespace wedding.gift.Domain.Model.Entities;
 
-public class Couple
+public sealed class Couple
 {
     public Guid Id { get; set; }
     public string Names { get; set; } = string.Empty;

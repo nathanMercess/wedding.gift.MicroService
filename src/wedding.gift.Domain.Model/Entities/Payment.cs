@@ -1,6 +1,6 @@
 namespace wedding.gift.Domain.Model.Entities;
 
-public class Payment
+public sealed class Payment
 {
     public Guid Id { get; set; }
     public Guid GiftId { get; set; }
