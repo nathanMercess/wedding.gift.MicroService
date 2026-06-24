@@ -1,7 +1,6 @@
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.EntityFrameworkCore;
@@ -138,62 +137,7 @@ using (var scope = app.Services.CreateScope())
 
 await EnsureBootstrapAdminAsync(app.Services, builder.Configuration);
 
-app.UseExceptionHandler(errorApp =>
-{
-    errorApp.Run(async context =>
-    {
-        var exception = context.Features.Get<IExceptionHandlerFeature>()?.Error;
-        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-        var correlationId = context.TraceIdentifier;
-        var queue = context.RequestServices.GetRequiredService<IBackgroundTaskQueue>();
-
-        if (exception is AppException appEx)
-        {
-            logger.LogWarning(exception, "Erro de negócio {Status} em {Path}. CorrelationId={CorrelationId}",
-                appEx.StatusCode, context.Request.Path, correlationId);
-        }
-        else if (exception is not null)
-        {
-            logger.LogError(exception, "Erro não tratado em {Path}. CorrelationId={CorrelationId}",
-                context.Request.Path, correlationId);
-        }
-
-        if (exception is not null)
-        {
-            var subject = $"[wedding.gift] {exception.GetType().Name}: {exception.Message}";
-            var body = $"CorrelationId: {correlationId}\nPath: {context.Request.Path}\n" +
-                       $"Method: {context.Request.Method}\nTime: {DateTime.UtcNow:u}\n\n{exception}";
-
-            await queue.EnqueueAsync(async (sp, ct) =>
-            {
-                var emailSvc = sp.GetRequiredService<IEmailService>();
-                await emailSvc.SendErrorNotificationAsync(subject, body, ct);
-            });
-        }
-
-        var problem = exception switch
-        {
-            AppException appException => new ProblemDetails
-            {
-                Status = appException.StatusCode,
-                Title = appException.Title,
-                Detail = appException.Message
-            },
-            _ => new ProblemDetails
-            {
-                Status = StatusCodes.Status500InternalServerError,
-                Title = "Erro interno no servidor",
-                Detail = "Ocorreu um erro inesperado."
-            }
-        };
-        problem.Extensions["correlationId"] = correlationId;
-
-        context.Response.StatusCode = problem.Status ?? StatusCodes.Status500InternalServerError;
-        context.Response.ContentType = "application/problem+json";
-        await context.Response.WriteAsJsonAsync(problem);
-    });
-});
-
+app.UseGlobalExceptionHandler();
 app.UseCors("AngularDev");
 app.UseSwagger();
 app.UseSwaggerUI();
