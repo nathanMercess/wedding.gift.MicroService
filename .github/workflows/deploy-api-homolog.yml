@@ -62,4 +62,6 @@ jobs:
             --max-instances=2 \
             --port=8080 \
             --timeout=300 \
-            --set-env-vars=ASPNETCORE_ENVIRONMENT=Staging,ASPNETCORE_URLS=http://+:8080,Database__RunMigrations=false
+            --add-cloudsql-instances=weddinggift:us-central1:wedding-gift-sql-homolog \
+            --set-env-vars=ASPNETCORE_ENVIRONMENT=Staging,ASPNETCORE_URLS=http://+:8080,Database__RunMigrations=true \
+            --set-secrets=ConnectionStrings__DefaultConnection=wedding-gift-homolog-connection-string:latest
