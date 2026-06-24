@@ -9,7 +9,7 @@ namespace wedding.gift.Application.Webapi.Controllers;
 
 [Authorize(Roles = UserRoles.SuperAdmin)]
 [Route("admin/dashboard")]
-public class AdminDashboardController(IDashboardService dashboardService) : ApiControllerBase
+public sealed class AdminDashboardController(IDashboardService dashboardService) : ApiControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(DashboardResponseDto), StatusCodes.Status200OK)]
@@ -18,7 +18,7 @@ public class AdminDashboardController(IDashboardService dashboardService) : ApiC
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<DashboardResponseDto>> Get([FromQuery] DashboardQueryDto query, CancellationToken cancellationToken)
     {
-        var dashboard = await dashboardService.GetAsync(query, cancellationToken);
+        DashboardResponseDto dashboard = await dashboardService.GetAsync(query, cancellationToken);
         return Ok(dashboard);
     }
 }

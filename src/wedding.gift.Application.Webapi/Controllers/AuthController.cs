@@ -1,13 +1,12 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using wedding.gift.Application.Webapi.Controllers.Base;
 using wedding.gift.Crosscutting.Models.DTOs.Auth;
 using wedding.gift.Services.Contracts;
 
 namespace wedding.gift.Application.Webapi.Controllers;
 
-[ApiController]
-[Route("[controller]")]
-public class AuthController(IAuthService authService) : ControllerBase
+public sealed class AuthController(IAuthService authService) : ApiControllerBase
 {
     [AllowAnonymous]
     [HttpPost("login")]
@@ -16,7 +15,7 @@ public class AuthController(IAuthService authService) : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<LoginResponseDto>> Login([FromBody] LoginRequestDto dto, CancellationToken cancellationToken)
     {
-        var response = await authService.LoginAsync(dto, cancellationToken);
+        LoginResponseDto response = await authService.LoginAsync(dto, cancellationToken);
         return Ok(response);
     }
 
@@ -27,7 +26,7 @@ public class AuthController(IAuthService authService) : ControllerBase
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<RegisterResponseDto>> Register([FromBody] RegisterRequestDto dto, CancellationToken cancellationToken)
     {
-        var response = await authService.RegisterAsync(dto, cancellationToken);
+        RegisterResponseDto response = await authService.RegisterAsync(dto, cancellationToken);
         return CreatedAtAction(nameof(Register), new { id = response.Id }, response);
     }
 

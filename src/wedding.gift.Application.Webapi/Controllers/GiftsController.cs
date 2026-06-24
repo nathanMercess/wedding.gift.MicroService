@@ -2,12 +2,13 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using wedding.gift.Application.Webapi.Controllers.Base;
 using wedding.gift.Crosscutting.Models.DTOs;
+using wedding.gift.Domain.Model.Entities;
 using wedding.gift.Services.Contracts;
 using wedding.gift.Services.Implementations.Extensions;
 
 namespace wedding.gift.Application.Webapi.Controllers;
 
-public class GiftsController(IGiftService giftService) : ApiControllerBase
+public sealed class GiftsController(IGiftService giftService) : ApiControllerBase
 {
     [AllowAnonymous]
     [HttpGet]
@@ -16,7 +17,7 @@ public class GiftsController(IGiftService giftService) : ApiControllerBase
         [FromQuery] GiftQueryParams query,
         CancellationToken cancellationToken)
     {
-        var result = await giftService.GetAllAsync(query, cancellationToken);
+        PagedResult<GiftResponseDto> result = await giftService.GetAllAsync(query, cancellationToken);
         return Ok(result);
     }
 
@@ -25,7 +26,7 @@ public class GiftsController(IGiftService giftService) : ApiControllerBase
     [ProducesResponseType(typeof(GiftStatsDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<GiftStatsDto>> GetStats(CancellationToken cancellationToken)
     {
-        var stats = await giftService.GetStatsAsync(cancellationToken);
+        GiftStatsDto stats = await giftService.GetStatsAsync(cancellationToken);
         return Ok(stats);
     }
 
@@ -35,7 +36,7 @@ public class GiftsController(IGiftService giftService) : ApiControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<GiftResponseDto>> GetById(Guid id, CancellationToken cancellationToken)
     {
-        var gift = await giftService.GetByIdAsync(id, cancellationToken);
+        Gift gift = await giftService.GetByIdAsync(id, cancellationToken);
         return Ok(gift.ToResponseDto());
     }
 
@@ -47,7 +48,7 @@ public class GiftsController(IGiftService giftService) : ApiControllerBase
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<ContributionResponseDto>> Contribute(Guid id, [FromBody] ContributeDto dto, CancellationToken cancellationToken)
     {
-        var contribution = await giftService.ContributeAsync(id, dto, cancellationToken);
+        Contribution contribution = await giftService.ContributeAsync(id, dto, cancellationToken);
         return CreatedAtAction(nameof(GetById), new { id }, contribution.ToResponseDto());
     }
 
@@ -57,7 +58,7 @@ public class GiftsController(IGiftService giftService) : ApiControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<IEnumerable<ContributionResponseDto>>> GetContributionsByGiftId(Guid giftId, CancellationToken cancellationToken)
     {
-        var contributions = await giftService.GetContributionsByGiftIdAsync(giftId, cancellationToken);
+        IReadOnlyList<Contribution> contributions = await giftService.GetContributionsByGiftIdAsync(giftId, cancellationToken);
         return Ok(contributions.Select(x => x.ToResponseDto()));
     }
 }

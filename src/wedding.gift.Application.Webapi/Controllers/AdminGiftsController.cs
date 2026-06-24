@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using wedding.gift.Application.Webapi.Controllers.Base;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
+using wedding.gift.Domain.Model.Entities;
 using wedding.gift.Services.Contracts;
 using wedding.gift.Services.Implementations.Extensions;
 
@@ -10,7 +11,7 @@ namespace wedding.gift.Application.Webapi.Controllers;
 
 [Authorize(Roles = UserRoles.AdminOrSuperAdmin)]
 [Route("admin/gifts")]
-public class AdminGiftsController(IGiftService giftService, IGiftEnrichService giftEnrichService) : ApiControllerBase
+public sealed class AdminGiftsController(IGiftService giftService, IGiftEnrichService giftEnrichService) : ApiControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(PagedResult<GiftResponseDto>), StatusCodes.Status200OK)]
@@ -18,7 +19,7 @@ public class AdminGiftsController(IGiftService giftService, IGiftEnrichService g
         [FromQuery] GiftQueryParams query,
         CancellationToken cancellationToken)
     {
-        var result = await giftService.GetAllAsync(query, cancellationToken);
+        PagedResult<GiftResponseDto> result = await giftService.GetAllAsync(query, cancellationToken);
         return Ok(result);
     }
 
@@ -27,7 +28,7 @@ public class AdminGiftsController(IGiftService giftService, IGiftEnrichService g
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<GiftResponseDto>> Create([FromBody] GiftCreateDto dto, CancellationToken cancellationToken)
     {
-        var created = await giftService.CreateAsync(dto, cancellationToken);
+        Gift created = await giftService.CreateAsync(dto, cancellationToken);
         return CreatedAtAction(nameof(GetAll), new { id = created.Id }, created.ToResponseDto());
     }
 
@@ -37,7 +38,7 @@ public class AdminGiftsController(IGiftService giftService, IGiftEnrichService g
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<GiftResponseDto>> Update(Guid id, [FromBody] GiftUpdateDto dto, CancellationToken cancellationToken)
     {
-        var updated = await giftService.UpdateAsync(id, dto, cancellationToken);
+        Gift updated = await giftService.UpdateAsync(id, dto, cancellationToken);
         return Ok(updated.ToResponseDto());
     }
 
@@ -46,7 +47,7 @@ public class AdminGiftsController(IGiftService giftService, IGiftEnrichService g
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<GiftResponseDto>> UpdateAvailability(Guid id, [FromBody] GiftAvailabilityUpdateDto dto, CancellationToken cancellationToken)
     {
-        var updated = await giftService.UpdateAvailabilityAsync(id, dto.Available, cancellationToken);
+        Gift updated = await giftService.UpdateAvailabilityAsync(id, dto.Available, cancellationToken);
         return Ok(updated.ToResponseDto());
     }
 
@@ -64,7 +65,7 @@ public class AdminGiftsController(IGiftService giftService, IGiftEnrichService g
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<GiftEnrichResponseDto>> Enrich([FromBody] GiftEnrichRequestDto dto, CancellationToken cancellationToken)
     {
-        var result = await giftEnrichService.EnrichAsync(dto.Url, cancellationToken);
+        GiftEnrichResponseDto result = await giftEnrichService.EnrichAsync(dto.Url, cancellationToken);
         return Ok(result);
     }
 }

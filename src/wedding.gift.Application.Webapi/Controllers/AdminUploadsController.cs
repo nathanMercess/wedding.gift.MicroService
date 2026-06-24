@@ -10,20 +10,17 @@ namespace wedding.gift.Application.Webapi.Controllers;
 
 [Authorize(Roles = UserRoles.AdminOrSuperAdmin)]
 [Route("admin/uploads")]
-public class AdminUploadsController(IImageUploadService imageUploadService) : ApiControllerBase
+public sealed class AdminUploadsController(IImageUploadService imageUploadService) : ApiControllerBase
 {
     [HttpPost("image")]
     [ProducesResponseType(typeof(ImageUploadResponseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<ImageUploadResponseDto>> UploadImage(IFormFile file, CancellationToken cancellationToken)
     {
-        if (file == null)
-        {
-            throw new BadRequestException("Selecione uma imagem para enviar.");
-        }
+        if (file == null) throw new BadRequestException("Selecione uma imagem para enviar.");
 
-        await using var stream = file.OpenReadStream();
-        var url = await imageUploadService.UploadImageAsync(stream, file.FileName, file.ContentType, file.Length, cancellationToken);
+        await using Stream stream = file.OpenReadStream();
+        string url = await imageUploadService.UploadImageAsync(stream, file.FileName, file.ContentType, file.Length, cancellationToken);
 
         return Ok(new ImageUploadResponseDto { Url = url });
     }

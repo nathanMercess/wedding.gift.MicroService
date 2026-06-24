@@ -3,19 +3,20 @@ using Microsoft.AspNetCore.Mvc;
 using wedding.gift.Application.Webapi.Controllers.Base;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
+using wedding.gift.Domain.Model.Entities;
 using wedding.gift.Services.Contracts;
 using wedding.gift.Services.Implementations.Extensions;
 
 namespace wedding.gift.Application.Webapi.Controllers;
 
-public class ContributionsController(IContributionService contributionService) : ApiControllerBase
+public sealed class ContributionsController(IContributionService contributionService) : ApiControllerBase
 {
     [AllowAnonymous]
     [HttpGet]
     [ProducesResponseType(typeof(IEnumerable<ContributionResponseDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IEnumerable<ContributionResponseDto>>> GetAll(CancellationToken cancellationToken)
     {
-        var contributions = await contributionService.GetAllAsync(cancellationToken);
+        IReadOnlyList<Contribution> contributions = await contributionService.GetAllAsync(cancellationToken);
         return Ok(contributions.Select(x => x.ToResponseDto()));
     }
 
@@ -25,7 +26,7 @@ public class ContributionsController(IContributionService contributionService) :
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ContributionResponseDto>> GetById(Guid id, CancellationToken cancellationToken)
     {
-        var contribution = await contributionService.GetByIdAsync(id, cancellationToken);
+        Contribution contribution = await contributionService.GetByIdAsync(id, cancellationToken);
         return Ok(contribution.ToResponseDto());
     }
 
@@ -37,7 +38,7 @@ public class ContributionsController(IContributionService contributionService) :
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<ContributionResponseDto>> Create([FromBody] ContributionCreateDto dto, CancellationToken cancellationToken)
     {
-        var created = await contributionService.CreateAsync(dto, cancellationToken);
+        Contribution created = await contributionService.CreateAsync(dto, cancellationToken);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created.ToResponseDto());
     }
 }

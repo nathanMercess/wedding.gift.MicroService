@@ -2,21 +2,25 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Primitives;
+using wedding.gift.Application.Webapi.Controllers.Base;
+using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Services.Contracts;
 
 namespace wedding.gift.Application.Webapi.Controllers;
 
-[ApiController]
 [AllowAnonymous]
 [Route("webhook")]
 [Route("~/webhook")]
-public class WebhookController(
+public sealed class WebhookController(
     IBackgroundTaskQueue queue,
     IConfiguration config,
     IWebHostEnvironment env,
-    ILogger<WebhookController> logger) : ControllerBase
+    ILogger<WebhookController> logger) : ApiControllerBase
 {
     [HttpPost("mercadopago")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> ReceiveMercadoPagoNotification(
         [FromQuery(Name = "data.id")] string? dataId,
         [FromQuery] string? type,
@@ -27,10 +31,9 @@ public class WebhookController(
             Request.Path,
             type,
             dataId,
-            Request.Headers.TryGetValue("x-request-id", out var requestIdHeader) ? requestIdHeader.ToString() : "-");
+            Request.Headers.TryGetValue("x-request-id", out StringValues requestIdHeader) ? requestIdHeader.ToString() : "-");
 
-        if (!ValidateMercadoPagoSignature(Request, dataId))
-            return Unauthorized();
+        if (!ValidateMercadoPagoSignature(Request, dataId)) return Unauthorized();
 
         if (type != "payment" && type != "order")
         {
@@ -44,16 +47,12 @@ public class WebhookController(
             return Ok();
         }
 
-        // Desacopla o processamento e responde 200 IMEDIATAMENTE — evita que o MP
-        // cancele/reenvie a notificação por demora (timeout preventivo).
         await queue.EnqueueAsync(async (sp, ct) =>
         {
-            var mercadoPago = sp.GetRequiredService<IMercadoPagoService>();
-            var payments = sp.GetRequiredService<IPaymentService>();
+            IMercadoPagoService mercadoPago = sp.GetRequiredService<IMercadoPagoService>();
+            IPaymentService payments = sp.GetRequiredService<IPaymentService>();
 
-            // Regra de Ouro: confirma o status REAL via GET no Mercado Pago,
-            // sem confiar cegamente no payload do webhook.
-            var status = await mercadoPago.GetOrderStatusAsync(dataId, ct);
+            PaymentResponseDto status = await mercadoPago.GetOrderStatusAsync(dataId, ct);
 
             if (status.Status == "error")
             {
@@ -69,8 +68,7 @@ public class WebhookController(
             {
                 await payments.ConfirmPaymentAsync(status.MpOrderId, status.Status, ct);
 
-                if (status.Status == "approved")
-                    await payments.ProcessApprovedPixPaymentAsync(status.MpOrderId, ct);
+                if (status.Status == "approved") await payments.ProcessApprovedPixPaymentAsync(status.MpOrderId, ct);
             }
         });
 
@@ -79,34 +77,33 @@ public class WebhookController(
 
     private bool ValidateMercadoPagoSignature(HttpRequest request, string? dataId)
     {
-        var secret = config["MercadoPago:WebhookSecret"];
+        string secret = config["MercadoPago:WebhookSecret"] ?? string.Empty;
 
         if (string.IsNullOrWhiteSpace(secret) || secret == "SECRET_GERADO_NO_PAINEL_DE_WEBHOOKS")
         {
-            // FAIL-CLOSED: sem segredo configurado, só liberamos em Development.
-            if (env.IsDevelopment())
-                return true;
+            if (env.IsDevelopment()) return true;
 
-            logger.LogError("MercadoPago:WebhookSecret não configurado — rejeitando webhook (fail-closed).");
+            logger.LogError("MercadoPago:WebhookSecret nao configurado, rejeitando webhook.");
             return false;
         }
 
-        if (!request.Headers.TryGetValue("x-signature", out var signatureHeader))
+        if (!request.Headers.TryGetValue("x-signature", out StringValues signatureHeader))
         {
             logger.LogWarning("Webhook Mercado Pago rejeitado: header x-signature ausente.");
             return false;
         }
 
-        if (!request.Headers.TryGetValue("x-request-id", out var requestIdHeader))
+        if (!request.Headers.TryGetValue("x-request-id", out StringValues requestIdHeader))
         {
             logger.LogWarning("Webhook Mercado Pago rejeitado: header x-request-id ausente.");
             return false;
         }
 
         string? ts = null, v1 = null;
-        foreach (var part in signatureHeader.ToString().Split(','))
+
+        foreach (string part in signatureHeader.ToString().Split(','))
         {
-            var kv = part.Split('=', 2);
+            string[] kv = part.Split('=', 2);
             if (kv.Length != 2) continue;
             if (kv[0].Trim() == "ts") ts = kv[1].Trim();
             if (kv[0].Trim() == "v1") v1 = kv[1].Trim();
@@ -118,12 +115,13 @@ public class WebhookController(
             return false;
         }
 
-        var manifest = $"id:{dataId};request-id:{requestIdHeader};ts:{ts};";
+        string manifest = $"id:{dataId};request-id:{requestIdHeader};ts:{ts};";
 
-        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
-        var expected = hmac.ComputeHash(Encoding.UTF8.GetBytes(manifest));
+        using HMACSHA256 hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
+        byte[] expected = hmac.ComputeHash(Encoding.UTF8.GetBytes(manifest));
 
         byte[] provided;
+
         try
         {
             provided = Convert.FromHexString(v1);
@@ -134,11 +132,9 @@ public class WebhookController(
             return false;
         }
 
-        // Comparação em tempo constante (evita timing attack).
-        var isValid = CryptographicOperations.FixedTimeEquals(expected, provided);
+        bool isValid = CryptographicOperations.FixedTimeEquals(expected, provided);
 
-        if (!isValid)
-            logger.LogWarning("Webhook Mercado Pago rejeitado: assinatura invalida. DataId={DataId}.", dataId);
+        if (!isValid) logger.LogWarning("Webhook Mercado Pago rejeitado: assinatura invalida. DataId={DataId}.", dataId);
 
         return isValid;
     }
