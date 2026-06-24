@@ -129,8 +129,11 @@ builder.Services.AddServices();
 
 WebApplication app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
+bool runMigrations = builder.Configuration.GetValue<bool>("Database:RunMigrations");
+
+if (runMigrations)
 {
+    using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await db.Database.MigrateAsync();
 }

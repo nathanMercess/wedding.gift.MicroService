@@ -61,4 +61,5 @@ jobs:
             --min-instances=0 \
             --max-instances=2 \
             --port=8080 \
-            --set-env-vars=ASPNETCORE_ENVIRONMENT=Staging
+            --timeout=300 \
+            --set-env-vars=ASPNETCORE_ENVIRONMENT=Staging,ASPNETCORE_URLS=http://+:8080,Database__RunMigrations=false
