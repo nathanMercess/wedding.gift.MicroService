@@ -21,7 +21,7 @@ public sealed class MercadoPagoService(
         CardPaymentRequestDto request,
         CancellationToken cancellationToken)
     {
-        var order = new MercadoPagoOrderRequest
+        MercadoPagoOrderRequest order = new()
         {
             Type = "online",
             ProcessingMode = "automatic",
@@ -62,7 +62,7 @@ public sealed class MercadoPagoService(
         PixPaymentRequestDto request,
         CancellationToken cancellationToken)
     {
-        var order = new MercadoPagoOrderRequest
+        MercadoPagoOrderRequest order = new()
         {
             Type = "online",
             ProcessingMode = "automatic",
@@ -101,9 +101,9 @@ public sealed class MercadoPagoService(
         string mpOrderId,
         CancellationToken cancellationToken)
     {
-        var baseUrl = configuration["MercadoPago:BaseUrl"];
+        string baseUrl = configuration["MercadoPago:BaseUrl"];
 
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Get, $"{baseUrl}/v1/orders/{mpOrderId}");
+        using HttpRequestMessage httpRequest = new(HttpMethod.Get, $"{baseUrl}/v1/orders/{mpOrderId}");
         ApplyAuth(httpRequest);
 
         HttpResponseMessage response;
@@ -121,12 +121,12 @@ public sealed class MercadoPagoService(
             return ProviderError("Falha de comunicação ao consultar o status do pagamento.");
         }
 
-        var requestId = ExtractRequestId(response);
+        string requestId = ExtractRequestId(response);
 
         if (!response.IsSuccessStatusCode)
         {
-            var raw = await response.Content.ReadAsStringAsync(cancellationToken);
-            var mpError = TryParseMpError(raw);
+            string raw = await response.Content.ReadAsStringAsync(cancellationToken);
+            MpError mpError = TryParseMpError(raw);
 
             logger.LogError("Erro MP {Status} ao consultar order {MpOrderId}. x-request-id={RequestId} payload={Payload}",
                 (int)response.StatusCode, mpOrderId, requestId, raw);
@@ -140,9 +140,9 @@ public sealed class MercadoPagoService(
             };
         }
 
-        var order = await response.Content.ReadFromJsonAsync<MercadoPagoOrderResponse>(cancellationToken: cancellationToken);
+        MercadoPagoOrderResponse order = await response.Content.ReadFromJsonAsync<MercadoPagoOrderResponse>(cancellationToken: cancellationToken);
 
-        var dto = MapResponse(order);
+        PaymentResponseDto dto = MapResponse(order);
         dto.MpRequestId = requestId;
         return dto;
     }
@@ -151,17 +151,15 @@ public sealed class MercadoPagoService(
         MercadoPagoOrderRequest order,
         CancellationToken cancellationToken)
     {
-        var baseUrl = configuration["MercadoPago:BaseUrl"];
+        string baseUrl = configuration["MercadoPago:BaseUrl"];
 
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/v1/orders")
+        using HttpRequestMessage httpRequest = new(HttpMethod.Post, $"{baseUrl}/v1/orders")
         {
             Content = JsonContent.Create(order)
         };
         ApplyAuth(httpRequest);
 
-        // Idempotência DETERMINÍSTICA por tentativa lógica (order + método):
-        // o mesmo clique/retry reusa a chave -> o MP deduplica -> sem cobrança duplicada.
-        var methodId = order.Transactions?.Payments?.FirstOrDefault()?.PaymentMethod?.Id ?? "order";
+        string methodId = order.Transactions?.Payments?.FirstOrDefault()?.PaymentMethod?.Id ?? "order";
         httpRequest.Headers.Add("X-Idempotency-Key", $"{order.ExternalReference}:{methodId}");
 
         HttpResponseMessage response;
@@ -179,12 +177,12 @@ public sealed class MercadoPagoService(
             return ProviderError("Falha de comunicação com o provedor de pagamento.");
         }
 
-        var requestId = ExtractRequestId(response);
+        string requestId = ExtractRequestId(response);
 
         if (!response.IsSuccessStatusCode)
         {
-            var raw = await response.Content.ReadAsStringAsync(cancellationToken);
-            var mpError = TryParseMpError(raw);
+            string raw = await response.Content.ReadAsStringAsync(cancellationToken);
+            MpError mpError = TryParseMpError(raw);
 
             logger.LogError("Erro MP {Status} ao criar order. x-request-id={RequestId} ExternalReference={Ref} payload={Payload}",
                 (int)response.StatusCode, requestId, order.ExternalReference, raw);
@@ -198,21 +196,21 @@ public sealed class MercadoPagoService(
             };
         }
 
-        var result = await response.Content.ReadFromJsonAsync<MercadoPagoOrderResponse>(cancellationToken: cancellationToken);
+        MercadoPagoOrderResponse result = await response.Content.ReadFromJsonAsync<MercadoPagoOrderResponse>(cancellationToken: cancellationToken);
 
-        var dto = MapResponse(result);
+        PaymentResponseDto dto = MapResponse(result);
         dto.MpRequestId = requestId;
         return dto;
     }
 
     private void ApplyAuth(HttpRequestMessage request)
     {
-        var accessToken = configuration["MercadoPago:AccessToken"];
+        string accessToken = configuration["MercadoPago:AccessToken"];
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
     }
 
     private static string? ExtractRequestId(HttpResponseMessage response)
-        => response.Headers.TryGetValues("x-request-id", out var values) ? values.FirstOrDefault() : null;
+        => response.Headers.TryGetValues("x-request-id", out IEnumerable<string> values) ? values.FirstOrDefault() : null;
 
     private static PaymentResponseDto ProviderError(string message, string? requestId = null) => new()
     {
@@ -239,7 +237,7 @@ public sealed class MercadoPagoService(
 
     private static string MapMpError(int httpStatus, MpError? error)
     {
-        var code = error?.Code
+        string code = error?.Code
             ?? error?.Cause?.FirstOrDefault()?.Code
             ?? error?.Errors?.FirstOrDefault()?.Code;
 
@@ -260,15 +258,14 @@ public sealed class MercadoPagoService(
 
     private PaymentResponseDto MapResponse(MercadoPagoOrderResponse? order)
     {
-        var payment = order?.Transactions?.Payments?.FirstOrDefault();
+        OrderResponsePayment payment = order?.Transactions?.Payments?.FirstOrDefault();
 
-        // "processed" no nível da Order equivale a "approved"
-        var orderStatus = order?.Status == "processed" ? "approved" : order?.Status;
-        var paymentStatus = payment?.Status == "processed" ? "approved" : payment?.Status;
-        var finalStatus = paymentStatus ?? orderStatus ?? "error";
-        var statusDetail = payment?.StatusDetail ?? order?.StatusDetail;
+        string orderStatus = order?.Status == "processed" ? "approved" : order?.Status;
+        string paymentStatus = payment?.Status == "processed" ? "approved" : payment?.Status;
+        string finalStatus = paymentStatus ?? orderStatus ?? "error";
+        string statusDetail = payment?.StatusDetail ?? order?.StatusDetail;
 
-        var errorCode = finalStatus switch
+        string errorCode = finalStatus switch
         {
             "rejected" => statusDetail == "cc_rejected_card_disabled"
                 ? PaymentErrorCodes.InvalidCardToken

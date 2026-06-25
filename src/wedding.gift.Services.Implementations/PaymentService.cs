@@ -1,5 +1,6 @@
 using System.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using wedding.gift.Crosscutting.Constants;
@@ -91,7 +92,7 @@ public sealed class PaymentService(
         if (string.IsNullOrWhiteSpace(request.PayerDocNumber))
             return await BuildErrorResponseAsync("card", "validation", "PayerDocNumber is required.", PaymentErrorCodes.ValidationError, cancellationToken);
 
-        var gift = await dbContext.Gifts
+        Gift gift = await dbContext.Gifts
             .Include(x => x.Contributions)
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == request.GiftId, cancellationToken);
@@ -102,10 +103,10 @@ public sealed class PaymentService(
         if (!gift.Available)
             return await BuildErrorResponseAsync("card", "validation", "Gift is not available.", PaymentErrorCodes.ValidationError, cancellationToken);
 
-        var raised = gift.Contributions
+        decimal raised = gift.Contributions
             .Where(x => x.Status == ContributionStatus.Paid)
             .Sum(x => x.Amount);
-        var remainingAmount = gift.Total - raised;
+        decimal remainingAmount = gift.Total - raised;
 
         if (request.NetAmount > remainingAmount)
             return await BuildErrorResponseAsync("card", "validation", "Net amount exceeds remaining gift amount.", PaymentErrorCodes.ValidationError, cancellationToken);
@@ -115,7 +116,7 @@ public sealed class PaymentService(
             if (!CreditCardFeePercentByInstallment.ContainsKey(request.Installments))
                 return await BuildErrorResponseAsync("card", "validation", "Installments exceed the card limit.", PaymentErrorCodes.ValidationError, cancellationToken);
 
-            var expectedAmount = CalculateExpectedCardAmount(request.NetAmount, CreditCardFeePercentForBrickAmount);
+            decimal expectedAmount = CalculateExpectedCardAmount(request.NetAmount, CreditCardFeePercentForBrickAmount);
 
             if (Math.Abs(expectedAmount - request.Amount) > 0.01m)
                 return await BuildErrorResponseAsync("card", "validation", "Amount does not match the configured credit card fee.", PaymentErrorCodes.ValidationError, cancellationToken);
@@ -125,7 +126,7 @@ public sealed class PaymentService(
             return await BuildErrorResponseAsync("card", "validation", "Debit card amount must match net amount.", PaymentErrorCodes.ValidationError, cancellationToken);
         }
 
-        var result = await mercadoPagoService.CreateCardOrderAsync(request, cancellationToken);
+        PaymentResponseDto result = await mercadoPagoService.CreateCardOrderAsync(request, cancellationToken);
 
         if (result.Status == "error")
             return await BuildErrorResponseAsync("card", "mercado_pago", result, cancellationToken);
@@ -213,7 +214,7 @@ public sealed class PaymentService(
         if (string.IsNullOrWhiteSpace(request.PayerDocNumber))
             return await BuildErrorResponseAsync("pix", "validation", "PayerDocNumber (CPF) is required for Pix.", PaymentErrorCodes.ValidationError, cancellationToken);
 
-        var result = await mercadoPagoService.CreatePixOrderAsync(request, cancellationToken);
+        PaymentResponseDto result = await mercadoPagoService.CreatePixOrderAsync(request, cancellationToken);
 
         if (result.Status == "error")
             return await BuildErrorResponseAsync("pix", "mercado_pago", result, cancellationToken);
@@ -254,7 +255,7 @@ public sealed class PaymentService(
         if (string.IsNullOrWhiteSpace(mpOrderId))
             return await BuildErrorResponseAsync("status", "validation", "MpOrderId is required.", PaymentErrorCodes.ValidationError, cancellationToken);
 
-        var payment = await paymentRepository.GetByMpOrderIdAsync(mpOrderId, cancellationToken);
+        Payment payment = await paymentRepository.GetByMpOrderIdAsync(mpOrderId, cancellationToken);
 
         if (payment?.Status == "approved")
         {
@@ -272,7 +273,7 @@ public sealed class PaymentService(
             };
         }
 
-        var result = await mercadoPagoService.GetOrderStatusAsync(mpOrderId, cancellationToken);
+        PaymentResponseDto result = await mercadoPagoService.GetOrderStatusAsync(mpOrderId, cancellationToken);
 
         if (result.Status == "error")
             return await BuildErrorResponseAsync("status", "mercado_pago", result, cancellationToken);
@@ -284,7 +285,7 @@ public sealed class PaymentService(
         {
             await ProcessApprovedPixPaymentAsync(mpOrderId, cancellationToken);
 
-            var processedPayment = await paymentRepository.GetByMpOrderIdAsync(mpOrderId, cancellationToken);
+            Payment processedPayment = await paymentRepository.GetByMpOrderIdAsync(mpOrderId, cancellationToken);
             result.ContributionCreated = processedPayment?.ContributionCreated;
         }
 
@@ -298,7 +299,7 @@ public sealed class PaymentService(
         if (string.IsNullOrWhiteSpace(mpOrderId))
             return;
 
-        var existingPayment = await dbContext.Payments
+        Payment existingPayment = await dbContext.Payments
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.MpOrderId == mpOrderId, cancellationToken);
 
@@ -313,12 +314,12 @@ public sealed class PaymentService(
 
         if (!string.Equals(existingPayment.Status, "approved", StringComparison.OrdinalIgnoreCase))
         {
-            var providerStatus = await mercadoPagoService.GetOrderStatusAsync(mpOrderId, cancellationToken);
+            PaymentResponseDto providerStatus = await mercadoPagoService.GetOrderStatusAsync(mpOrderId, cancellationToken);
 
             if (providerStatus.Status == "error")
                 return;
 
-            var paymentToUpdate = await dbContext.Payments
+            Payment paymentToUpdate = await dbContext.Payments
                 .FirstOrDefaultAsync(x => x.MpOrderId == mpOrderId, cancellationToken);
 
             if (paymentToUpdate is null)
@@ -343,11 +344,11 @@ public sealed class PaymentService(
         if (!string.Equals(existingPayment?.Status, "approved", StringComparison.OrdinalIgnoreCase))
             return;
 
-        await using var transaction = dbContext.Database.IsRelational()
+        await using IDbContextTransaction transaction = dbContext.Database.IsRelational()
             ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
             : null;
 
-        var payment = await dbContext.Payments
+        Payment payment = await dbContext.Payments
             .FirstOrDefaultAsync(x => x.MpOrderId == mpOrderId, cancellationToken);
 
         if (payment is null)
@@ -362,7 +363,7 @@ public sealed class PaymentService(
         if (!string.Equals(payment.Status, "approved", StringComparison.OrdinalIgnoreCase))
             return;
 
-        var giftExists = await dbContext.Gifts.AnyAsync(x => x.Id == payment.GiftId, cancellationToken);
+        bool giftExists = await dbContext.Gifts.AnyAsync(x => x.Id == payment.GiftId, cancellationToken);
 
         if (!giftExists)
         {
@@ -374,7 +375,7 @@ public sealed class PaymentService(
             return;
         }
 
-        var contribution = new Contribution
+        Contribution contribution = new()
         {
             Id = Guid.NewGuid(),
             GiftId = payment.GiftId,
@@ -428,7 +429,7 @@ public sealed class PaymentService(
         if (string.IsNullOrWhiteSpace(mpOrderId))
             return;
 
-        var payment = await dbContext.Payments
+        Payment payment = await dbContext.Payments
             .FirstOrDefaultAsync(x => x.MpOrderId == mpOrderId, cancellationToken);
 
         if (payment is null)
@@ -542,7 +543,7 @@ public sealed class PaymentService(
         if (feePercent <= 0)
             return Math.Round(netAmount, 2, MidpointRounding.AwayFromZero);
 
-        var feeFactor = 1 - (feePercent / 100);
+        decimal feeFactor = 1 - (feePercent / 100);
         return Math.Round(netAmount / feeFactor, 2, MidpointRounding.AwayFromZero);
     }
 }

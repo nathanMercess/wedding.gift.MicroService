@@ -32,8 +32,8 @@ public sealed class ApiRequestLoggingMiddleware(RequestDelegate next, ILogger<Ap
             return;
         }
 
-        var startedAtUtc = DateTime.UtcNow;
-        var stopwatch = Stopwatch.StartNew();
+        DateTime startedAtUtc = DateTime.UtcNow;
+        Stopwatch stopwatch = Stopwatch.StartNew();
         Exception capturedException = null;
 
         try
@@ -61,8 +61,8 @@ public sealed class ApiRequestLoggingMiddleware(RequestDelegate next, ILogger<Ap
     {
         try
         {
-            var statusCode = GetStatusCode(context, capturedException);
-            var user = context.User;
+            int statusCode = GetStatusCode(context, capturedException);
+            ClaimsPrincipal user = context.User;
 
             await apiRequestLogService.SaveAsync(new ApiRequestLogCreateDto
             {
@@ -119,11 +119,11 @@ public sealed class ApiRequestLoggingMiddleware(RequestDelegate next, ILogger<Ap
             return string.Empty;
         }
 
-        var parts = query
+        IEnumerable<string> parts = query
             .OrderBy(x => x.Key)
             .SelectMany(item =>
             {
-                var key = Uri.EscapeDataString(item.Key);
+                string key = Uri.EscapeDataString(item.Key);
 
                 if (IsSensitiveQueryKey(item.Key))
                 {
@@ -154,7 +154,7 @@ public sealed class ApiRequestLoggingMiddleware(RequestDelegate next, ILogger<Ap
             return string.Empty;
         }
 
-        var trimmed = value.Trim();
+        string trimmed = value.Trim();
         return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
     }
 }
