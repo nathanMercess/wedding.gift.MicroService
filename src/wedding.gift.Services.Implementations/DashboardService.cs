@@ -22,52 +22,52 @@ public sealed class DashboardService(AppDbContext dbContext) : IDashboardService
             throw new BadRequestException(ErrorCodes.INVALID_DASHBOARD_RECENT_ITEMS);
         }
 
-        var now = DateTime.UtcNow;
-        var fromUtc = now.Date.AddDays(-(query.Days - 1));
+        DateTime now = DateTime.UtcNow;
+        DateTime fromUtc = now.Date.AddDays(-(query.Days - 1));
 
-        var gifts = await dbContext.Gifts
+        List<Gift> gifts = await dbContext.Gifts
             .Include(x => x.Contributions)
             .AsNoTracking()
             .ToListAsync(cancellationToken);
 
-        var contributions = await dbContext.Contributions
+        List<Contribution> contributions = await dbContext.Contributions
             .AsNoTracking()
             .ToListAsync(cancellationToken);
 
-        var payments = await dbContext.Payments
+        List<Payment> payments = await dbContext.Payments
             .AsNoTracking()
             .ToListAsync(cancellationToken);
 
-        var requestLogs = await dbContext.ApiRequestLogs
+        List<ApiRequestLog> requestLogs = await dbContext.ApiRequestLogs
             .AsNoTracking()
             .Where(x => x.StartedAtUtc >= fromUtc && x.StartedAtUtc <= now)
             .ToListAsync(cancellationToken);
 
-        var giftNames = gifts.ToDictionary(x => x.Id, x => x.Name);
-        var giftFunding = BuildGiftFunding(gifts);
-        var paidContributions = contributions
+        Dictionary<Guid, string> giftNames = gifts.ToDictionary(x => x.Id, x => x.Name);
+        List<DashboardGiftFundingDto> giftFunding = BuildGiftFunding(gifts);
+        List<Contribution> paidContributions = contributions
             .Where(x => string.Equals(x.Status, ContributionStatus.Paid, StringComparison.OrdinalIgnoreCase))
             .ToList();
-        var pendingContributions = contributions
+        List<Contribution> pendingContributions = contributions
             .Where(x => string.Equals(x.Status, ContributionStatus.Pending, StringComparison.OrdinalIgnoreCase))
             .ToList();
-        var cancelledContributions = contributions
+        List<Contribution> cancelledContributions = contributions
             .Where(x => string.Equals(x.Status, ContributionStatus.Cancelled, StringComparison.OrdinalIgnoreCase))
             .ToList();
-        var periodPaidContributions = paidContributions
+        List<Contribution> periodPaidContributions = paidContributions
             .Where(x => x.PaidAt >= fromUtc && x.PaidAt <= now)
             .ToList();
 
-        var approvedPayments = payments.Where(x => IsApprovedPayment(x.Status)).ToList();
-        var pendingPayments = payments.Where(x => IsPendingPayment(x.Status)).ToList();
-        var failedPayments = payments.Where(x => IsFailedPayment(x.Status)).ToList();
-        var categorizedPaymentCount = approvedPayments.Count + pendingPayments.Count + failedPayments.Count;
-        var approvedWithoutContribution = approvedPayments.Count(x => !x.ContributionCreated);
-        var serverErrorRequests = requestLogs.Count(x => x.StatusCode >= 500);
-        var slowRequests = requestLogs.Count(x => x.DurationMilliseconds >= 1000);
-        var contributionMessages = BuildContributionMessages(contributions, giftNames);
-        var paymentMessages = BuildPaymentIntentMessages(payments, giftNames);
-        var allMessages = contributionMessages
+        List<Payment> approvedPayments = payments.Where(x => IsApprovedPayment(x.Status)).ToList();
+        List<Payment> pendingPayments = payments.Where(x => IsPendingPayment(x.Status)).ToList();
+        List<Payment> failedPayments = payments.Where(x => IsFailedPayment(x.Status)).ToList();
+        int categorizedPaymentCount = approvedPayments.Count + pendingPayments.Count + failedPayments.Count;
+        int approvedWithoutContribution = approvedPayments.Count(x => !x.ContributionCreated);
+        int serverErrorRequests = requestLogs.Count(x => x.StatusCode >= 500);
+        int slowRequests = requestLogs.Count(x => x.DurationMilliseconds >= 1000);
+        List<DashboardMessageDto> contributionMessages = BuildContributionMessages(contributions, giftNames);
+        List<DashboardMessageDto> paymentMessages = BuildPaymentIntentMessages(payments, giftNames);
+        List<DashboardMessageDto> allMessages = contributionMessages
             .Concat(paymentMessages)
             .OrderByDescending(x => x.CreatedAtUtc)
             .ToList();
@@ -196,9 +196,9 @@ public sealed class DashboardService(AppDbContext dbContext) : IDashboardService
 
     private static DashboardRequestSummaryDto BuildRequestSummary(IReadOnlyCollection<ApiRequestLog> requestLogs)
     {
-        var successful = requestLogs.Count(x => x.StatusCode < 400);
-        var clientErrors = requestLogs.Count(x => x.StatusCode >= 400 && x.StatusCode < 500);
-        var serverErrors = requestLogs.Count(x => x.StatusCode >= 500);
+        int successful = requestLogs.Count(x => x.StatusCode < 400);
+        int clientErrors = requestLogs.Count(x => x.StatusCode >= 400 && x.StatusCode < 500);
+        int serverErrors = requestLogs.Count(x => x.StatusCode >= 500);
 
         return new DashboardRequestSummaryDto
         {
@@ -222,8 +222,8 @@ public sealed class DashboardService(AppDbContext dbContext) : IDashboardService
         IReadOnlyCollection<Gift> gifts,
         IReadOnlyCollection<DashboardGiftFundingDto> giftFunding)
     {
-        var raisedAmount = giftFunding.Sum(x => x.Raised);
-        var goalAmount = gifts.Sum(x => x.Total);
+        decimal raisedAmount = giftFunding.Sum(x => x.Raised);
+        decimal goalAmount = gifts.Sum(x => x.Total);
 
         return new DashboardGiftSummaryDto
         {
@@ -245,11 +245,11 @@ public sealed class DashboardService(AppDbContext dbContext) : IDashboardService
         return gifts
             .Select(gift =>
             {
-                var paidContributions = gift.Contributions
+                List<Contribution> paidContributions = gift.Contributions
                     .Where(x => string.Equals(x.Status, ContributionStatus.Paid, StringComparison.OrdinalIgnoreCase))
                     .ToList();
-                var raised = paidContributions.Sum(x => x.Amount);
-                var remaining = Math.Max(gift.Total - raised, 0);
+                decimal raised = paidContributions.Sum(x => x.Amount);
+                decimal remaining = Math.Max(gift.Total - raised, 0);
 
                 return new DashboardGiftFundingDto
                 {
@@ -273,9 +273,9 @@ public sealed class DashboardService(AppDbContext dbContext) : IDashboardService
         DateTime fromUtc,
         int days)
     {
-        var grouped = contributions
+        Dictionary<DateTime, DashboardTimeSeriesPointDto> grouped = contributions
             .GroupBy(x => x.PaidAt.Date)
-            .ToDictionary(x => x.Key, x => new
+            .ToDictionary(x => x.Key, x => new DashboardTimeSeriesPointDto
             {
                 Count = x.Count(),
                 Amount = x.Sum(c => c.Amount)
@@ -284,8 +284,8 @@ public sealed class DashboardService(AppDbContext dbContext) : IDashboardService
         return Enumerable.Range(0, days)
             .Select(offset =>
             {
-                var date = fromUtc.Date.AddDays(offset);
-                grouped.TryGetValue(date, out var item);
+                DateTime date = fromUtc.Date.AddDays(offset);
+                grouped.TryGetValue(date, out DashboardTimeSeriesPointDto item);
 
                 return new DashboardTimeSeriesPointDto
                 {
@@ -360,7 +360,7 @@ public sealed class DashboardService(AppDbContext dbContext) : IDashboardService
     private static List<DashboardRequestPathChartDto> BuildRequestsByPath(IEnumerable<ApiRequestLog> requestLogs)
     {
         return requestLogs
-            .GroupBy(x => new { x.Method, x.Path })
+            .GroupBy(x => (x.Method, x.Path))
             .Select(x => new DashboardRequestPathChartDto
             {
                 Method = x.Key.Method,
@@ -493,19 +493,19 @@ public sealed class DashboardService(AppDbContext dbContext) : IDashboardService
 
     private static bool IsPendingPayment(string status)
     {
-        var normalized = NormalizeStatus(status);
+        string normalized = NormalizeStatus(status);
         return normalized is "pending" or "in_process" or "in_mediation";
     }
 
     private static bool IsFailedPayment(string status)
     {
-        var normalized = NormalizeStatus(status);
+        string normalized = NormalizeStatus(status);
         return normalized is "error" or "rejected" or "cancelled" or "canceled" or "refunded" or "charged_back";
     }
 
     private static bool IsCardPayment(string method)
     {
-        var normalized = NormalizeMethod(method);
+        string normalized = NormalizeMethod(method);
         return normalized is "credit_card" or "debit_card" or "card";
     }
 
@@ -521,7 +521,7 @@ public sealed class DashboardService(AppDbContext dbContext) : IDashboardService
 
     private static decimal CalculateAverageDuration(IEnumerable<ApiRequestLog> requestLogs)
     {
-        var items = requestLogs.ToList();
+        List<ApiRequestLog> items = requestLogs.ToList();
         return items.Count == 0 ? 0 : Math.Round((decimal)items.Average(x => x.DurationMilliseconds), 2);
     }
 
@@ -536,7 +536,7 @@ public sealed class DashboardService(AppDbContext dbContext) : IDashboardService
     }
 
     private static string GetGiftName(IReadOnlyDictionary<Guid, string> giftNames, Guid giftId)
-        => giftNames.TryGetValue(giftId, out var giftName) ? giftName : string.Empty;
+        => giftNames.TryGetValue(giftId, out string giftName) ? giftName : string.Empty;
 
     private static string NormalizeStatus(string value)
         => string.IsNullOrWhiteSpace(value) ? "unknown" : value.Trim().ToLowerInvariant();

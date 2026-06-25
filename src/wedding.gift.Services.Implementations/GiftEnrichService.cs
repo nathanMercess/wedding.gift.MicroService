@@ -8,7 +8,7 @@ using wedding.gift.Services.Implementations.Exceptions;
 
 namespace wedding.gift.Services.Implementations;
 
-public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : IGiftEnrichService
+public sealed partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : IGiftEnrichService
 {
     private static readonly string[] PriceMetaKeys =
     [
@@ -20,11 +20,11 @@ public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : I
 
     public async Task<GiftEnrichResponseDto> EnrichAsync(string url, CancellationToken cancellationToken)
     {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+        if (!Uri.TryCreate(url, UriKind.Absolute, out Uri uri) ||
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
             throw new BadRequestException(ErrorCodes.INVALID_PRODUCT_URL);
 
-        var client = httpClientFactory.CreateClient("enrich");
+        HttpClient client = httpClientFactory.CreateClient("enrich");
 
         string html;
         try
@@ -41,8 +41,8 @@ public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : I
 
     public static GiftEnrichResponseDto ParseHtml(string html)
     {
-        var product = ExtractFromJsonLd(html);
-        var metas = ParseMetaTags(html);
+        (string Name, string Description, decimal? Price, string ImageUrl) product = ExtractFromJsonLd(html);
+        List<(string Key, string Content)> metas = ParseMetaTags(html);
 
         return new GiftEnrichResponseDto
         {
@@ -57,7 +57,7 @@ public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : I
     {
         foreach (Match script in JsonLdScriptRegex().Matches(html))
         {
-            var json = script.Groups["json"].Value.Trim();
+            string json = script.Groups["json"].Value.Trim();
             if (string.IsNullOrEmpty(json))
                 continue;
 
@@ -73,15 +73,15 @@ public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : I
 
             using (document)
             {
-                var product = FindProductNode(document.RootElement);
+                JsonElement? product = FindProductNode(document.RootElement);
                 if (product is null)
                     continue;
 
-                var node = product.Value;
-                var name = GetJsonString(node, "name");
-                var description = GetJsonString(node, "description");
-                var image = ExtractUrl(node, "image");
-                var price = ExtractPriceFromOffers(node);
+                JsonElement node = product.Value;
+                string name = GetJsonString(node, "name");
+                string description = GetJsonString(node, "description");
+                string image = ExtractUrl(node, "image");
+                decimal? price = ExtractPriceFromOffers(node);
 
                 if (name is not null || price is not null || image is not null)
                     return (name, description, price, image);
@@ -95,9 +95,9 @@ public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : I
     {
         if (element.ValueKind == JsonValueKind.Array)
         {
-            foreach (var item in element.EnumerateArray())
+            foreach (JsonElement item in element.EnumerateArray())
             {
-                var found = FindProductNode(item);
+                JsonElement? found = FindProductNode(item);
                 if (found is not null)
                     return found;
             }
@@ -111,7 +111,7 @@ public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : I
         if (IsProduct(element))
             return element;
 
-        if (element.TryGetProperty("@graph", out var graph))
+        if (element.TryGetProperty("@graph", out JsonElement graph))
             return FindProductNode(graph);
 
         return null;
@@ -119,7 +119,7 @@ public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : I
 
     private static bool IsProduct(JsonElement obj)
     {
-        if (!obj.TryGetProperty("@type", out var type))
+        if (!obj.TryGetProperty("@type", out JsonElement type))
             return false;
 
         if (type.ValueKind == JsonValueKind.String)
@@ -135,9 +135,9 @@ public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : I
 
     private static string? GetJsonString(JsonElement obj, string property)
     {
-        if (obj.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String)
+        if (obj.TryGetProperty(property, out JsonElement value) && value.ValueKind == JsonValueKind.String)
         {
-            var text = value.GetString();
+            string text = value.GetString();
             return string.IsNullOrWhiteSpace(text) ? null : DecodeHtml(text.Trim());
         }
 
@@ -146,7 +146,7 @@ public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : I
 
     private static string? ExtractUrl(JsonElement obj, string property)
     {
-        if (!obj.TryGetProperty(property, out var value))
+        if (!obj.TryGetProperty(property, out JsonElement value))
             return null;
 
         return ReadUrl(value);
@@ -157,13 +157,13 @@ public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : I
         switch (element.ValueKind)
         {
             case JsonValueKind.String:
-                var url = element.GetString();
+                string url = element.GetString();
                 return string.IsNullOrWhiteSpace(url) ? null : url.Trim();
 
             case JsonValueKind.Array:
-                foreach (var item in element.EnumerateArray())
+                foreach (JsonElement item in element.EnumerateArray())
                 {
-                    var found = ReadUrl(item);
+                    string found = ReadUrl(item);
                     if (found is not null)
                         return found;
                 }
@@ -171,7 +171,7 @@ public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : I
                 return null;
 
             case JsonValueKind.Object:
-                return element.TryGetProperty("url", out var nested) ? ReadUrl(nested) : null;
+                return element.TryGetProperty("url", out JsonElement nested) ? ReadUrl(nested) : null;
 
             default:
                 return null;
@@ -180,7 +180,7 @@ public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : I
 
     private static decimal? ExtractPriceFromOffers(JsonElement node)
     {
-        if (!node.TryGetProperty("offers", out var offers))
+        if (!node.TryGetProperty("offers", out JsonElement offers))
             return null;
 
         return ReadOfferPrice(offers);
@@ -190,9 +190,9 @@ public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : I
     {
         if (offers.ValueKind == JsonValueKind.Array)
         {
-            foreach (var item in offers.EnumerateArray())
+            foreach (JsonElement item in offers.EnumerateArray())
             {
-                var found = ReadOfferPrice(item);
+                decimal? found = ReadOfferPrice(item);
                 if (found is not null)
                     return found;
             }
@@ -203,21 +203,21 @@ public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : I
         if (offers.ValueKind != JsonValueKind.Object)
             return null;
 
-        if (offers.TryGetProperty("price", out var price))
+        if (offers.TryGetProperty("price", out JsonElement price))
         {
-            var value = ReadPriceValue(price);
+            decimal? value = ReadPriceValue(price);
             if (value is not null)
                 return value;
         }
 
-        if (offers.TryGetProperty("lowPrice", out var lowPrice))
+        if (offers.TryGetProperty("lowPrice", out JsonElement lowPrice))
         {
-            var value = ReadPriceValue(lowPrice);
+            decimal? value = ReadPriceValue(lowPrice);
             if (value is not null)
                 return value;
         }
 
-        if (offers.TryGetProperty("priceSpecification", out var spec))
+        if (offers.TryGetProperty("priceSpecification", out JsonElement spec))
             return ReadOfferPrice(spec);
 
         return null;
@@ -225,10 +225,10 @@ public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : I
 
     private static decimal? ReadPriceValue(JsonElement price)
     {
-        if (price.ValueKind == JsonValueKind.Number && price.TryGetDecimal(out var number))
+        if (price.ValueKind == JsonValueKind.Number && price.TryGetDecimal(out decimal number))
             return Math.Round(number, 2);
 
-        if (price.ValueKind == JsonValueKind.String && TryParsePrice(price.GetString()!, out var parsed))
+        if (price.ValueKind == JsonValueKind.String && TryParsePrice(price.GetString()!, out decimal parsed))
             return parsed;
 
         return null;
@@ -236,19 +236,19 @@ public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : I
 
     private static List<(string Key, string Content)> ParseMetaTags(string html)
     {
-        var result = new List<(string, string)>();
+        List<(string Key, string Content)> result = [];
 
         foreach (Match tag in MetaTagRegex().Matches(html))
         {
-            var attributes = ParseAttributes(tag.Value);
+            Dictionary<string, string> attributes = ParseAttributes(tag.Value);
 
-            if (!attributes.TryGetValue("content", out var content))
+            if (!attributes.TryGetValue("content", out string content))
                 continue;
 
-            if (attributes.TryGetValue("property", out var property))
+            if (attributes.TryGetValue("property", out string property))
                 result.Add((property, content));
 
-            if (attributes.TryGetValue("name", out var name))
+            if (attributes.TryGetValue("name", out string name))
                 result.Add((name, content));
         }
 
@@ -257,7 +257,7 @@ public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : I
 
     private static Dictionary<string, string> ParseAttributes(string tag)
     {
-        var attributes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, string> attributes = new(StringComparer.OrdinalIgnoreCase);
 
         foreach (Match attr in AttributeRegex().Matches(tag))
             attributes[attr.Groups["key"].Value] = attr.Groups["value"].Value;
@@ -267,7 +267,7 @@ public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : I
 
     private static string? FindMeta(List<(string Key, string Content)> metas, string key)
     {
-        foreach (var (metaKey, content) in metas)
+        foreach ((string metaKey, string content) in metas)
         {
             if (metaKey.Equals(key, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(content))
                 return DecodeHtml(content.Trim());
@@ -278,13 +278,13 @@ public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : I
 
     private static decimal? ExtractPrice(List<(string Key, string Content)> metas)
     {
-        foreach (var key in PriceMetaKeys)
+        foreach (string key in PriceMetaKeys)
         {
-            var raw = FindMeta(metas, key);
+            string raw = FindMeta(metas, key);
             if (raw is null)
                 continue;
 
-            if (TryParsePrice(raw, out var value))
+            if (TryParsePrice(raw, out decimal value))
                 return value;
         }
 
@@ -295,16 +295,15 @@ public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : I
     {
         value = 0;
 
-        var digits = Regex.Replace(raw, @"[^\d,\.]", "");
+        string digits = Regex.Replace(raw, @"[^\d,\.]", "");
         if (string.IsNullOrEmpty(digits))
             return false;
 
-        var hasComma = digits.Contains(',');
-        var hasDot = digits.Contains('.');
+        bool hasComma = digits.Contains(',');
+        bool hasDot = digits.Contains('.');
 
         if (hasComma && hasDot)
         {
-            // O último separador é o decimal; o outro é separador de milhar.
             if (digits.LastIndexOf(',') > digits.LastIndexOf('.'))
                 digits = digits.Replace(".", "").Replace(',', '.');
             else
@@ -319,7 +318,7 @@ public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : I
             digits = NormalizeSingleSeparator(digits, '.');
         }
 
-        if (decimal.TryParse(digits, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
+        if (decimal.TryParse(digits, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal parsed))
         {
             value = Math.Round(parsed, 2);
             return true;
@@ -330,20 +329,18 @@ public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : I
 
     private static string NormalizeSingleSeparator(string digits, char separator)
     {
-        var occurrences = digits.Count(c => c == separator);
-        var decimalsAfter = digits.Length - digits.LastIndexOf(separator) - 1;
+        int occurrences = digits.Count(c => c == separator);
+        int decimalsAfter = digits.Length - digits.LastIndexOf(separator) - 1;
 
-        // Múltiplas ocorrências (1.234.567) ou não terminado em 2 casas = separador de milhar.
         if (occurrences > 1 || decimalsAfter != 2)
             return digits.Replace(separator.ToString(), "");
 
-        // Único separador seguido de 2 dígitos = decimal.
         return digits.Replace(separator, '.');
     }
 
     private static string? ExtractTitle(string html)
     {
-        var match = TitleTagRegex().Match(html);
+        Match match = TitleTagRegex().Match(html);
         return match.Success && !string.IsNullOrWhiteSpace(match.Groups["title"].Value)
             ? DecodeHtml(match.Groups["title"].Value.Trim())
             : null;
