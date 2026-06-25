@@ -11,33 +11,36 @@ namespace wedding.gift.Application.Webapi.Controllers;
 public sealed class PaymentController(IPaymentService paymentService) : ApiControllerBase
 {
     [HttpPost("card")]
-    public async Task<ActionResult<PaymentResponseDto>> PayWithCard([FromBody] CardPaymentRequestDto request, CancellationToken cancellationToken)
+    public async Task<PaymentResponseDto> PayWithCard([FromBody] CardPaymentRequestDto request, CancellationToken cancellationToken)
     {
         PaymentResponseDto result = await paymentService.ProcessCardPaymentAsync(request, cancellationToken);
-        return ToPaymentActionResult(result);
+        SetPaymentStatusCode(result);
+        return result;
     }
 
     [AllowAnonymous]
     [HttpPost("pix")]
-    public async Task<ActionResult<PaymentResponseDto>> PayWithPix([FromBody] PixPaymentRequestDto request, CancellationToken cancellationToken)
+    public async Task<PaymentResponseDto> PayWithPix([FromBody] PixPaymentRequestDto request, CancellationToken cancellationToken)
     {
         PaymentResponseDto result = await paymentService.ProcessPixPaymentAsync(request, cancellationToken);
-        return ToPaymentActionResult(result);
+        SetPaymentStatusCode(result);
+        return result;
     }
 
     [HttpGet("status/{mpOrderId}")]
-    public async Task<ActionResult<PaymentResponseDto>> GetPaymentStatus(string mpOrderId, CancellationToken cancellationToken)
+    public async Task<PaymentResponseDto> GetPaymentStatus(string mpOrderId, CancellationToken cancellationToken)
     {
         PaymentResponseDto result = await paymentService.GetPaymentStatusAsync(mpOrderId, cancellationToken);
-        return ToPaymentActionResult(result);
+        SetPaymentStatusCode(result);
+        return result;
     }
 
-    private ActionResult<PaymentResponseDto> ToPaymentActionResult(PaymentResponseDto result)
+    private void SetPaymentStatusCode(PaymentResponseDto result)
     {
-        if (result.Status != "error") return Ok(result);
+        if (result.Status != "error") return;
 
-        if (result.ErrorCode == PaymentErrorCodes.ValidationError) return BadRequest(result);
-
-        return StatusCode(StatusCodes.Status502BadGateway, result);
+        Response.StatusCode = result.ErrorCode == PaymentErrorCodes.ValidationError
+            ? StatusCodes.Status400BadRequest
+            : StatusCodes.Status502BadGateway;
     }
 }

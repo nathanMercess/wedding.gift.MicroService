@@ -12,12 +12,12 @@ public sealed class CoupleController(ICoupleService coupleService) : ApiControll
 {
     [AllowAnonymous]
     [HttpGet]
-    public async Task<ActionResult<CoupleResponseDto>> Get(CancellationToken cancellationToken)
+    public async Task<CoupleResponseDto> Get(CancellationToken cancellationToken)
     {
         Couple couple = await coupleService.GetAsync(cancellationToken);
 
-        if (couple is null) return Ok(new CoupleResponseDto());
+        if (couple is null) return new CoupleResponseDto();
 
-        return Ok(couple.ToResponseDto());
+        return couple.ToResponseDto();
     }
 }

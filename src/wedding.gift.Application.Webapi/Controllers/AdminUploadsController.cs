@@ -13,13 +13,13 @@ namespace wedding.gift.Application.Webapi.Controllers;
 public sealed class AdminUploadsController(IImageUploadService imageUploadService) : ApiControllerBase
 {
     [HttpPost("image")]
-    public async Task<ActionResult<ImageUploadResponseDto>> UploadImage(IFormFile file, CancellationToken cancellationToken)
+    public async Task<ImageUploadResponseDto> UploadImage(IFormFile file, CancellationToken cancellationToken)
     {
         if (file == null) throw new BadRequestException(ErrorCodes.INVALID_IMAGE_FILE);
 
         await using Stream stream = file.OpenReadStream();
         string url = await imageUploadService.UploadImageAsync(stream, file.FileName, file.ContentType, file.Length, cancellationToken);
 
-        return Ok(new ImageUploadResponseDto { Url = url });
+        return new ImageUploadResponseDto { Url = url };
     }
 }

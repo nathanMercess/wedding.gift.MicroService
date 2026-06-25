@@ -12,9 +12,9 @@ namespace wedding.gift.Application.Webapi.Controllers;
 public sealed class AdminDashboardController(IDashboardService dashboardService) : ApiControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<DashboardResponseDto>> Get([FromQuery] DashboardQueryDto query, CancellationToken cancellationToken)
+    public async Task<DashboardResponseDto> Get([FromQuery] DashboardQueryDto query, CancellationToken cancellationToken)
     {
         DashboardResponseDto dashboard = await dashboardService.GetAsync(query, cancellationToken);
-        return Ok(dashboard);
+        return dashboard;
     }
 }

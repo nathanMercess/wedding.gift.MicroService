@@ -4,8 +4,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Primitives;
 using wedding.gift.Application.Webapi.Controllers.Base;
+using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Services.Contracts;
+using wedding.gift.Services.Implementations.Exceptions;
 
 namespace wedding.gift.Application.Webapi.Controllers;
 
@@ -19,7 +21,7 @@ public sealed class WebhookController(
     ILogger<WebhookController> logger) : ApiControllerBase
 {
     [HttpPost("mercadopago")]
-    public async Task<IActionResult> ReceiveMercadoPagoNotification(
+    public async Task ReceiveMercadoPagoNotification(
         [FromQuery(Name = "data.id")] string? dataId,
         [FromQuery] string? type,
         CancellationToken cancellationToken)
@@ -31,18 +33,18 @@ public sealed class WebhookController(
             dataId,
             Request.Headers.TryGetValue("x-request-id", out StringValues requestIdHeader) ? requestIdHeader.ToString() : "-");
 
-        if (!ValidateMercadoPagoSignature(Request, dataId)) return Unauthorized();
+        if (!ValidateMercadoPagoSignature(Request, dataId)) throw new UnauthorizedException(ErrorCodes.UNAUTHORIZED_WEBHOOK);
 
         if (type != "payment" && type != "order")
         {
             logger.LogInformation("Webhook Mercado Pago ignorado por tipo nao suportado. Type={Type}, DataId={DataId}.", type, dataId);
-            return Ok();
+            return;
         }
 
         if (string.IsNullOrWhiteSpace(dataId))
         {
             logger.LogWarning("Webhook Mercado Pago recebido sem data.id. Type={Type}.", type);
-            return Ok();
+            return;
         }
 
         await queue.EnqueueAsync(async (sp, ct) =>
@@ -70,7 +72,6 @@ public sealed class WebhookController(
             }
         });
 
-        return Ok();
     }
 
     private bool ValidateMercadoPagoSignature(HttpRequest request, string? dataId)
