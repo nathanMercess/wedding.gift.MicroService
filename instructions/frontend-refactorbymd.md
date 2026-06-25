@@ -2,7 +2,33 @@
 
 ## Resumo
 
-Não houve mudança intencional de rotas públicas. O principal impacto para o front é padronizar o tratamento de erros da API.
+As rotas continuam as mesmas, mas o contrato de resposta mudou. A API agora responde JSON no envelope padrão:
+
+```json
+{
+  "success": true,
+  "data": {},
+  "error": null,
+  "correlationId": "0HN..."
+}
+```
+
+Em erro:
+
+```json
+{
+  "success": false,
+  "data": null,
+  "error": {
+    "code": "GIFT_NOT_FOUND",
+    "fields": null,
+    "details": null
+  },
+  "correlationId": "0HN..."
+}
+```
+
+O front deve tratar mensagens a partir de `error.code`. A API não envia mais mensagem amigável em `detail`, `title` ou `message` para erro de regra de negócio.
 
 ## Rotas
 
@@ -35,77 +61,152 @@ Manter as rotas atuais com prefixo `/api`:
 
 O webhook do Mercado Pago continua aceitando `/api/webhook/mercadopago` e `/webhook/mercadopago`. O front não precisa consumir essa rota.
 
-`GET /api/Couple` continua retornando `200` com objeto vazio quando o casal ainda não foi configurado.
+## Sucesso
 
-## Tratamento de erros HTTP
+Ler sempre `response.data` para o payload real.
 
-Para erros de regra de negócio e erros não tratados, a API retorna `application/problem+json`.
+Exemplos:
 
-Exemplo:
+- Login: `data.accessToken`, `data.expiresAtUtc`, `data.userName`, `data.email`, `data.role`.
+- Lista paginada de gifts: `data.items`, `data.totalCount`, `data.page`, `data.pageSize`.
+- `GET /api/Couple`: `data` pode vir com objeto vazio quando o casal ainda não foi configurado.
+- Confirmação de e-mail, delete de gift e webhook retornam `success: true` com `data: null`.
+
+## Erros
+
+O front deve centralizar um parser:
+
+```ts
+type ApiResponse<T> = {
+  success: boolean;
+  data: T | null;
+  error: {
+    code: string;
+    fields?: Record<string, string[]> | null;
+    details?: unknown;
+  } | null;
+  correlationId: string;
+};
+```
+
+Regras:
+
+- Se `success === true`, usar `data`.
+- Se `success === false`, usar `error.code` para buscar mensagem local no front.
+- Guardar `correlationId` em logs/telas de suporte.
+- Tratar HTTP `401` com `error.code = "UNAUTHORIZED"` como sessão expirada/token inválido.
+- Tratar HTTP `403` com `error.code = "FORBIDDEN"` como usuário sem permissão.
+
+## Validação
+
+Quando body/query falha validação de DTO:
 
 ```json
 {
-  "status": 404,
-  "title": "Recurso não encontrado",
-  "detail": "Presente '...' não encontrado.",
+  "success": false,
+  "data": null,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "fields": {
+      "name": ["FIELD_INVALID"]
+    },
+    "details": null
+  },
   "correlationId": "0HN..."
 }
 ```
 
-O front deve:
+O front deve mapear `error.fields` por campo e traduzir `FIELD_INVALID` localmente.
 
-- Mostrar `detail` como mensagem principal quando existir.
-- Usar `title` como fallback.
-- Guardar ou exibir `correlationId` em telas/logs de suporte.
-- Tratar `401` como sessão expirada ou token inválido.
-- Tratar `403` como usuário sem permissão.
+## Códigos
 
-## Erros de validação
+Criar tabela local de mensagens para estes códigos gerais:
 
-Quando o body/query falha validação de DTO, a API retorna `ValidationProblemDetails`.
+- `BAD_REQUEST`
+- `UNAUTHORIZED`
+- `FORBIDDEN`
+- `NOT_FOUND`
+- `HTTP_ERROR`
+- `VALIDATION_ERROR`
+- `FIELD_INVALID`
+- `UNHANDLED_ERROR`
+- `REQUIRED_FIELDS`
+- `INVALID_CREDENTIALS`
+- `USER_INACTIVE`
+- `EMAIL_NOT_CONFIRMED`
+- `EMAIL_ALREADY_EXISTS`
+- `USER_NOT_FOUND`
+- `INVALID_CONFIRMATION_TOKEN`
+- `INVALID_JWT_CONFIGURATION`
+- `INVALID_CONTRIBUTION_STATUS`
+- `CONTRIBUTION_NOT_FOUND`
+- `GIFT_NOT_FOUND`
+- `GIFT_UNAVAILABLE`
+- `INVALID_GIFT_PAGE`
+- `INVALID_GIFT_PAGE_SIZE`
+- `INVALID_DASHBOARD_DAYS`
+- `INVALID_DASHBOARD_RECENT_ITEMS`
+- `INVALID_IMAGE_FILE`
+- `IMAGE_FILE_TOO_LARGE`
+- `INVALID_IMAGE_CONTENT_TYPE`
+- `INVALID_PRODUCT_URL`
+- `PRODUCT_URL_UNREACHABLE`
+- `INVALID_BOOTSTRAP_ADMIN_ROLE`
+- `UNAUTHORIZED_WEBHOOK`
 
-Exemplo:
+Pagamentos também usam estes códigos:
 
-```json
-{
-  "status": 400,
-  "title": "Erro de validação",
-  "detail": "Verifique os campos enviados e tente novamente.",
-  "errors": {
-    "name": ["O campo Nome é obrigatório."]
-  }
-}
-```
-
-O front deve mapear `errors` por campo quando possível e usar `detail` como mensagem geral.
+- `PAYMENT_DECLINED`
+- `INSUFFICIENT_AMOUNT`
+- `DUPLICATE_ORDER`
+- `PIX_EXPIRED`
+- `PIX_REJECTED`
+- `INVALID_CARD_TOKEN`
+- `PROVIDER_ERROR`
+- `VALIDATION_ERROR`
 
 ## Pagamentos
 
-As rotas de pagamento continuam retornando `PaymentResponseDto`, inclusive nos erros `400` e `502`.
-
-Exemplo:
+Sucesso de pagamento vem no envelope, com `PaymentResponseDto` dentro de `data`:
 
 ```json
 {
-  "status": "error",
-  "errorCode": "VALIDATION_ERROR",
-  "message": "Mensagem do erro",
-  "mpRequestId": "..."
+  "success": true,
+  "data": {
+    "status": "approved",
+    "errorCode": null,
+    "qrCode": "",
+    "qrCodeBase64": null,
+    "pixQrCode": ""
+  },
+  "error": null,
+  "correlationId": "0HN..."
 }
 ```
 
-O front deve manter tratamento separado para pagamento:
+Erro de pagamento vem no envelope de erro:
 
-- Se HTTP `400` ou `502` vier com `status: "error"`, usar `message` como mensagem principal.
-- Se houver `mpRequestId`, anexar em logs ou tela de suporte.
-- Para Pix, continuar lendo `qrCode`, `qrCodeBase64` ou `pixQrCode`.
-- Para cartão, considerar `contributionCreated` para atualizar a tela de confirmação quando vier preenchido.
+```json
+{
+  "success": false,
+  "data": null,
+  "error": {
+    "code": "PAYMENT_DECLINED",
+    "fields": null,
+    "details": null
+  },
+  "correlationId": "0HN..."
+}
+```
+
+O front deve usar `error.code` também para pagamento. Para Pix aprovado/pendente, continuar lendo `data.qrCode`, `data.qrCodeBase64` ou `data.pixQrCode`.
 
 ## Checklist
 
-- Centralizar parsing de erro `ProblemDetails`.
-- Centralizar parsing de erro `ValidationProblemDetails`.
-- Manter parser especial para `PaymentResponseDto`.
+- Trocar parser de `ProblemDetails`/`ValidationProblemDetails` pelo parser de `ApiResponse<T>`.
+- Criar dicionário local `error.code -> mensagem`.
+- Ler payload sempre de `data`.
+- Atualizar telas de pagamento para tratar erro por `error.code`.
 - Confirmar que chamadas admin continuam enviando Bearer token.
 - Confirmar que upload de imagem usa `multipart/form-data` com campo `file`.
-- Confirmar que telas públicas continuam sem token: gifts, couple, contributions públicas e pagamentos.
+- Confirmar que telas públicas continuam sem token: gifts, couple, contribuições públicas e pagamentos.
