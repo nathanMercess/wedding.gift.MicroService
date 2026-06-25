@@ -11,10 +11,6 @@ public sealed class SmtpOptions
     public string FromEmail { get; set; } = string.Empty;
     public string FromName { get; set; } = "Wedding Gift";
     public bool EnableSsl { get; set; } = true;
-
-    /// <summary>Destinatário das notificações de erro do sistema. Cai para <see cref="FromEmail"/> se vazio.</summary>
     public string? ErrorNotificationRecipient { get; set; }
-
-    /// <summary>Destinatário das notificações de nova contribuição (o casal). Cai para <see cref="FromEmail"/> se vazio.</summary>
     public string? CoupleNotificationRecipient { get; set; }
 }

@@ -13,6 +13,10 @@ public sealed class EmailService(
     IOptions<ApiOptions> apiOptions,
     ILogger<EmailService> logger) : IEmailService
 {
+    private const string EmailConfirmationTemplate = "EmailConfirmation.html";
+    private const string ContributionNotificationTemplate = "ContributionNotification.html";
+    private const string SystemNotificationTemplate = "SystemNotification.html";
+
     private readonly SmtpOptions _smtp = smtpOptions.Value;
     private readonly ApiOptions _api = apiOptions.Value;
 
@@ -21,27 +25,13 @@ public sealed class EmailService(
         string confirmUrl = $"{_api.BaseUrl.TrimEnd('/')}/api/auth/confirm-email" +
                             $"?email={Uri.EscapeDataString(toEmail)}&token={Uri.EscapeDataString(token)}";
 
-        string body = $"""
-            <html>
-            <body style="font-family: Arial, sans-serif; color: #333;">
-                <h2>Confirme seu e-mail</h2>
-                <p>Ol&#225;, <strong>{WebUtility.HtmlEncode(toName)}</strong>!</p>
-                <p>Clique no bot&#227;o abaixo para confirmar seu endere&#231;o de e-mail:</p>
-                <p>
-                    <a href="{confirmUrl}"
-                       style="display:inline-block;padding:12px 24px;background:#7c3aed;color:#fff;
-                              text-decoration:none;border-radius:6px;font-weight:bold;">
-                        Confirmar E-mail
-                    </a>
-                </p>
-                <p>Caso o bot&#227;o n&#227;o funcione, copie e cole o link abaixo no navegador:</p>
-                <p><a href="{confirmUrl}">{confirmUrl}</a></p>
-                <p style="color:#888;font-size:12px;">Este link expira em 24 horas.</p>
-            </body>
-            </html>
-            """;
+        string body = EmailTemplateRenderer.Render(EmailConfirmationTemplate, new Dictionary<string, string>
+        {
+            ["RecipientName"] = WebUtility.HtmlEncode(toName),
+            ["ConfirmUrl"] = WebUtility.HtmlEncode(confirmUrl)
+        });
 
-        return SendAsync(toEmail, toName, "Confirme seu e-mail — Wedding Gift", body, cancellationToken);
+        return SendAsync(toEmail, toName, "Confirme seu e-mail - Wedding Gift", body, cancellationToken);
     }
 
     public Task SendErrorNotificationAsync(string subject, string body, CancellationToken cancellationToken)
@@ -50,7 +40,7 @@ public sealed class EmailService(
             ? _smtp.FromEmail
             : _smtp.ErrorNotificationRecipient;
 
-        string html = $"<pre style=\"font-family:monospace;font-size:13px;white-space:pre-wrap\">{WebUtility.HtmlEncode(body)}</pre>";
+        string html = RenderSystemNotification(subject, body);
 
         return SendAsync(recipient, "Suporte", subject, html, cancellationToken);
     }
@@ -61,7 +51,7 @@ public sealed class EmailService(
             ? _smtp.FromEmail
             : _smtp.ErrorNotificationRecipient;
 
-        string html = $"<pre style=\"font-family:monospace;font-size:13px;white-space:pre-wrap\">{WebUtility.HtmlEncode(body)}</pre>";
+        string html = RenderSystemNotification(subject, body);
 
         return SendAsync(recipient, "Suporte", subject, html, cancellationToken);
     }
@@ -72,20 +62,23 @@ public sealed class EmailService(
             ? _smtp.FromEmail
             : _smtp.CoupleNotificationRecipient;
 
-        string valor = amount.ToString("C", new CultureInfo("pt-BR"));
+        string amountText = amount.ToString("C", new CultureInfo("pt-BR"));
 
-        string body = $"""
-            <html>
-            <body style="font-family: Arial, sans-serif; color: #333;">
-                <h2>Nova contribuição recebida 🎉</h2>
-                <p><strong>{WebUtility.HtmlEncode(contributorName)}</strong> contribuiu com <strong>{valor}</strong> na sua lista de presentes.</p>
-                <p style="color:#888;font-size:12px;">Notificação automática — Wedding Gift.</p>
-            </body>
-            </html>
-            """;
+        string body = EmailTemplateRenderer.Render(ContributionNotificationTemplate, new Dictionary<string, string>
+        {
+            ["ContributorName"] = WebUtility.HtmlEncode(contributorName),
+            ["Amount"] = WebUtility.HtmlEncode(amountText)
+        });
 
-        return SendAsync(recipient, "Casal", "Nova contribuição recebida — Wedding Gift", body, cancellationToken);
+        return SendAsync(recipient, "Casal", "Nova contribuicao recebida - Wedding Gift", body, cancellationToken);
     }
+
+    private static string RenderSystemNotification(string subject, string body)
+        => EmailTemplateRenderer.Render(SystemNotificationTemplate, new Dictionary<string, string>
+        {
+            ["Title"] = WebUtility.HtmlEncode(subject),
+            ["Body"] = WebUtility.HtmlEncode(body)
+        });
 
     private async Task SendAsync(string toEmail, string toName, string subject, string htmlBody, CancellationToken cancellationToken)
     {
