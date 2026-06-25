@@ -4,6 +4,7 @@ using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Domain.Model.Entities;
 using wedding.gift.Infra.Implementations.DataContext;
+using wedding.gift.Infra.Implementations.Repositories;
 using wedding.gift.Services.Implementations;
 
 namespace wedding.gift.Tests;
@@ -13,10 +14,10 @@ public class GiftServiceTests
     [Fact]
     public async Task CreateAsync_DeveAceitarCategoriaOpcional_QuandoNaoInformada()
     {
-        var context = CreateContext();
-        var service = new GiftService(context);
+        AppDbContext context = CreateContext();
+        GiftService service = CreateService(context);
 
-        var created = await service.CreateAsync(new GiftCreateDto
+        GiftResponseDto created = await service.CreateAsync(new GiftCreateDto
         {
             Name = "Presente sem categoria",
             Description = "Teste",
@@ -32,13 +33,13 @@ public class GiftServiceTests
     [Fact]
     public async Task GetAllAsync_DeveOrdenarPorPrecoComoDecimal()
     {
-        var context = CreateContext();
+        AppDbContext context = CreateContext();
         SeedGift(context, "Dez", price: 10m);
         SeedGift(context, "Dois", price: 2m);
         SeedGift(context, "Cem", price: 100.50m);
-        var service = new GiftService(context);
+        GiftService service = CreateService(context);
 
-        var result = await service.GetAllAsync(new GiftQueryParams
+        PagedResult<GiftResponseDto> result = await service.GetAllAsync(new GiftQueryParams
         {
             OrderBy = GiftSortField.Price,
             OrderDir = SortDirection.Asc
@@ -50,13 +51,13 @@ public class GiftServiceTests
     [Fact]
     public async Task GetAllAsync_DeveOrdenarPorTotalComoDecimal()
     {
-        var context = CreateContext();
+        AppDbContext context = CreateContext();
         SeedGift(context, "Dez", price: 10m, total: 10m);
         SeedGift(context, "Dois", price: 2m, total: 2m);
         SeedGift(context, "Cem", price: 100.50m, total: 100.50m);
-        var service = new GiftService(context);
+        GiftService service = CreateService(context);
 
-        var result = await service.GetAllAsync(new GiftQueryParams
+        PagedResult<GiftResponseDto> result = await service.GetAllAsync(new GiftQueryParams
         {
             OrderBy = GiftSortField.Total,
             OrderDir = SortDirection.Desc
@@ -68,16 +69,16 @@ public class GiftServiceTests
     [Fact]
     public async Task GetAllAsync_DeveOrdenarPorValorArrecadadoComoDecimal()
     {
-        var context = CreateContext();
-        var ten = SeedGift(context, "Dez", price: 10m);
-        var two = SeedGift(context, "Dois", price: 2m);
-        var hundred = SeedGift(context, "Cem", price: 100.50m);
+        AppDbContext context = CreateContext();
+        Gift ten = SeedGift(context, "Dez", price: 10m);
+        Gift two = SeedGift(context, "Dois", price: 2m);
+        Gift hundred = SeedGift(context, "Cem", price: 100.50m);
         SeedContribution(context, ten.Id, 10m);
         SeedContribution(context, two.Id, 2m);
         SeedContribution(context, hundred.Id, 100.50m);
-        var service = new GiftService(context);
+        GiftService service = CreateService(context);
 
-        var result = await service.GetAllAsync(new GiftQueryParams
+        PagedResult<GiftResponseDto> result = await service.GetAllAsync(new GiftQueryParams
         {
             OrderBy = GiftSortField.Raised,
             OrderDir = SortDirection.Asc
@@ -89,13 +90,13 @@ public class GiftServiceTests
     [Fact]
     public async Task GetAllAsync_DeveMarcarFullyFundedSemIndisponibilizarPresente()
     {
-        var context = CreateContext();
-        var gift = SeedGift(context, "Completo", price: 100m);
+        AppDbContext context = CreateContext();
+        Gift gift = SeedGift(context, "Completo", price: 100m);
         SeedContribution(context, gift.Id, 100m);
-        var service = new GiftService(context);
+        GiftService service = CreateService(context);
 
-        var result = await service.GetAllAsync(new GiftQueryParams(), CancellationToken.None);
-        var item = Assert.Single(result.Items);
+        PagedResult<GiftResponseDto> result = await service.GetAllAsync(new GiftQueryParams(), CancellationToken.None);
+        GiftResponseDto item = Assert.Single(result.Items);
 
         Assert.True(item.Available);
         Assert.True(item.FullyFunded);
@@ -104,15 +105,15 @@ public class GiftServiceTests
     [Fact]
     public async Task GetStatsAsync_DeveContarCompletedPorValorArrecadado()
     {
-        var context = CreateContext();
-        var completed = SeedGift(context, "Completo", price: 100m);
-        var unavailable = SeedGift(context, "Indisponivel", price: 100m, available: false);
+        AppDbContext context = CreateContext();
+        Gift completed = SeedGift(context, "Completo", price: 100m);
+        Gift unavailable = SeedGift(context, "Indisponivel", price: 100m, available: false);
         SeedContribution(context, completed.Id, 100m);
         SeedContribution(context, unavailable.Id, 50m);
         SeedContribution(context, unavailable.Id, 50m, contributorName: "Bruno", status: ContributionStatus.Pending);
-        var service = new GiftService(context);
+        GiftService service = CreateService(context);
 
-        var stats = await service.GetStatsAsync(CancellationToken.None);
+        GiftStatsDto stats = await service.GetStatsAsync(CancellationToken.None);
 
         Assert.Equal(2, stats.Total);
         Assert.Equal(1, stats.Completed);
@@ -124,42 +125,33 @@ public class GiftServiceTests
     [Fact]
     public async Task GetStatsAsync_DeveContarContributorsDistintosApenasComContribuicoesPagas()
     {
-        var context = CreateContext();
-        var gift = SeedGift(context, "Contribuidores", price: 500m);
+        AppDbContext context = CreateContext();
+        Gift gift = SeedGift(context, "Contribuidores", price: 500m);
         SeedContribution(context, gift.Id, 100m, contributorName: " Ana ");
         SeedContribution(context, gift.Id, 50m, contributorName: "ana");
         SeedContribution(context, gift.Id, 25m, contributorName: "BRUNO");
         SeedContribution(context, gift.Id, 30m, contributorName: "Carla", status: ContributionStatus.Pending);
         SeedContribution(context, gift.Id, 40m, contributorName: "Diego", status: ContributionStatus.Cancelled);
-        var service = new GiftService(context);
+        GiftService service = CreateService(context);
 
-        var stats = await service.GetStatsAsync(CancellationToken.None);
+        GiftStatsDto stats = await service.GetStatsAsync(CancellationToken.None);
 
         Assert.Equal(2, stats.Contributors);
         Assert.Equal(175m, stats.Raised);
         Assert.Equal(0, stats.Completed);
     }
 
-    private static AppDbContext CreateContext() =>
-        new(new DbContextOptionsBuilder<AppDbContext>()
+    private static AppDbContext CreateContext()
+        => new(new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options);
 
+    private static GiftService CreateService(AppDbContext context)
+        => new(new GiftRepository(context), new ContributionRepository(context));
+
     private static Gift SeedGift(AppDbContext context, string name, decimal price, decimal? total = null, bool available = true)
     {
-        var gift = new Gift
-        {
-            Id = Guid.NewGuid(),
-            Name = name,
-            Description = $"{name} description",
-            Price = price,
-            Total = total ?? price,
-            Image = $"{name}.jpg",
-            Category = "Casa",
-            Available = available,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
+        Gift gift = Gift.Create(name, $"{name} description", price, total ?? price, $"{name}.jpg", "Casa", available, true);
 
         context.Gifts.Add(gift);
         context.SaveChanges();
@@ -173,17 +165,7 @@ public class GiftServiceTests
         string contributorName = "Ana",
         string status = ContributionStatus.Paid)
     {
-        context.Contributions.Add(new Contribution
-        {
-            Id = Guid.NewGuid(),
-            GiftId = giftId,
-            ContributorName = contributorName,
-            Amount = amount,
-            PaymentMethod = "pix",
-            PaidAt = DateTime.UtcNow,
-            Status = status
-        });
-
+        context.Contributions.Add(Contribution.Create(giftId, contributorName, string.Empty, amount, "pix", DateTime.UtcNow, status));
         context.SaveChanges();
     }
 }

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Xunit;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Infra.Implementations.DataContext;
+using wedding.gift.Infra.Implementations.Repositories;
 using wedding.gift.Services.Implementations;
 
 namespace wedding.gift.Tests;
@@ -12,7 +13,7 @@ public class ApiRequestLogServiceTests
     public async Task SaveAsync_DevePersistirMetadadosSegurosDoRequest()
     {
         var context = CreateContext();
-        var service = new ApiRequestLogService(context);
+        var service = new ApiRequestLogService(new ApiRequestLogRepository(context));
 
         await service.SaveAsync(new ApiRequestLogCreateDto
         {

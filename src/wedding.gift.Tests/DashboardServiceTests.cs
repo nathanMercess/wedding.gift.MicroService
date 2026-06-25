@@ -4,6 +4,7 @@ using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Domain.Model.Entities;
 using wedding.gift.Infra.Implementations.DataContext;
+using wedding.gift.Infra.Implementations.Repositories;
 using wedding.gift.Services.Implementations;
 using wedding.gift.Services.Implementations.Exceptions;
 
@@ -14,148 +15,33 @@ public class DashboardServiceTests
     [Fact]
     public async Task GetAsync_DeveRetornarResumoCompleto_QuandoExistemDados()
     {
-        var context = CreateContext();
-        var now = DateTime.UtcNow;
-        var completedGift = SeedGift(context, "Jogo de Panelas", "Cozinha", 100m);
-        var partialGift = SeedGift(context, "Cafeteira", "Cozinha", 300m);
+        AppDbContext context = CreateContext();
+        DateTime now = DateTime.UtcNow;
+        Gift completedGift = SeedGift(context, "Jogo de Panelas", "Cozinha", 100m);
+        Gift partialGift = SeedGift(context, "Cafeteira", "Cozinha", 300m);
 
         context.Contributions.AddRange(
-            new Contribution
-            {
-                Id = Guid.NewGuid(),
-                GiftId = completedGift.Id,
-                ContributorName = "Ana",
-                Message = "Felicidades!",
-                Amount = 100m,
-                PaymentMethod = "pix",
-                PaidAt = now.AddDays(-1),
-                Status = ContributionStatus.Paid
-            },
-            new Contribution
-            {
-                Id = Guid.NewGuid(),
-                GiftId = partialGift.Id,
-                ContributorName = "Bruno",
-                Amount = 50m,
-                PaymentMethod = "credit_card",
-                PaidAt = now,
-                Status = ContributionStatus.Paid
-            },
-            new Contribution
-            {
-                Id = Guid.NewGuid(),
-                GiftId = partialGift.Id,
-                ContributorName = "Carla",
-                Amount = 25m,
-                PaymentMethod = "pix",
-                PaidAt = now,
-                Status = ContributionStatus.Pending
-            });
+            Contribution.Create(completedGift.Id, "Ana", "Felicidades!", 100m, "pix", now.AddDays(-1), ContributionStatus.Paid),
+            Contribution.Create(partialGift.Id, "Bruno", string.Empty, 50m, "credit_card", now, ContributionStatus.Paid),
+            Contribution.Create(partialGift.Id, "Carla", string.Empty, 25m, "pix", now, ContributionStatus.Pending));
+
+        Payment approvedPayment = Payment.CreatePix(completedGift.Id, "Ana", "Felicidades!", "ana@test.com", "CPF", "12345678909", "ord_approved", 100m, "approved", null, "mp_approved", null, string.Empty, null);
+        approvedPayment.MarkContributionCreated(Guid.NewGuid());
 
         context.Payments.AddRange(
-            new Payment
-            {
-                Id = Guid.NewGuid(),
-                GiftId = completedGift.Id,
-                ContributorName = "Ana",
-                Message = "Felicidades!",
-                PayerEmail = "ana@test.com",
-                PayerDocType = "CPF",
-                PayerDocNumber = "12345678909",
-                ContributionCreated = true,
-                OrderId = "ord_approved",
-                Method = "pix",
-                Amount = 100m,
-                Status = "approved",
-                MpOrderId = "mp_approved",
-                CreatedAt = now.AddDays(-1),
-                UpdatedAt = now.AddDays(-1)
-            },
-            new Payment
-            {
-                Id = Guid.NewGuid(),
-                GiftId = partialGift.Id,
-                ContributorName = "Duda",
-                Message = "Vou pagar no Pix",
-                PayerEmail = "duda@test.com",
-                PayerDocType = "CPF",
-                PayerDocNumber = "12345678909",
-                ContributionCreated = false,
-                OrderId = "ord_pending",
-                Method = "pix",
-                Amount = 75m,
-                Status = "pending",
-                MpOrderId = "mp_pending",
-                CreatedAt = now,
-                UpdatedAt = now
-            },
-            new Payment
-            {
-                Id = Guid.NewGuid(),
-                GiftId = partialGift.Id,
-                ContributorName = "Eva",
-                PayerEmail = "eva@test.com",
-                PayerDocType = "CPF",
-                PayerDocNumber = "12345678909",
-                ContributionCreated = false,
-                OrderId = "ord_rejected",
-                Method = "credit_card",
-                Amount = 80m,
-                Status = "rejected",
-                StatusDetail = "cc_rejected",
-                MpOrderId = "mp_rejected",
-                CreatedAt = now,
-                UpdatedAt = now
-            });
+            approvedPayment,
+            Payment.CreatePix(partialGift.Id, "Duda", "Vou pagar no Pix", "duda@test.com", "CPF", "12345678909", "ord_pending", 75m, "pending", null, "mp_pending", null, string.Empty, null),
+            Payment.CreateCard(partialGift.Id, "Eva", string.Empty, "eva@test.com", "CPF", "12345678909", null, "ord_rejected", "credit_card", 80m, 1, "rejected", "cc_rejected", "mp_rejected", null));
 
         context.ApiRequestLogs.AddRange(
-            new ApiRequestLog
-            {
-                Id = Guid.NewGuid(),
-                StartedAtUtc = now.AddMinutes(-3),
-                CompletedAtUtc = now.AddMinutes(-3).AddMilliseconds(120),
-                DurationMilliseconds = 120,
-                Method = "GET",
-                Path = "/api/gifts",
-                StatusCode = 200,
-                IsSuccess = true,
-                IsAuthenticated = false,
-                CorrelationId = "req_200"
-            },
-            new ApiRequestLog
-            {
-                Id = Guid.NewGuid(),
-                StartedAtUtc = now.AddMinutes(-2),
-                CompletedAtUtc = now.AddMinutes(-2).AddMilliseconds(250),
-                DurationMilliseconds = 250,
-                Method = "GET",
-                Path = "/api/admin/dashboard",
-                StatusCode = 403,
-                IsSuccess = false,
-                IsAuthenticated = true,
-                UserRole = UserRoles.Admin,
-                CorrelationId = "req_403"
-            },
-            new ApiRequestLog
-            {
-                Id = Guid.NewGuid(),
-                StartedAtUtc = now.AddMinutes(-1),
-                CompletedAtUtc = now.AddMinutes(-1).AddMilliseconds(1250),
-                DurationMilliseconds = 1250,
-                Method = "POST",
-                Path = "/api/payment/pix",
-                StatusCode = 500,
-                IsSuccess = false,
-                IsAuthenticated = false,
-                CorrelationId = "req_500",
-                ExceptionType = "InvalidOperationException",
-                ExceptionMessage = "Falha inesperada"
-            });
+            ApiRequestLog.Create(now.AddMinutes(-3), now.AddMinutes(-3).AddMilliseconds(120), 120, "GET", "/api/gifts", string.Empty, string.Empty, 200, false, string.Empty, string.Empty, string.Empty, string.Empty, "req_200", string.Empty, string.Empty),
+            ApiRequestLog.Create(now.AddMinutes(-2), now.AddMinutes(-2).AddMilliseconds(250), 250, "GET", "/api/admin/dashboard", string.Empty, string.Empty, 403, true, string.Empty, UserRoles.Admin, string.Empty, string.Empty, "req_403", string.Empty, string.Empty),
+            ApiRequestLog.Create(now.AddMinutes(-1), now.AddMinutes(-1).AddMilliseconds(1250), 1250, "POST", "/api/payment/pix", string.Empty, string.Empty, 500, false, string.Empty, string.Empty, string.Empty, string.Empty, "req_500", "InvalidOperationException", "Falha inesperada"));
 
         await context.SaveChangesAsync(CancellationToken.None);
-        var service = new DashboardService(context);
+        DashboardService service = CreateService(context);
 
-        var dashboard = await service.GetAsync(new DashboardQueryDto
+        DashboardResponseDto dashboard = await service.GetAsync(new DashboardQueryDto
         {
             Days = 7,
             RecentItems = 5
@@ -204,10 +90,10 @@ public class DashboardServiceTests
     [Fact]
     public async Task GetAsync_DeveLancarBadRequest_QuandoDaysInvalido()
     {
-        var context = CreateContext();
-        var service = new DashboardService(context);
+        AppDbContext context = CreateContext();
+        DashboardService service = CreateService(context);
 
-        var ex = await Assert.ThrowsAsync<BadRequestException>(() => service.GetAsync(new DashboardQueryDto
+        BadRequestException ex = await Assert.ThrowsAsync<BadRequestException>(() => service.GetAsync(new DashboardQueryDto
         {
             Days = 0
         }, CancellationToken.None));
@@ -215,26 +101,21 @@ public class DashboardServiceTests
         Assert.Equal(ErrorCodes.INVALID_DASHBOARD_DAYS, ex.Code);
     }
 
-    private static AppDbContext CreateContext() =>
-        new(new DbContextOptionsBuilder<AppDbContext>()
+    private static AppDbContext CreateContext()
+        => new(new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options);
 
+    private static DashboardService CreateService(AppDbContext context)
+        => new(
+            new GiftRepository(context),
+            new ContributionRepository(context),
+            new PaymentRepository(context),
+            new ApiRequestLogRepository(context));
+
     private static Gift SeedGift(AppDbContext context, string name, string category, decimal total)
     {
-        var gift = new Gift
-        {
-            Id = Guid.NewGuid(),
-            Name = name,
-            Description = $"{name} description",
-            Price = total,
-            Total = total,
-            Image = $"{name}.jpg",
-            Category = category,
-            Available = true,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
+        Gift gift = Gift.Create(name, $"{name} description", total, total, $"{name}.jpg", category, true, true);
 
         context.Gifts.Add(gift);
         context.SaveChanges();

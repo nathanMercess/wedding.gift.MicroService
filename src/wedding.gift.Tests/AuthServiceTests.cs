@@ -8,6 +8,7 @@ using wedding.gift.Crosscutting.Models.Configurations;
 using wedding.gift.Crosscutting.Models.DTOs.Auth;
 using wedding.gift.Domain.Model.Entities;
 using wedding.gift.Infra.Implementations.DataContext;
+using wedding.gift.Infra.Implementations.Repositories;
 using wedding.gift.Services.Contracts;
 using wedding.gift.Services.Implementations;
 using wedding.gift.Services.Implementations.Exceptions;
@@ -20,26 +21,14 @@ public class AuthServiceTests
     [Fact]
     public async Task LoginAsync_DeveRetornarToken_QuandoCredenciaisValidas()
     {
-        var context = CreateContext();
-        var (hash, salt) = PasswordHasher.HashPassword("SenhaForte123!");
-
-        context.Users.Add(new User
-        {
-            Id = Guid.NewGuid(),
-            Name = "Admin",
-            Email = "admin@weddinggift.com",
-            NormalizedEmail = "admin@weddinggift.com",
-            PasswordHash = hash,
-            PasswordSalt = salt,
-            Role = UserRoles.Admin,
-            IsActive = true,
-            IsEmailConfirmed = true
-        });
+        AppDbContext context = CreateContext();
+        User user = CreateUser("Admin", "admin@weddinggift.com", UserRoles.Admin, true);
+        context.Users.Add(user);
         await context.SaveChangesAsync(CancellationToken.None);
 
-        var service = CreateService(context);
+        AuthService service = CreateService(context);
 
-        var result = await service.LoginAsync(new LoginRequestDto
+        LoginResponseDto result = await service.LoginAsync(new LoginRequestDto
         {
             Email = "admin@weddinggift.com",
             Password = "SenhaForte123!"
@@ -50,7 +39,7 @@ public class AuthServiceTests
         Assert.Equal("admin@weddinggift.com", result.Email);
         Assert.Equal(UserRoles.Admin, result.Role);
 
-        var token = new JwtSecurityTokenHandler().ReadJwtToken(result.AccessToken);
+        JwtSecurityToken token = new JwtSecurityTokenHandler().ReadJwtToken(result.AccessToken);
         Assert.Contains(token.Claims, c => c.Type == JwtRegisteredClaimNames.Email && c.Value == "admin@weddinggift.com");
         Assert.Contains(token.Claims, c => c.Type == ClaimTypes.Role && c.Value == UserRoles.Admin);
     }
@@ -58,26 +47,13 @@ public class AuthServiceTests
     [Fact]
     public async Task LoginAsync_DeveRetornarRoleSuperAdmin_QuandoUsuarioForSuperAdmin()
     {
-        var context = CreateContext();
-        var (hash, salt) = PasswordHasher.HashPassword("SenhaForte123!");
-
-        context.Users.Add(new User
-        {
-            Id = Guid.NewGuid(),
-            Name = "Super Admin",
-            Email = "super-admin@weddinggift.com",
-            NormalizedEmail = "super-admin@weddinggift.com",
-            PasswordHash = hash,
-            PasswordSalt = salt,
-            Role = UserRoles.SuperAdmin,
-            IsActive = true,
-            IsEmailConfirmed = true
-        });
+        AppDbContext context = CreateContext();
+        context.Users.Add(CreateUser("Super Admin", "super-admin@weddinggift.com", UserRoles.SuperAdmin, true));
         await context.SaveChangesAsync(CancellationToken.None);
 
-        var service = CreateService(context);
+        AuthService service = CreateService(context);
 
-        var result = await service.LoginAsync(new LoginRequestDto
+        LoginResponseDto result = await service.LoginAsync(new LoginRequestDto
         {
             Email = "super-admin@weddinggift.com",
             Password = "SenhaForte123!"
@@ -85,33 +61,20 @@ public class AuthServiceTests
 
         Assert.Equal(UserRoles.SuperAdmin, result.Role);
 
-        var token = new JwtSecurityTokenHandler().ReadJwtToken(result.AccessToken);
+        JwtSecurityToken token = new JwtSecurityTokenHandler().ReadJwtToken(result.AccessToken);
         Assert.Contains(token.Claims, c => c.Type == ClaimTypes.Role && c.Value == UserRoles.SuperAdmin);
     }
 
     [Fact]
     public async Task LoginAsync_DeveLancarUnauthorized_QuandoSenhaInvalida()
     {
-        var context = CreateContext();
-        var (hash, salt) = PasswordHasher.HashPassword("SenhaForte123!");
-
-        context.Users.Add(new User
-        {
-            Id = Guid.NewGuid(),
-            Name = "Admin",
-            Email = "admin@weddinggift.com",
-            NormalizedEmail = "admin@weddinggift.com",
-            PasswordHash = hash,
-            PasswordSalt = salt,
-            Role = UserRoles.Admin,
-            IsActive = true,
-            IsEmailConfirmed = true
-        });
+        AppDbContext context = CreateContext();
+        context.Users.Add(CreateUser("Admin", "admin@weddinggift.com", UserRoles.Admin, true));
         await context.SaveChangesAsync(CancellationToken.None);
 
-        var service = CreateService(context);
+        AuthService service = CreateService(context);
 
-        var ex = await Assert.ThrowsAsync<UnauthorizedException>(() => service.LoginAsync(new LoginRequestDto
+        UnauthorizedException ex = await Assert.ThrowsAsync<UnauthorizedException>(() => service.LoginAsync(new LoginRequestDto
         {
             Email = "admin@weddinggift.com",
             Password = "SenhaErrada"
@@ -123,26 +86,15 @@ public class AuthServiceTests
     [Fact]
     public async Task LoginAsync_DeveLancarUnauthorized_QuandoUsuarioInativo()
     {
-        var context = CreateContext();
-        var (hash, salt) = PasswordHasher.HashPassword("SenhaForte123!");
-
-        context.Users.Add(new User
-        {
-            Id = Guid.NewGuid(),
-            Name = "Admin",
-            Email = "admin@weddinggift.com",
-            NormalizedEmail = "admin@weddinggift.com",
-            PasswordHash = hash,
-            PasswordSalt = salt,
-            Role = UserRoles.Admin,
-            IsActive = false,
-            IsEmailConfirmed = true
-        });
+        AppDbContext context = CreateContext();
+        User user = CreateUser("Admin", "admin@weddinggift.com", UserRoles.Admin, true);
+        user.Deactivate();
+        context.Users.Add(user);
         await context.SaveChangesAsync(CancellationToken.None);
 
-        var service = CreateService(context);
+        AuthService service = CreateService(context);
 
-        var ex = await Assert.ThrowsAsync<UnauthorizedException>(() => service.LoginAsync(new LoginRequestDto
+        UnauthorizedException ex = await Assert.ThrowsAsync<UnauthorizedException>(() => service.LoginAsync(new LoginRequestDto
         {
             Email = "admin@weddinggift.com",
             Password = "SenhaForte123!"
@@ -154,26 +106,13 @@ public class AuthServiceTests
     [Fact]
     public async Task Login_UnconfirmedEmail_ThrowsUnauthorized()
     {
-        var context = CreateContext();
-        var (hash, salt) = PasswordHasher.HashPassword("SenhaForte123!");
-
-        context.Users.Add(new User
-        {
-            Id = Guid.NewGuid(),
-            Name = "Novo",
-            Email = "novo@weddinggift.com",
-            NormalizedEmail = "novo@weddinggift.com",
-            PasswordHash = hash,
-            PasswordSalt = salt,
-            Role = UserRoles.Member,
-            IsActive = true,
-            IsEmailConfirmed = false
-        });
+        AppDbContext context = CreateContext();
+        context.Users.Add(CreateUser("Novo", "novo@weddinggift.com", UserRoles.Member, false));
         await context.SaveChangesAsync(CancellationToken.None);
 
-        var service = CreateService(context);
+        AuthService service = CreateService(context);
 
-        var ex = await Assert.ThrowsAsync<UnauthorizedException>(() => service.LoginAsync(new LoginRequestDto
+        UnauthorizedException ex = await Assert.ThrowsAsync<UnauthorizedException>(() => service.LoginAsync(new LoginRequestDto
         {
             Email = "novo@weddinggift.com",
             Password = "SenhaForte123!"
@@ -185,11 +124,11 @@ public class AuthServiceTests
     [Fact]
     public async Task RegisterAsync_Success_SendsConfirmationEmail()
     {
-        var context = CreateContext();
-        var emailService = new FakeEmailService();
-        var service = CreateService(context, emailService);
+        AppDbContext context = CreateContext();
+        FakeEmailService emailService = new();
+        AuthService service = CreateService(context, emailService);
 
-        var result = await service.RegisterAsync(new RegisterRequestDto
+        RegisterResponseDto result = await service.RegisterAsync(new RegisterRequestDto
         {
             Name = "Maria",
             Email = "maria@weddinggift.com",
@@ -201,7 +140,7 @@ public class AuthServiceTests
         Assert.True(emailService.WasCalled);
         Assert.Equal("maria@weddinggift.com", emailService.LastToEmail);
 
-        var user = await context.Users.FirstAsync(u => u.NormalizedEmail == "maria@weddinggift.com");
+        User user = await context.Users.FirstAsync(u => u.NormalizedEmail == "maria@weddinggift.com");
         Assert.False(user.IsEmailConfirmed);
         Assert.NotNull(user.EmailConfirmationToken);
     }
@@ -209,23 +148,11 @@ public class AuthServiceTests
     [Fact]
     public async Task RegisterAsync_DuplicateEmail_ThrowsConflict()
     {
-        var context = CreateContext();
-        var (hash, salt) = PasswordHasher.HashPassword("SenhaForte123!");
-
-        context.Users.Add(new User
-        {
-            Id = Guid.NewGuid(),
-            Name = "Existente",
-            Email = "existente@weddinggift.com",
-            NormalizedEmail = "existente@weddinggift.com",
-            PasswordHash = hash,
-            PasswordSalt = salt,
-            Role = UserRoles.Member,
-            IsActive = true
-        });
+        AppDbContext context = CreateContext();
+        context.Users.Add(CreateUser("Existente", "existente@weddinggift.com", UserRoles.Member, true));
         await context.SaveChangesAsync(CancellationToken.None);
 
-        var service = CreateService(context);
+        AuthService service = CreateService(context);
 
         await Assert.ThrowsAsync<ConflictException>(() => service.RegisterAsync(new RegisterRequestDto
         {
@@ -238,26 +165,12 @@ public class AuthServiceTests
     [Fact]
     public async Task ConfirmEmail_ValidToken_ConfirmsUser()
     {
-        var context = CreateContext();
-        var token = "token-valido-123";
-
-        context.Users.Add(new User
-        {
-            Id = Guid.NewGuid(),
-            Name = "Pending",
-            Email = "pending@weddinggift.com",
-            NormalizedEmail = "pending@weddinggift.com",
-            PasswordHash = "hash",
-            PasswordSalt = "salt",
-            Role = UserRoles.Member,
-            IsActive = true,
-            IsEmailConfirmed = false,
-            EmailConfirmationToken = token,
-            EmailConfirmationTokenExpiresAt = DateTime.UtcNow.AddHours(24)
-        });
+        AppDbContext context = CreateContext();
+        string token = "token-valido-123";
+        context.Users.Add(CreateUser("Pending", "pending@weddinggift.com", UserRoles.Member, false, token, DateTime.UtcNow.AddHours(24)));
         await context.SaveChangesAsync(CancellationToken.None);
 
-        var service = CreateService(context);
+        AuthService service = CreateService(context);
 
         await service.ConfirmEmailAsync(new ConfirmEmailRequestDto
         {
@@ -265,7 +178,7 @@ public class AuthServiceTests
             Token = token
         }, CancellationToken.None);
 
-        var user = await context.Users.FirstAsync(u => u.NormalizedEmail == "pending@weddinggift.com");
+        User user = await context.Users.FirstAsync(u => u.NormalizedEmail == "pending@weddinggift.com");
         Assert.True(user.IsEmailConfirmed);
         Assert.Null(user.EmailConfirmationToken);
         Assert.Null(user.EmailConfirmationTokenExpiresAt);
@@ -274,28 +187,14 @@ public class AuthServiceTests
     [Fact]
     public async Task ConfirmEmail_ExpiredToken_ThrowsBadRequest()
     {
-        var context = CreateContext();
-        var token = "token-expirado";
-
-        context.Users.Add(new User
-        {
-            Id = Guid.NewGuid(),
-            Name = "Expired",
-            Email = "expired@weddinggift.com",
-            NormalizedEmail = "expired@weddinggift.com",
-            PasswordHash = "hash",
-            PasswordSalt = "salt",
-            Role = UserRoles.Member,
-            IsActive = true,
-            IsEmailConfirmed = false,
-            EmailConfirmationToken = token,
-            EmailConfirmationTokenExpiresAt = DateTime.UtcNow.AddHours(-1)
-        });
+        AppDbContext context = CreateContext();
+        string token = "token-expirado";
+        context.Users.Add(CreateUser("Expired", "expired@weddinggift.com", UserRoles.Member, false, token, DateTime.UtcNow.AddHours(-1)));
         await context.SaveChangesAsync(CancellationToken.None);
 
-        var service = CreateService(context);
+        AuthService service = CreateService(context);
 
-        var ex = await Assert.ThrowsAsync<BadRequestException>(() => service.ConfirmEmailAsync(new ConfirmEmailRequestDto
+        BadRequestException ex = await Assert.ThrowsAsync<BadRequestException>(() => service.ConfirmEmailAsync(new ConfirmEmailRequestDto
         {
             Email = "expired@weddinggift.com",
             Token = token
@@ -305,17 +204,13 @@ public class AuthServiceTests
     }
 
     private static AppDbContext CreateContext()
-    {
-        var options = new DbContextOptionsBuilder<AppDbContext>()
+        => new(new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .Options;
-
-        return new AppDbContext(options);
-    }
+            .Options);
 
     private static AuthService CreateService(AppDbContext context, IEmailService? emailService = null)
     {
-        var jwtOptions = Options.Create(new JwtOptions
+        IOptions<JwtOptions> jwtOptions = Options.Create(new JwtOptions
         {
             Issuer = "wedding.gift.api",
             Audience = "wedding.gift.clients",
@@ -323,7 +218,29 @@ public class AuthServiceTests
             AccessTokenExpirationMinutes = 60
         });
 
-        return new AuthService(context, jwtOptions, emailService ?? new FakeEmailService());
+        return new AuthService(new UserRepository(context), jwtOptions, emailService ?? new FakeEmailService());
+    }
+
+    private static User CreateUser(
+        string name,
+        string email,
+        string role,
+        bool confirmed,
+        string? confirmationToken = null,
+        DateTime? confirmationTokenExpiresAt = null)
+    {
+        (string hash, string salt) = PasswordHasher.HashPassword("SenhaForte123!");
+
+        return User.Create(
+            name,
+            email,
+            email.Trim().ToLowerInvariant(),
+            hash,
+            salt,
+            role,
+            confirmed,
+            confirmationToken,
+            confirmationTokenExpiresAt);
     }
 
     private sealed class FakeEmailService : IEmailService
@@ -339,18 +256,12 @@ public class AuthServiceTests
         }
 
         public Task SendErrorNotificationAsync(string subject, string body, CancellationToken cancellationToken)
-        {
-            return Task.CompletedTask;
-        }
+            => Task.CompletedTask;
 
         public Task SendContributionNotificationAsync(string contributorName, decimal amount, CancellationToken cancellationToken)
-        {
-            return Task.CompletedTask;
-        }
+            => Task.CompletedTask;
 
         public Task SendPaymentAttemptNotificationAsync(string subject, string body, CancellationToken cancellationToken)
-        {
-            return Task.CompletedTask;
-        }
+            => Task.CompletedTask;
     }
 }
