@@ -1,5 +1,5 @@
 namespace wedding.gift.Services.Implementations.Exceptions;
 
-public sealed class NotFoundException(string detail) : AppException("Recurso não encontrado", detail, 404)
+public sealed class NotFoundException(string code) : AppException(code, 404)
 {
 }

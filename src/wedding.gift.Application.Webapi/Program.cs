@@ -186,5 +186,5 @@ static string GetBootstrapAdminRole(string role)
         return UserRoles.SuperAdmin;
     }
 
-    throw new BadRequestException("Role do usuario bootstrap invalida. Use Admin ou SuperAdmin.");
+    throw new BadRequestException(ErrorCodes.INVALID_BOOTSTRAP_ADMIN_ROLE);
 }

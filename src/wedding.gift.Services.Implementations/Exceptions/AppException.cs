@@ -1,7 +1,7 @@
 namespace wedding.gift.Services.Implementations.Exceptions;
 
-public abstract class AppException(string title, string detail, int statusCode) : Exception(detail)
+public abstract class AppException(string code, int statusCode) : Exception(code)
 {
-    public string Title { get; } = title;
+    public string Code { get; } = code;
     public int StatusCode { get; } = statusCode;
 }

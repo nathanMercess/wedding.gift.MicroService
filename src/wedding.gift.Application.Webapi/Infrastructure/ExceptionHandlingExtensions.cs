@@ -79,8 +79,7 @@ public static class ExceptionHandlingExtensions
             AppException appException => new ProblemDetails
             {
                 Status = appException.StatusCode,
-                Title = appException.Title,
-                Detail = appException.Message
+                Title = appException.Code
             },
             _ => new ProblemDetails
             {

@@ -17,7 +17,7 @@ public sealed class AdminUploadsController(IImageUploadService imageUploadServic
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<ImageUploadResponseDto>> UploadImage(IFormFile file, CancellationToken cancellationToken)
     {
-        if (file == null) throw new BadRequestException("Selecione uma imagem para enviar.");
+        if (file == null) throw new BadRequestException(ErrorCodes.INVALID_IMAGE_FILE);
 
         await using Stream stream = file.OpenReadStream();
         string url = await imageUploadService.UploadImageAsync(stream, file.FileName, file.ContentType, file.Length, cancellationToken);

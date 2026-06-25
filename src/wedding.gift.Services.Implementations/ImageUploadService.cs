@@ -1,5 +1,6 @@
 using Google.Cloud.Storage.V1;
 using Microsoft.Extensions.Options;
+using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.Configurations;
 using wedding.gift.Services.Contracts;
 using wedding.gift.Services.Implementations.Exceptions;
@@ -16,18 +17,18 @@ public class ImageUploadService(StorageClient storageClient, IOptions<GcsOptions
     {
         if (length <= 0)
         {
-            throw new BadRequestException("Selecione uma imagem para enviar.");
+            throw new BadRequestException(ErrorCodes.INVALID_IMAGE_FILE);
         }
 
         if (length > MaxFileSizeBytes)
         {
-            throw new BadRequestException("O tamanho máximo permitido é 20MB.");
+            throw new BadRequestException(ErrorCodes.IMAGE_FILE_TOO_LARGE);
         }
 
         var extension = Path.GetExtension(fileName).ToLowerInvariant();
         if (!AllowedExtensions.Contains(extension) || !AllowedContentTypes.Contains(contentType.ToLowerInvariant()))
         {
-            throw new BadRequestException("Envie uma imagem JPG, PNG ou WEBP.");
+            throw new BadRequestException(ErrorCodes.INVALID_IMAGE_CONTENT_TYPE);
         }
 
         var bucketName = gcsOptions.Value.BucketName;

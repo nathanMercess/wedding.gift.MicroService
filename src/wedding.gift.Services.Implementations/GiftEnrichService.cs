@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Services.Contracts;
 using wedding.gift.Services.Implementations.Exceptions;
@@ -21,7 +22,7 @@ public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : I
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
-            throw new BadRequestException("URL inválida. Informe uma URL completa (https://...).");
+            throw new BadRequestException(ErrorCodes.INVALID_PRODUCT_URL);
 
         var client = httpClientFactory.CreateClient("enrich");
 
@@ -32,7 +33,7 @@ public partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : I
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
-            throw new BadRequestException("Não foi possível acessar o link informado. Verifique a URL e tente novamente.");
+            throw new BadRequestException(ErrorCodes.PRODUCT_URL_UNREACHABLE);
         }
 
         return ParseHtml(html);

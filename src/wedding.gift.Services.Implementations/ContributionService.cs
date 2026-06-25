@@ -22,22 +22,22 @@ public class ContributionService(AppDbContext dbContext) : IContributionService
     public async Task<Contribution> GetByIdAsync(Guid id, CancellationToken cancellationToken)
     {
         var entity = await dbContext.Contributions.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
-        return entity ?? throw new NotFoundException($"Contribuição com id '{id}' não foi encontrada.");
+        return entity ?? throw new NotFoundException(ErrorCodes.CONTRIBUTION_NOT_FOUND);
     }
 
     public async Task<Contribution> CreateAsync(ContributionCreateDto dto, CancellationToken cancellationToken)
     {
         if (!ContributionStatus.Allowed.Contains(dto.Status))
         {
-            throw new BadRequestException("Status inválido. Valores permitidos: Pending, Paid, Cancelled.");
+            throw new BadRequestException(ErrorCodes.INVALID_CONTRIBUTION_STATUS);
         }
 
         var gift = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == dto.GiftId, cancellationToken)
-                   ?? throw new NotFoundException($"Presente com id '{dto.GiftId}' não foi encontrado.");
+                   ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
 
         if (!gift.Available)
         {
-            throw new ConflictException("Não é permitido contribuir para um presente indisponível.");
+            throw new ConflictException(ErrorCodes.GIFT_UNAVAILABLE);
         }
 
         var entity = dto.ToEntity();
@@ -57,11 +57,11 @@ public class ContributionService(AppDbContext dbContext) : IContributionService
     {
         if (!ContributionStatus.Allowed.Contains(status))
         {
-            throw new BadRequestException("Status inválido. Valores permitidos: Pending, Paid, Cancelled.");
+            throw new BadRequestException(ErrorCodes.INVALID_CONTRIBUTION_STATUS);
         }
 
         var entity = await dbContext.Contributions.FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
-                     ?? throw new NotFoundException($"Contribuição com id '{id}' não foi encontrada.");
+                     ?? throw new NotFoundException(ErrorCodes.CONTRIBUTION_NOT_FOUND);
 
         var previousStatus = entity.Status;
         entity.Status = status;

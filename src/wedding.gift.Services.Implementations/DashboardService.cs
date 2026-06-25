@@ -14,12 +14,12 @@ public class DashboardService(AppDbContext dbContext) : IDashboardService
     {
         if (query.Days < 1 || query.Days > 365)
         {
-            throw new BadRequestException("O parametro 'days' deve estar entre 1 e 365.");
+            throw new BadRequestException(ErrorCodes.INVALID_DASHBOARD_DAYS);
         }
 
         if (query.RecentItems < 1 || query.RecentItems > 50)
         {
-            throw new BadRequestException("O parametro 'recentItems' deve estar entre 1 e 50.");
+            throw new BadRequestException(ErrorCodes.INVALID_DASHBOARD_RECENT_ITEMS);
         }
 
         var now = DateTime.UtcNow;

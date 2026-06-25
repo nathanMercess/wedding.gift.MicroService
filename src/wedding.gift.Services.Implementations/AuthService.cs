@@ -26,7 +26,7 @@ public class AuthService(AppDbContext dbContext, IOptions<JwtOptions> jwtOptions
     {
         if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Password))
         {
-            throw new UnauthorizedException("Credenciais inválidas.");
+            throw new UnauthorizedException(ErrorCodes.INVALID_CREDENTIALS);
         }
 
         var normalizedEmail = dto.Email.Trim().ToLowerInvariant();
@@ -37,24 +37,24 @@ public class AuthService(AppDbContext dbContext, IOptions<JwtOptions> jwtOptions
 
         if (user is null)
         {
-            throw new UnauthorizedException("Credenciais inválidas.");
+            throw new UnauthorizedException(ErrorCodes.INVALID_CREDENTIALS);
         }
 
         if (!user.IsActive)
         {
-            throw new UnauthorizedException("Usuário inativo.");
+            throw new UnauthorizedException(ErrorCodes.USER_INACTIVE);
         }
 
         if (!user.IsEmailConfirmed)
         {
-            throw new UnauthorizedException("E-mail não confirmado. Verifique sua caixa de entrada.");
+            throw new UnauthorizedException(ErrorCodes.EMAIL_NOT_CONFIRMED);
         }
 
         var isPasswordValid = PasswordHasher.VerifyPassword(dto.Password, user.PasswordHash, user.PasswordSalt);
 
         if (!isPasswordValid)
         {
-            throw new UnauthorizedException("Credenciais inválidas.");
+            throw new UnauthorizedException(ErrorCodes.INVALID_CREDENTIALS);
         }
 
         ValidateJwtConfiguration(_jwtOptions);
@@ -96,7 +96,7 @@ public class AuthService(AppDbContext dbContext, IOptions<JwtOptions> jwtOptions
     {
         if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Password) || string.IsNullOrWhiteSpace(dto.Name))
         {
-            throw new BadRequestException("Todos os campos são obrigatórios.");
+            throw new BadRequestException(ErrorCodes.REQUIRED_FIELDS);
         }
 
         var normalizedEmail = dto.Email.Trim().ToLowerInvariant();
@@ -106,7 +106,7 @@ public class AuthService(AppDbContext dbContext, IOptions<JwtOptions> jwtOptions
 
         if (exists)
         {
-            throw new ConflictException("Já existe uma conta com este e-mail.");
+            throw new ConflictException(ErrorCodes.EMAIL_ALREADY_EXISTS);
         }
 
         var (hash, salt) = PasswordHasher.HashPassword(dto.Password);
@@ -153,7 +153,7 @@ public class AuthService(AppDbContext dbContext, IOptions<JwtOptions> jwtOptions
     {
         if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Token))
         {
-            throw new BadRequestException("E-mail e token são obrigatórios.");
+            throw new BadRequestException(ErrorCodes.REQUIRED_FIELDS);
         }
 
         var normalizedEmail = dto.Email.Trim().ToLowerInvariant();
@@ -163,7 +163,7 @@ public class AuthService(AppDbContext dbContext, IOptions<JwtOptions> jwtOptions
 
         if (user is null)
         {
-            throw new NotFoundException("Usuário não encontrado.");
+            throw new NotFoundException(ErrorCodes.USER_NOT_FOUND);
         }
 
         if (user.IsEmailConfirmed)
@@ -176,7 +176,7 @@ public class AuthService(AppDbContext dbContext, IOptions<JwtOptions> jwtOptions
             user.EmailConfirmationTokenExpiresAt is null ||
             user.EmailConfirmationTokenExpiresAt < DateTime.UtcNow)
         {
-            throw new BadRequestException("Token de confirmação inválido ou expirado.");
+            throw new BadRequestException(ErrorCodes.INVALID_CONFIRMATION_TOKEN);
         }
 
         user.IsEmailConfirmed = true;
@@ -202,7 +202,7 @@ public class AuthService(AppDbContext dbContext, IOptions<JwtOptions> jwtOptions
             string.IsNullOrWhiteSpace(options.SigningKey) ||
             options.SigningKey.Length < 32)
         {
-            throw new BadRequestException("Configuração JWT inválida.");
+            throw new BadRequestException(ErrorCodes.INVALID_JWT_CONFIGURATION);
         }
     }
 }

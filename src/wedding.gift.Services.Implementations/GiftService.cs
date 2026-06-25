@@ -14,10 +14,10 @@ public class GiftService(AppDbContext dbContext) : IGiftService
     public async Task<PagedResult<GiftResponseDto>> GetAllAsync(GiftQueryParams queryParams, CancellationToken cancellationToken)
     {
         if (queryParams.Page < 1)
-            throw new BadRequestException("O parâmetro 'page' deve ser maior ou igual a 1.");
+            throw new BadRequestException(ErrorCodes.INVALID_GIFT_PAGE);
 
         if (queryParams.PageSize < 1 || queryParams.PageSize > 100)
-            throw new BadRequestException("O parâmetro 'pageSize' deve estar entre 1 e 100.");
+            throw new BadRequestException(ErrorCodes.INVALID_GIFT_PAGE_SIZE);
 
         IQueryable<Gift> query = dbContext.Gifts.Include(x => x.Contributions).AsNoTracking();
 
@@ -108,7 +108,7 @@ public class GiftService(AppDbContext dbContext) : IGiftService
             .Include(x => x.Contributions)
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
-        return entity ?? throw new NotFoundException($"Presente com id '{id}' não foi encontrado.");
+        return entity ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
     }
 
     public async Task<Gift> CreateAsync(GiftCreateDto dto, CancellationToken cancellationToken)
@@ -122,7 +122,7 @@ public class GiftService(AppDbContext dbContext) : IGiftService
     public async Task<Gift> UpdateAsync(Guid id, GiftUpdateDto dto, CancellationToken cancellationToken)
     {
         var entity = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
-                     ?? throw new NotFoundException($"Presente com id '{id}' não foi encontrado.");
+                     ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
 
         entity.ApplyUpdate(dto);
 
@@ -134,7 +134,7 @@ public class GiftService(AppDbContext dbContext) : IGiftService
     public async Task<Gift> UpdateAvailabilityAsync(Guid id, bool available, CancellationToken cancellationToken)
     {
         var entity = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
-                     ?? throw new NotFoundException($"Presente com id '{id}' não foi encontrado.");
+                     ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
 
         entity.Available = available;
         entity.UpdatedAt = DateTime.UtcNow;
@@ -146,7 +146,7 @@ public class GiftService(AppDbContext dbContext) : IGiftService
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken)
     {
         var entity = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
-                     ?? throw new NotFoundException($"Presente com id '{id}' não foi encontrado.");
+                     ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
 
         dbContext.Gifts.Remove(entity);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -158,7 +158,7 @@ public class GiftService(AppDbContext dbContext) : IGiftService
 
         if (!giftExists)
         {
-            throw new NotFoundException($"Presente com id '{giftId}' não foi encontrado.");
+            throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
         }
 
         return await dbContext.Contributions
@@ -171,11 +171,11 @@ public class GiftService(AppDbContext dbContext) : IGiftService
     public async Task<Contribution> ContributeAsync(Guid giftId, ContributeDto dto, CancellationToken cancellationToken)
     {
         var gift = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == giftId, cancellationToken)
-                   ?? throw new NotFoundException($"Presente com id '{giftId}' não foi encontrado.");
+                   ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
 
         if (!gift.Available)
         {
-            throw new ConflictException("Não é permitido contribuir para um presente indisponível.");
+            throw new ConflictException(ErrorCodes.GIFT_UNAVAILABLE);
         }
 
         var entity = new Contribution
