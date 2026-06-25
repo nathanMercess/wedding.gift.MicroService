@@ -1,21 +1,27 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using wedding.gift.Crosscutting.Constants;
+using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Services.Contracts;
 
 namespace wedding.gift.Application.Webapi.Infrastructure;
 
 public static class ApiBehaviorOptionsExtensions
 {
-    public static void UseValidationProblemDetails(this ApiBehaviorOptions options)
+    public static void UseValidationApiResponse(this ApiBehaviorOptions options)
     {
         options.InvalidModelStateResponseFactory = context =>
         {
-            ValidationProblemDetails details = new ValidationProblemDetails(context.ModelState)
-            {
-                Status = StatusCodes.Status400BadRequest,
-                Title = "Erro de validação",
-                Detail = "Verifique os campos enviados e tente novamente."
-            };
+            IReadOnlyDictionary<string, string[]> fields = context.ModelState
+                .Where(x => x.Value?.Errors.Count > 0)
+                .ToDictionary(
+                    x => x.Key,
+                    x => x.Value!.Errors.Select(_ => ErrorCodes.FIELD_INVALID).ToArray());
+
+            ApiResponseDto<object> response = ApiResponseDto<object>.Fail(
+                ErrorCodes.VALIDATION_ERROR,
+                context.HttpContext.TraceIdentifier,
+                fields);
 
             _ = QueueValidationNotificationAsync(
                 context.HttpContext.RequestServices,
@@ -23,7 +29,7 @@ public static class ApiBehaviorOptionsExtensions
                 context.HttpContext.Request.Path.Value ?? string.Empty,
                 context.ModelState);
 
-            return new BadRequestObjectResult(details);
+            return new BadRequestObjectResult(response);
         };
     }
 

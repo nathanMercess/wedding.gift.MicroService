@@ -12,10 +12,6 @@ namespace wedding.gift.Application.Webapi.Controllers;
 public sealed class AdminDashboardController(IDashboardService dashboardService) : ApiControllerBase
 {
     [HttpGet]
-    [ProducesResponseType(typeof(DashboardResponseDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<DashboardResponseDto>> Get([FromQuery] DashboardQueryDto query, CancellationToken cancellationToken)
     {
         DashboardResponseDto dashboard = await dashboardService.GetAsync(query, cancellationToken);

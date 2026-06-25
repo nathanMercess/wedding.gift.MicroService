@@ -19,8 +19,6 @@ public sealed class WebhookController(
     ILogger<WebhookController> logger) : ApiControllerBase
 {
     [HttpPost("mercadopago")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> ReceiveMercadoPagoNotification(
         [FromQuery(Name = "data.id")] string? dataId,
         [FromQuery] string? type,

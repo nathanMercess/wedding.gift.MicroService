@@ -14,7 +14,6 @@ namespace wedding.gift.Application.Webapi.Controllers;
 public sealed class AdminGiftsController(IGiftService giftService, IGiftEnrichService giftEnrichService) : ApiControllerBase
 {
     [HttpGet]
-    [ProducesResponseType(typeof(PagedResult<GiftResponseDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResult<GiftResponseDto>>> GetAll(
         [FromQuery] GiftQueryParams query,
         CancellationToken cancellationToken)
@@ -24,8 +23,6 @@ public sealed class AdminGiftsController(IGiftService giftService, IGiftEnrichSe
     }
 
     [HttpPost]
-    [ProducesResponseType(typeof(GiftResponseDto), StatusCodes.Status201Created)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<GiftResponseDto>> Create([FromBody] GiftCreateDto dto, CancellationToken cancellationToken)
     {
         Gift created = await giftService.CreateAsync(dto, cancellationToken);
@@ -33,9 +30,6 @@ public sealed class AdminGiftsController(IGiftService giftService, IGiftEnrichSe
     }
 
     [HttpPut("{id:guid}")]
-    [ProducesResponseType(typeof(GiftResponseDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<GiftResponseDto>> Update(Guid id, [FromBody] GiftUpdateDto dto, CancellationToken cancellationToken)
     {
         Gift updated = await giftService.UpdateAsync(id, dto, cancellationToken);
@@ -43,8 +37,6 @@ public sealed class AdminGiftsController(IGiftService giftService, IGiftEnrichSe
     }
 
     [HttpPatch("{id:guid}/availability")]
-    [ProducesResponseType(typeof(GiftResponseDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<GiftResponseDto>> UpdateAvailability(Guid id, [FromBody] GiftAvailabilityUpdateDto dto, CancellationToken cancellationToken)
     {
         Gift updated = await giftService.UpdateAvailabilityAsync(id, dto.Available, cancellationToken);
@@ -52,17 +44,13 @@ public sealed class AdminGiftsController(IGiftService giftService, IGiftEnrichSe
     }
 
     [HttpDelete("{id:guid}")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
         await giftService.DeleteAsync(id, cancellationToken);
-        return NoContent();
+        return Ok();
     }
 
     [HttpPost("enrich")]
-    [ProducesResponseType(typeof(GiftEnrichResponseDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<GiftEnrichResponseDto>> Enrich([FromBody] GiftEnrichRequestDto dto, CancellationToken cancellationToken)
     {
         GiftEnrichResponseDto result = await giftEnrichService.EnrichAsync(dto.Url, cancellationToken);

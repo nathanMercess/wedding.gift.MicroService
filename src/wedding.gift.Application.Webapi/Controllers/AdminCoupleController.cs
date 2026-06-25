@@ -14,8 +14,6 @@ namespace wedding.gift.Application.Webapi.Controllers;
 public sealed class AdminCoupleController(ICoupleService coupleService) : ApiControllerBase
 {
     [HttpPut]
-    [ProducesResponseType(typeof(CoupleResponseDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<CoupleResponseDto>> Update([FromBody] CoupleUpdateDto dto, CancellationToken cancellationToken)
     {
         Couple updated = await coupleService.UpdateAsync(dto, cancellationToken);

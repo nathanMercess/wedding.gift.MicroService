@@ -117,7 +117,7 @@ public class AuthServiceTests
             Password = "SenhaErrada"
         }, CancellationToken.None));
 
-        Assert.Equal("Credenciais inválidas.", ex.Message);
+        Assert.Equal(ErrorCodes.INVALID_CREDENTIALS, ex.Code);
     }
 
     [Fact]
@@ -148,7 +148,7 @@ public class AuthServiceTests
             Password = "SenhaForte123!"
         }, CancellationToken.None));
 
-        Assert.Equal("Usuário inativo.", ex.Message);
+        Assert.Equal(ErrorCodes.USER_INACTIVE, ex.Code);
     }
 
     [Fact]
@@ -179,7 +179,7 @@ public class AuthServiceTests
             Password = "SenhaForte123!"
         }, CancellationToken.None));
 
-        Assert.Equal("E-mail não confirmado. Verifique sua caixa de entrada.", ex.Message);
+        Assert.Equal(ErrorCodes.EMAIL_NOT_CONFIRMED, ex.Code);
     }
 
     [Fact]
@@ -301,7 +301,7 @@ public class AuthServiceTests
             Token = token
         }, CancellationToken.None));
 
-        Assert.Equal("Token de confirmação inválido ou expirado.", ex.Message);
+        Assert.Equal(ErrorCodes.INVALID_CONFIRMATION_TOKEN, ex.Code);
     }
 
     private static AppDbContext CreateContext()

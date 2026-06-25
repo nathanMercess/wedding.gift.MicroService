@@ -212,7 +212,7 @@ public class DashboardServiceTests
             Days = 0
         }, CancellationToken.None));
 
-        Assert.Equal("O parametro 'days' deve estar entre 1 e 365.", ex.Message);
+        Assert.Equal(ErrorCodes.INVALID_DASHBOARD_DAYS, ex.Code);
     }
 
     private static AppDbContext CreateContext() =>

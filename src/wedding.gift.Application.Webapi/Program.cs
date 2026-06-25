@@ -48,9 +48,8 @@ builder.Services
     })
     .AddJsonOptions(options => { options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase; });
 
-builder.Services.Configure<ApiBehaviorOptions>(options => options.UseValidationProblemDetails());
+builder.Services.Configure<ApiBehaviorOptions>(options => options.UseValidationApiResponse());
 
-builder.Services.AddProblemDetails();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection(SmtpOptions.SectionName));
@@ -118,6 +117,7 @@ using (var scope = app.Services.CreateScope())
 await EnsureBootstrapAdminAsync(app.Services, builder.Configuration);
 
 app.UseGlobalExceptionHandler();
+app.UseMiddleware<ApiResponseMiddleware>();
 app.UseCors("AngularDev");
 app.UseSwagger();
 app.UseSwaggerUI();

@@ -3,7 +3,12 @@ namespace wedding.gift.Crosscutting.Constants;
 public static class ErrorCodes
 {
     public const string BAD_REQUEST = "BAD_REQUEST";
+    public const string UNAUTHORIZED = "UNAUTHORIZED";
+    public const string FORBIDDEN = "FORBIDDEN";
+    public const string NOT_FOUND = "NOT_FOUND";
+    public const string HTTP_ERROR = "HTTP_ERROR";
     public const string VALIDATION_ERROR = "VALIDATION_ERROR";
+    public const string FIELD_INVALID = "FIELD_INVALID";
     public const string UNHANDLED_ERROR = "UNHANDLED_ERROR";
 
     public const string REQUIRED_FIELDS = "REQUIRED_FIELDS";

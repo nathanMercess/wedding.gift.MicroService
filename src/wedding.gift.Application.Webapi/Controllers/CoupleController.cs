@@ -12,8 +12,6 @@ public sealed class CoupleController(ICoupleService coupleService) : ApiControll
 {
     [AllowAnonymous]
     [HttpGet]
-    [ProducesResponseType(typeof(CoupleResponseDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<CoupleResponseDto>> Get(CancellationToken cancellationToken)
     {
         Couple couple = await coupleService.GetAsync(cancellationToken);

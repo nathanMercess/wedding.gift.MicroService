@@ -13,7 +13,6 @@ public sealed class ContributionsController(IContributionService contributionSer
 {
     [AllowAnonymous]
     [HttpGet]
-    [ProducesResponseType(typeof(IEnumerable<ContributionResponseDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IEnumerable<ContributionResponseDto>>> GetAll(CancellationToken cancellationToken)
     {
         IReadOnlyList<Contribution> contributions = await contributionService.GetAllAsync(cancellationToken);
@@ -22,8 +21,6 @@ public sealed class ContributionsController(IContributionService contributionSer
 
     [AllowAnonymous]
     [HttpGet("{id:guid}")]
-    [ProducesResponseType(typeof(ContributionResponseDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ContributionResponseDto>> GetById(Guid id, CancellationToken cancellationToken)
     {
         Contribution contribution = await contributionService.GetByIdAsync(id, cancellationToken);
@@ -32,10 +29,6 @@ public sealed class ContributionsController(IContributionService contributionSer
 
     [Authorize(Roles = UserRoles.AdminOrSuperAdmin)]
     [HttpPost]
-    [ProducesResponseType(typeof(ContributionResponseDto), StatusCodes.Status201Created)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<ContributionResponseDto>> Create([FromBody] ContributionCreateDto dto, CancellationToken cancellationToken)
     {
         Contribution created = await contributionService.CreateAsync(dto, cancellationToken);

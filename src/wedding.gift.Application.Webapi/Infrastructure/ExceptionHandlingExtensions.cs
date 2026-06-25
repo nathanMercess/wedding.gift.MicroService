@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Diagnostics;
-using Microsoft.AspNetCore.Mvc;
+using wedding.gift.Crosscutting.Constants;
+using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Services.Contracts;
 using wedding.gift.Services.Implementations.Exceptions;
 
@@ -27,11 +28,14 @@ public static class ExceptionHandlingExtensions
 
         if (exception is not null) await QueueErrorNotificationAsync(context, exception, correlationId);
 
-        ProblemDetails problem = CreateProblemDetails(exception, correlationId);
+        ApiResponseDto<object> response = CreateErrorResponse(exception, correlationId);
+        int statusCode = exception is AppException appException
+            ? appException.StatusCode
+            : StatusCodes.Status500InternalServerError;
 
-        context.Response.StatusCode = problem.Status ?? StatusCodes.Status500InternalServerError;
-        context.Response.ContentType = "application/problem+json";
-        await context.Response.WriteAsJsonAsync(problem);
+        context.Response.StatusCode = statusCode;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsJsonAsync(response);
     }
 
     private static void LogException(Exception exception, HttpContext context, ILogger<Program> logger, string correlationId)
@@ -72,25 +76,14 @@ public static class ExceptionHandlingExtensions
         });
     }
 
-    private static ProblemDetails CreateProblemDetails(Exception exception, string correlationId)
+    private static ApiResponseDto<object> CreateErrorResponse(Exception exception, string correlationId)
     {
-        ProblemDetails problem = exception switch
+        string code = exception switch
         {
-            AppException appException => new ProblemDetails
-            {
-                Status = appException.StatusCode,
-                Title = appException.Code
-            },
-            _ => new ProblemDetails
-            {
-                Status = StatusCodes.Status500InternalServerError,
-                Title = "Erro interno no servidor",
-                Detail = "Ocorreu um erro inesperado."
-            }
+            AppException appException => appException.Code,
+            _ => ErrorCodes.UNHANDLED_ERROR
         };
 
-        problem.Extensions["correlationId"] = correlationId;
-
-        return problem;
+        return ApiResponseDto<object>.Fail(code, correlationId);
     }
 }

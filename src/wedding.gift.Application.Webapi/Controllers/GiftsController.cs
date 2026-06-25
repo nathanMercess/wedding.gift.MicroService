@@ -12,7 +12,6 @@ public sealed class GiftsController(IGiftService giftService) : ApiControllerBas
 {
     [AllowAnonymous]
     [HttpGet]
-    [ProducesResponseType(typeof(PagedResult<GiftResponseDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResult<GiftResponseDto>>> GetAll(
         [FromQuery] GiftQueryParams query,
         CancellationToken cancellationToken)
@@ -23,7 +22,6 @@ public sealed class GiftsController(IGiftService giftService) : ApiControllerBas
 
     [AllowAnonymous]
     [HttpGet("stats")]
-    [ProducesResponseType(typeof(GiftStatsDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<GiftStatsDto>> GetStats(CancellationToken cancellationToken)
     {
         GiftStatsDto stats = await giftService.GetStatsAsync(cancellationToken);
@@ -32,8 +30,6 @@ public sealed class GiftsController(IGiftService giftService) : ApiControllerBas
 
     [AllowAnonymous]
     [HttpGet("{id:guid}")]
-    [ProducesResponseType(typeof(GiftResponseDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<GiftResponseDto>> GetById(Guid id, CancellationToken cancellationToken)
     {
         Gift gift = await giftService.GetByIdAsync(id, cancellationToken);
@@ -42,10 +38,6 @@ public sealed class GiftsController(IGiftService giftService) : ApiControllerBas
 
     [AllowAnonymous]
     [HttpPost("{id:guid}/contribute")]
-    [ProducesResponseType(typeof(ContributionResponseDto), StatusCodes.Status201Created)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<ContributionResponseDto>> Contribute(Guid id, [FromBody] ContributeDto dto, CancellationToken cancellationToken)
     {
         Contribution contribution = await giftService.ContributeAsync(id, dto, cancellationToken);
@@ -54,8 +46,6 @@ public sealed class GiftsController(IGiftService giftService) : ApiControllerBas
 
     [AllowAnonymous]
     [HttpGet("{giftId:guid}/contributions")]
-    [ProducesResponseType(typeof(IEnumerable<ContributionResponseDto>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<IEnumerable<ContributionResponseDto>>> GetContributionsByGiftId(Guid giftId, CancellationToken cancellationToken)
     {
         IReadOnlyList<Contribution> contributions = await giftService.GetContributionsByGiftIdAsync(giftId, cancellationToken);
