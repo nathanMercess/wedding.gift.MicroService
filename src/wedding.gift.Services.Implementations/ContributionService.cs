@@ -36,15 +36,15 @@ public sealed class ContributionService(AppDbContext dbContext) : IContributionS
             throw new BadRequestException(ErrorCodes.INVALID_CONTRIBUTION_STATUS);
         }
 
-        var gift = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == dto.GiftId, cancellationToken)
-                   ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
+        Gift gift = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == dto.GiftId, cancellationToken)
+                    ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
 
         if (!gift.Available)
         {
             throw new ConflictException(ErrorCodes.GIFT_UNAVAILABLE);
         }
 
-        var entity = dto.ToEntity();
+        Contribution entity = dto.ToEntity();
 
         if (entity.Status == ContributionStatus.Paid)
         {
@@ -64,10 +64,10 @@ public sealed class ContributionService(AppDbContext dbContext) : IContributionS
             throw new BadRequestException(ErrorCodes.INVALID_CONTRIBUTION_STATUS);
         }
 
-        var entity = await dbContext.Contributions.FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
-                     ?? throw new NotFoundException(ErrorCodes.CONTRIBUTION_NOT_FOUND);
+        Contribution entity = await dbContext.Contributions.FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
+                              ?? throw new NotFoundException(ErrorCodes.CONTRIBUTION_NOT_FOUND);
 
-        var previousStatus = entity.Status;
+        string previousStatus = entity.Status;
         entity.Status = status;
 
         if (status == ContributionStatus.Paid && previousStatus != ContributionStatus.Paid)

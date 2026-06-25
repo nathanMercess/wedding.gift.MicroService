@@ -4,7 +4,7 @@ public sealed class RouteConvention(string prefix) : IControllerModelConvention
 {
     public void Apply(ControllerModel controller)
     {
-        foreach (var selector in controller.Selectors)
+        foreach (SelectorModel selector in controller.Selectors)
         {
             if (selector.AttributeRouteModel != null)
             {

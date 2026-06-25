@@ -29,9 +29,9 @@ public sealed class AuthService(AppDbContext dbContext, IOptions<JwtOptions> jwt
             throw new UnauthorizedException(ErrorCodes.INVALID_CREDENTIALS);
         }
 
-        var normalizedEmail = dto.Email.Trim().ToLowerInvariant();
+        string normalizedEmail = dto.Email.Trim().ToLowerInvariant();
 
-        var user = await dbContext.Users
+        User user = await dbContext.Users
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.NormalizedEmail == normalizedEmail, cancellationToken);
 
@@ -50,7 +50,7 @@ public sealed class AuthService(AppDbContext dbContext, IOptions<JwtOptions> jwt
             throw new UnauthorizedException(ErrorCodes.EMAIL_NOT_CONFIRMED);
         }
 
-        var isPasswordValid = PasswordHasher.VerifyPassword(dto.Password, user.PasswordHash, user.PasswordSalt);
+        bool isPasswordValid = PasswordHasher.VerifyPassword(dto.Password, user.PasswordHash, user.PasswordSalt);
 
         if (!isPasswordValid)
         {
@@ -59,11 +59,11 @@ public sealed class AuthService(AppDbContext dbContext, IOptions<JwtOptions> jwt
 
         ValidateJwtConfiguration(_jwtOptions);
 
-        var expiresAtUtc = DateTime.UtcNow.AddMinutes(_jwtOptions.AccessTokenExpirationMinutes);
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtOptions.SigningKey));
-        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+        DateTime expiresAtUtc = DateTime.UtcNow.AddMinutes(_jwtOptions.AccessTokenExpirationMinutes);
+        SymmetricSecurityKey key = new(Encoding.UTF8.GetBytes(_jwtOptions.SigningKey));
+        SigningCredentials credentials = new(key, SecurityAlgorithms.HmacSha256);
 
-        var claims = new List<Claim>
+        List<Claim> claims = new()
         {
             new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new(JwtRegisteredClaimNames.Email, user.Email),
@@ -72,7 +72,7 @@ public sealed class AuthService(AppDbContext dbContext, IOptions<JwtOptions> jwt
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
-        var token = new JwtSecurityToken(
+        JwtSecurityToken token = new(
             issuer: _jwtOptions.Issuer,
             audience: _jwtOptions.Audience,
             claims: claims,
@@ -80,7 +80,7 @@ public sealed class AuthService(AppDbContext dbContext, IOptions<JwtOptions> jwt
             expires: expiresAtUtc,
             signingCredentials: credentials);
 
-        var accessToken = new JwtSecurityTokenHandler().WriteToken(token);
+        string accessToken = new JwtSecurityTokenHandler().WriteToken(token);
 
         return new LoginResponseDto
         {
@@ -99,9 +99,9 @@ public sealed class AuthService(AppDbContext dbContext, IOptions<JwtOptions> jwt
             throw new BadRequestException(ErrorCodes.REQUIRED_FIELDS);
         }
 
-        var normalizedEmail = dto.Email.Trim().ToLowerInvariant();
+        string normalizedEmail = dto.Email.Trim().ToLowerInvariant();
 
-        var exists = await dbContext.Users
+        bool exists = await dbContext.Users
             .AnyAsync(x => x.NormalizedEmail == normalizedEmail, cancellationToken);
 
         if (exists)
@@ -109,10 +109,10 @@ public sealed class AuthService(AppDbContext dbContext, IOptions<JwtOptions> jwt
             throw new ConflictException(ErrorCodes.EMAIL_ALREADY_EXISTS);
         }
 
-        var (hash, salt) = PasswordHasher.HashPassword(dto.Password);
-        var confirmationToken = GenerateSecureToken();
+        (string hash, string salt) = PasswordHasher.HashPassword(dto.Password);
+        string confirmationToken = GenerateSecureToken();
 
-        var user = new User
+        User user = new()
         {
             Id = Guid.NewGuid(),
             Name = dto.Name.Trim(),
@@ -130,8 +130,6 @@ public sealed class AuthService(AppDbContext dbContext, IOptions<JwtOptions> jwt
         dbContext.Users.Add(user);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        // Conta já persistida. Se o e-mail falhar, NÃO derruba o cadastro (evita 500 + usuário órfão):
-        // loga e segue — o usuário pode solicitar reenvio depois.
         try
         {
             await emailService.SendEmailConfirmationAsync(user.Email, user.Name, confirmationToken, cancellationToken);
@@ -156,9 +154,9 @@ public sealed class AuthService(AppDbContext dbContext, IOptions<JwtOptions> jwt
             throw new BadRequestException(ErrorCodes.REQUIRED_FIELDS);
         }
 
-        var normalizedEmail = dto.Email.Trim().ToLowerInvariant();
+        string normalizedEmail = dto.Email.Trim().ToLowerInvariant();
 
-        var user = await dbContext.Users
+        User user = await dbContext.Users
             .FirstOrDefaultAsync(x => x.NormalizedEmail == normalizedEmail, cancellationToken);
 
         if (user is null)
@@ -188,7 +186,7 @@ public sealed class AuthService(AppDbContext dbContext, IOptions<JwtOptions> jwt
 
     private static string GenerateSecureToken()
     {
-        var bytes = RandomNumberGenerator.GetBytes(32);
+        byte[] bytes = RandomNumberGenerator.GetBytes(32);
         return Convert.ToBase64String(bytes)
             .Replace('+', '-')
             .Replace('/', '_')

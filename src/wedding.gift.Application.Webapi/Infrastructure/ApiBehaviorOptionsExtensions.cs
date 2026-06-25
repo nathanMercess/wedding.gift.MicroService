@@ -60,6 +60,6 @@ public static class ApiBehaviorOptionsExtensions
         {
             IEmailService emailService = sp.GetRequiredService<IEmailService>();
             await emailService.SendErrorNotificationAsync("[wedding.gift] Erro de validação", body, ct);
-        });
+        }, CancellationToken.None);
     }
 }

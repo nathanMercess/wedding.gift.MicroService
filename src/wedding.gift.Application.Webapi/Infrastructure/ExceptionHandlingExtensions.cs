@@ -73,7 +73,7 @@ public static class ExceptionHandlingExtensions
         {
             IEmailService emailService = sp.GetRequiredService<IEmailService>();
             await emailService.SendErrorNotificationAsync(subject, body, ct);
-        });
+        }, CancellationToken.None);
     }
 
     private static ApiResponseDto<object> CreateErrorResponse(Exception exception, string correlationId)

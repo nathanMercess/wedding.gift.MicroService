@@ -16,12 +16,12 @@ public sealed class EmailService(
     private readonly SmtpOptions _smtp = smtpOptions.Value;
     private readonly ApiOptions _api = apiOptions.Value;
 
-    public Task SendEmailConfirmationAsync(string toEmail, string toName, string token, CancellationToken cancellationToken = default)
+    public Task SendEmailConfirmationAsync(string toEmail, string toName, string token, CancellationToken cancellationToken)
     {
-        var confirmUrl = $"{_api.BaseUrl.TrimEnd('/')}/api/auth/confirm-email" +
-                         $"?email={Uri.EscapeDataString(toEmail)}&token={Uri.EscapeDataString(token)}";
+        string confirmUrl = $"{_api.BaseUrl.TrimEnd('/')}/api/auth/confirm-email" +
+                            $"?email={Uri.EscapeDataString(toEmail)}&token={Uri.EscapeDataString(token)}";
 
-        var body = $"""
+        string body = $"""
             <html>
             <body style="font-family: Arial, sans-serif; color: #333;">
                 <h2>Confirme seu e-mail</h2>
@@ -44,37 +44,37 @@ public sealed class EmailService(
         return SendAsync(toEmail, toName, "Confirme seu e-mail — Wedding Gift", body, cancellationToken);
     }
 
-    public Task SendErrorNotificationAsync(string subject, string body, CancellationToken cancellationToken = default)
+    public Task SendErrorNotificationAsync(string subject, string body, CancellationToken cancellationToken)
     {
-        var recipient = string.IsNullOrWhiteSpace(_smtp.ErrorNotificationRecipient)
+        string recipient = string.IsNullOrWhiteSpace(_smtp.ErrorNotificationRecipient)
             ? _smtp.FromEmail
             : _smtp.ErrorNotificationRecipient;
 
-        var html = $"<pre style=\"font-family:monospace;font-size:13px;white-space:pre-wrap\">{WebUtility.HtmlEncode(body)}</pre>";
+        string html = $"<pre style=\"font-family:monospace;font-size:13px;white-space:pre-wrap\">{WebUtility.HtmlEncode(body)}</pre>";
 
         return SendAsync(recipient, "Suporte", subject, html, cancellationToken);
     }
 
-    public Task SendPaymentAttemptNotificationAsync(string subject, string body, CancellationToken cancellationToken = default)
+    public Task SendPaymentAttemptNotificationAsync(string subject, string body, CancellationToken cancellationToken)
     {
-        var recipient = string.IsNullOrWhiteSpace(_smtp.ErrorNotificationRecipient)
+        string recipient = string.IsNullOrWhiteSpace(_smtp.ErrorNotificationRecipient)
             ? _smtp.FromEmail
             : _smtp.ErrorNotificationRecipient;
 
-        var html = $"<pre style=\"font-family:monospace;font-size:13px;white-space:pre-wrap\">{WebUtility.HtmlEncode(body)}</pre>";
+        string html = $"<pre style=\"font-family:monospace;font-size:13px;white-space:pre-wrap\">{WebUtility.HtmlEncode(body)}</pre>";
 
         return SendAsync(recipient, "Suporte", subject, html, cancellationToken);
     }
 
-    public Task SendContributionNotificationAsync(string contributorName, decimal amount, CancellationToken cancellationToken = default)
+    public Task SendContributionNotificationAsync(string contributorName, decimal amount, CancellationToken cancellationToken)
     {
-        var recipient = string.IsNullOrWhiteSpace(_smtp.CoupleNotificationRecipient)
+        string recipient = string.IsNullOrWhiteSpace(_smtp.CoupleNotificationRecipient)
             ? _smtp.FromEmail
             : _smtp.CoupleNotificationRecipient;
 
-        var valor = amount.ToString("C", new CultureInfo("pt-BR"));
+        string valor = amount.ToString("C", new CultureInfo("pt-BR"));
 
-        var body = $"""
+        string body = $"""
             <html>
             <body style="font-family: Arial, sans-serif; color: #333;">
                 <h2>Nova contribuição recebida 🎉</h2>
@@ -91,7 +91,7 @@ public sealed class EmailService(
     {
         try
         {
-            using var message = new MailMessage
+            using MailMessage message = new()
             {
                 From = new MailAddress(_smtp.FromEmail, _smtp.FromName),
                 Subject = subject,
@@ -100,7 +100,7 @@ public sealed class EmailService(
             };
             message.To.Add(new MailAddress(toEmail, toName));
 
-            using var client = new SmtpClient(_smtp.Host, _smtp.Port)
+            using SmtpClient client = new(_smtp.Host, _smtp.Port)
             {
                 Credentials = new NetworkCredential(_smtp.Username, _smtp.Password),
                 EnableSsl = _smtp.EnableSsl,
@@ -113,7 +113,6 @@ public sealed class EmailService(
         }
         catch (Exception ex)
         {
-            // NUNCA engolir: loga com contexto e propaga p/ o chamador decidir (reenvio, fila, etc.).
             logger.LogError(ex, "Falha ao enviar e-mail para {Recipient} (assunto: {Subject}).", toEmail, subject);
             throw new EmailDeliveryException(toEmail, subject, ex);
         }

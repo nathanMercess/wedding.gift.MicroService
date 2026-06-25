@@ -120,7 +120,7 @@ public class PaymentServiceTests
             PaidAt = DateTime.UtcNow,
             Status = ContributionStatus.Paid
         });
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(CancellationToken.None);
         var repo = new FakePaymentRepository();
         var mp = new FakeMercadoPago();
         var service = CreateService(context, mp, repo);
@@ -228,7 +228,7 @@ public class PaymentServiceTests
             PayerDocNumber = "12345678909"
         };
         context.Payments.Add(payment);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(CancellationToken.None);
 
         var repo = new FakePaymentRepository();
         var email = new FakeEmail();
@@ -267,7 +267,7 @@ public class PaymentServiceTests
             PayerDocNumber = "12345678909"
         };
         context.Payments.Add(payment);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(CancellationToken.None);
 
         var repo = new FakePaymentRepository();
         var email = new FakeEmail();
@@ -399,19 +399,19 @@ public class PaymentServiceTests
         public int NotificationCount;
         public int AttemptCount;
 
-        public Task SendErrorNotificationAsync(string subject, string body, CancellationToken cancellationToken = default)
+        public Task SendErrorNotificationAsync(string subject, string body, CancellationToken cancellationToken)
             => Task.CompletedTask;
 
-        public Task SendEmailConfirmationAsync(string toEmail, string toName, string token, CancellationToken cancellationToken = default)
+        public Task SendEmailConfirmationAsync(string toEmail, string toName, string token, CancellationToken cancellationToken)
             => Task.CompletedTask;
 
-        public Task SendContributionNotificationAsync(string contributorName, decimal amount, CancellationToken cancellationToken = default)
+        public Task SendContributionNotificationAsync(string contributorName, decimal amount, CancellationToken cancellationToken)
         {
             NotificationCount++;
             return Task.CompletedTask;
         }
 
-        public Task SendPaymentAttemptNotificationAsync(string subject, string body, CancellationToken cancellationToken = default)
+        public Task SendPaymentAttemptNotificationAsync(string subject, string body, CancellationToken cancellationToken)
         {
             AttemptCount++;
             return Task.CompletedTask;
@@ -422,7 +422,7 @@ public class PaymentServiceTests
     {
         public readonly List<Func<IServiceProvider, CancellationToken, Task>> Items = [];
 
-        public ValueTask EnqueueAsync(Func<IServiceProvider, CancellationToken, Task> workItem)
+        public ValueTask EnqueueAsync(Func<IServiceProvider, CancellationToken, Task> workItem, CancellationToken cancellationToken)
         {
             Items.Add(workItem);
             return ValueTask.CompletedTask;

@@ -35,7 +35,7 @@ public class AuthServiceTests
             IsActive = true,
             IsEmailConfirmed = true
         });
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(CancellationToken.None);
 
         var service = CreateService(context);
 
@@ -73,7 +73,7 @@ public class AuthServiceTests
             IsActive = true,
             IsEmailConfirmed = true
         });
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(CancellationToken.None);
 
         var service = CreateService(context);
 
@@ -107,7 +107,7 @@ public class AuthServiceTests
             IsActive = true,
             IsEmailConfirmed = true
         });
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(CancellationToken.None);
 
         var service = CreateService(context);
 
@@ -138,7 +138,7 @@ public class AuthServiceTests
             IsActive = false,
             IsEmailConfirmed = true
         });
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(CancellationToken.None);
 
         var service = CreateService(context);
 
@@ -169,7 +169,7 @@ public class AuthServiceTests
             IsActive = true,
             IsEmailConfirmed = false
         });
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(CancellationToken.None);
 
         var service = CreateService(context);
 
@@ -223,7 +223,7 @@ public class AuthServiceTests
             Role = UserRoles.Member,
             IsActive = true
         });
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(CancellationToken.None);
 
         var service = CreateService(context);
 
@@ -255,7 +255,7 @@ public class AuthServiceTests
             EmailConfirmationToken = token,
             EmailConfirmationTokenExpiresAt = DateTime.UtcNow.AddHours(24)
         });
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(CancellationToken.None);
 
         var service = CreateService(context);
 
@@ -291,7 +291,7 @@ public class AuthServiceTests
             EmailConfirmationToken = token,
             EmailConfirmationTokenExpiresAt = DateTime.UtcNow.AddHours(-1)
         });
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(CancellationToken.None);
 
         var service = CreateService(context);
 
@@ -331,24 +331,24 @@ public class AuthServiceTests
         public bool WasCalled { get; private set; }
         public string? LastToEmail { get; private set; }
 
-        public Task SendEmailConfirmationAsync(string toEmail, string toName, string token, CancellationToken cancellationToken = default)
+        public Task SendEmailConfirmationAsync(string toEmail, string toName, string token, CancellationToken cancellationToken)
         {
             WasCalled = true;
             LastToEmail = toEmail;
             return Task.CompletedTask;
         }
 
-        public Task SendErrorNotificationAsync(string subject, string body, CancellationToken cancellationToken = default)
+        public Task SendErrorNotificationAsync(string subject, string body, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }
 
-        public Task SendContributionNotificationAsync(string contributorName, decimal amount, CancellationToken cancellationToken = default)
+        public Task SendContributionNotificationAsync(string contributorName, decimal amount, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }
 
-        public Task SendPaymentAttemptNotificationAsync(string subject, string body, CancellationToken cancellationToken = default)
+        public Task SendPaymentAttemptNotificationAsync(string subject, string body, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }

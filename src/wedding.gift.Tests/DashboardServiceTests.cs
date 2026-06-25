@@ -152,7 +152,7 @@ public class DashboardServiceTests
                 ExceptionMessage = "Falha inesperada"
             });
 
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(CancellationToken.None);
         var service = new DashboardService(context);
 
         var dashboard = await service.GetAsync(new DashboardQueryDto

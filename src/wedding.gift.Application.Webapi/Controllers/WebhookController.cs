@@ -70,7 +70,7 @@ public sealed class WebhookController(
 
                 if (status.Status == "approved") await payments.ProcessApprovedPixPaymentAsync(status.MpOrderId, ct);
             }
-        });
+        }, cancellationToken);
 
     }
 

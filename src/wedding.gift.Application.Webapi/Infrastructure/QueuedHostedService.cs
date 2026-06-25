@@ -2,10 +2,6 @@ using wedding.gift.Services.Contracts;
 
 namespace wedding.gift.Application.Webapi.Infrastructure;
 
-/// <summary>
-/// Consome a fila de background. Cada item roda em seu próprio escopo de DI.
-/// Falhas são SEMPRE logadas (dead-letter explícito) — nunca engolidas em silêncio.
-/// </summary>
 public sealed class QueuedHostedService(
     IBackgroundTaskQueue queue,
     IServiceProvider services,
@@ -28,7 +24,7 @@ public sealed class QueuedHostedService(
 
             try
             {
-                using var scope = services.CreateScope();
+                using IServiceScope scope = services.CreateScope();
                 await workItem(scope.ServiceProvider, stoppingToken);
             }
             catch (Exception ex)

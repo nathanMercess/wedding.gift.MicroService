@@ -22,7 +22,7 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-var corsOptions = builder.Configuration.GetSection(CorsOptions.SectionName).Get<CorsOptions>() ?? new CorsOptions();
+CorsOptions corsOptions = builder.Configuration.GetSection(CorsOptions.SectionName).Get<CorsOptions>() ?? new CorsOptions();
 
 builder.Services.AddCors(options =>
 {
@@ -56,8 +56,8 @@ builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection(SmtpOpt
 builder.Services.Configure<ApiOptions>(builder.Configuration.GetSection(ApiOptions.SectionName));
 builder.Services.Configure<GcsOptions>(builder.Configuration.GetSection(GcsOptions.SectionName));
 
-var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
-var signingKey = Encoding.UTF8.GetBytes(jwtOptions.SigningKey);
+JwtOptions jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
+byte[] signingKey = Encoding.UTF8.GetBytes(jwtOptions.SigningKey);
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -108,9 +108,9 @@ builder.Services.AddServices();
 
 WebApplication app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
+using (IServiceScope scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await db.Database.MigrateAsync();
 }
 
@@ -130,26 +130,26 @@ app.Run();
 
 static async Task EnsureBootstrapAdminAsync(IServiceProvider services, IConfiguration configuration)
 {
-    var options = configuration.GetSection(BootstrapAdminOptions.SectionName).Get<BootstrapAdminOptions>() ?? new BootstrapAdminOptions();
+    BootstrapAdminOptions options = configuration.GetSection(BootstrapAdminOptions.SectionName).Get<BootstrapAdminOptions>() ?? new BootstrapAdminOptions();
 
     if (!options.Enabled || string.IsNullOrWhiteSpace(options.Email) || string.IsNullOrWhiteSpace(options.Password))
     {
         return;
     }
 
-    using var scope = services.CreateScope();
-    var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    using IServiceScope scope = services.CreateScope();
+    AppDbContext dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-    var normalizedEmail = options.Email.Trim().ToLowerInvariant();
-    var role = GetBootstrapAdminRole(options.Role);
-    var exists = await dbContext.Users.AnyAsync(x => x.NormalizedEmail == normalizedEmail);
+    string normalizedEmail = options.Email.Trim().ToLowerInvariant();
+    string role = GetBootstrapAdminRole(options.Role);
+    bool exists = await dbContext.Users.AnyAsync(x => x.NormalizedEmail == normalizedEmail);
 
     if (exists)
     {
         return;
     }
 
-    var (hash, salt) = PasswordHasher.HashPassword(options.Password);
+    (string hash, string salt) = PasswordHasher.HashPassword(options.Password);
 
     dbContext.Users.Add(new User
     {
@@ -164,7 +164,7 @@ static async Task EnsureBootstrapAdminAsync(IServiceProvider services, IConfigur
         IsEmailConfirmed = true
     });
 
-    await dbContext.SaveChangesAsync();
+    await dbContext.SaveChangesAsync(CancellationToken.None);
 }
 
 static string GetBootstrapAdminRole(string role)
@@ -174,7 +174,7 @@ static string GetBootstrapAdminRole(string role)
         return UserRoles.Admin;
     }
 
-    var normalizedRole = role.Trim();
+    string normalizedRole = role.Trim();
 
     if (string.Equals(normalizedRole, UserRoles.Admin, StringComparison.OrdinalIgnoreCase))
     {

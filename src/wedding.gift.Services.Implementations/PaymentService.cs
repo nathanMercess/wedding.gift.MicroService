@@ -134,7 +134,7 @@ public sealed class PaymentService(
 
         if (result.Status == "approved")
         {
-            var contribution = await contributionService.CreateAsync(new ContributionCreateDto
+            ContributionResponseDto contribution = await contributionService.CreateAsync(new ContributionCreateDto
             {
                 GiftId = request.GiftId,
                 ContributorName = request.ContributorName,
@@ -147,13 +147,13 @@ public sealed class PaymentService(
 
             contributionId = contribution.Id;
 
-            var contributorName = request.ContributorName;
-            var amount = request.NetAmount;
+            string contributorName = request.ContributorName;
+            decimal amount = request.NetAmount;
             await backgroundTaskQueue.EnqueueAsync(async (sp, ct) =>
             {
-                var email = sp.GetRequiredService<IEmailService>();
+                IEmailService email = sp.GetRequiredService<IEmailService>();
                 await email.SendContributionNotificationAsync(contributorName, amount, ct);
-            });
+            }, cancellationToken);
         }
 
         await paymentRepository.SaveAsync(new Payment
@@ -456,8 +456,8 @@ public sealed class PaymentService(
         string? payerEmail,
         CancellationToken cancellationToken)
     {
-        var subject = $"[wedding.gift] Payment attempt ({paymentMethod})";
-        var body = $"""
+        string subject = $"[wedding.gift] Payment attempt ({paymentMethod})";
+        string body = $"""
             Payment attempt received.
 
             Method: {paymentMethod}
@@ -471,9 +471,9 @@ public sealed class PaymentService(
 
         return backgroundTaskQueue.EnqueueAsync(async (sp, ct) =>
         {
-            var email = sp.GetRequiredService<IEmailService>();
+            IEmailService email = sp.GetRequiredService<IEmailService>();
             await email.SendPaymentAttemptNotificationAsync(subject, body, ct);
-        });
+        }, cancellationToken);
     }
 
     private ValueTask QueuePaymentErrorNotificationAsync(
@@ -483,8 +483,8 @@ public sealed class PaymentService(
         string? details,
         CancellationToken cancellationToken)
     {
-        var subject = $"[wedding.gift] Payment error ({paymentMethod})";
-        var body = $"""
+        string subject = $"[wedding.gift] Payment error ({paymentMethod})";
+        string body = $"""
             Payment flow failure.
 
             Method: {paymentMethod}
@@ -496,9 +496,9 @@ public sealed class PaymentService(
 
         return backgroundTaskQueue.EnqueueAsync(async (sp, ct) =>
         {
-            var email = sp.GetRequiredService<IEmailService>();
+            IEmailService email = sp.GetRequiredService<IEmailService>();
             await email.SendErrorNotificationAsync(subject, body, ct);
-        });
+        }, cancellationToken);
     }
 
     private async Task<PaymentResponseDto> BuildErrorResponseAsync(

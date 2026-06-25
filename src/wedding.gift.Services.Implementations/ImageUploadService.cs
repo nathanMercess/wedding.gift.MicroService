@@ -25,16 +25,16 @@ public sealed class ImageUploadService(StorageClient storageClient, IOptions<Gcs
             throw new BadRequestException(ErrorCodes.IMAGE_FILE_TOO_LARGE);
         }
 
-        var extension = Path.GetExtension(fileName).ToLowerInvariant();
+        string extension = Path.GetExtension(fileName).ToLowerInvariant();
         if (!AllowedExtensions.Contains(extension) || !AllowedContentTypes.Contains(contentType.ToLowerInvariant()))
         {
             throw new BadRequestException(ErrorCodes.INVALID_IMAGE_CONTENT_TYPE);
         }
 
-        var bucketName = gcsOptions.Value.BucketName;
-        var objectName = $"gifts/{Guid.NewGuid()}{extension}";
+        string bucketName = gcsOptions.Value.BucketName;
+        string objectName = $"gifts/{Guid.NewGuid()}{extension}";
 
-        var uploaded = await storageClient.UploadObjectAsync(
+        Google.Apis.Storage.v1.Data.Object uploaded = await storageClient.UploadObjectAsync(
             bucketName,
             objectName,
             contentType,

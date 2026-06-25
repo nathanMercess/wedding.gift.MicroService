@@ -56,9 +56,9 @@ public sealed class GiftService(AppDbContext dbContext) : IGiftService
             _ => query.OrderBy(x => x.Name)
         };
 
-        var totalCount = await query.CountAsync(cancellationToken);
+        int totalCount = await query.CountAsync(cancellationToken);
 
-        var items = await query
+        List<Gift> items = await query
             .Skip((queryParams.Page - 1) * queryParams.PageSize)
             .Take(queryParams.PageSize)
             .ToListAsync(cancellationToken);
@@ -123,7 +123,7 @@ public sealed class GiftService(AppDbContext dbContext) : IGiftService
 
     public async Task<GiftResponseDto> CreateAsync(GiftCreateDto dto, CancellationToken cancellationToken)
     {
-        var entity = dto.ToEntity();
+        Gift entity = dto.ToEntity();
         dbContext.Gifts.Add(entity);
         await dbContext.SaveChangesAsync(cancellationToken);
         return entity.ToResponseDto();
@@ -131,8 +131,8 @@ public sealed class GiftService(AppDbContext dbContext) : IGiftService
 
     public async Task<GiftResponseDto> UpdateAsync(Guid id, GiftUpdateDto dto, CancellationToken cancellationToken)
     {
-        var entity = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
-                     ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
+        Gift entity = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
+                      ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
 
         entity.ApplyUpdate(dto);
 
@@ -143,8 +143,8 @@ public sealed class GiftService(AppDbContext dbContext) : IGiftService
 
     public async Task<GiftResponseDto> UpdateAvailabilityAsync(Guid id, bool available, CancellationToken cancellationToken)
     {
-        var entity = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
-                     ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
+        Gift entity = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
+                      ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
 
         entity.Available = available;
         entity.UpdatedAt = DateTime.UtcNow;
@@ -155,8 +155,8 @@ public sealed class GiftService(AppDbContext dbContext) : IGiftService
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken)
     {
-        var entity = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
-                     ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
+        Gift entity = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
+                      ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
 
         dbContext.Gifts.Remove(entity);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -164,7 +164,7 @@ public sealed class GiftService(AppDbContext dbContext) : IGiftService
 
     public async Task<IReadOnlyList<ContributionResponseDto>> GetContributionsByGiftIdAsync(Guid giftId, CancellationToken cancellationToken)
     {
-        var giftExists = await dbContext.Gifts.AnyAsync(x => x.Id == giftId, cancellationToken);
+        bool giftExists = await dbContext.Gifts.AnyAsync(x => x.Id == giftId, cancellationToken);
 
         if (!giftExists)
         {
@@ -182,15 +182,15 @@ public sealed class GiftService(AppDbContext dbContext) : IGiftService
 
     public async Task<ContributionResponseDto> ContributeAsync(Guid giftId, ContributeDto dto, CancellationToken cancellationToken)
     {
-        var gift = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == giftId, cancellationToken)
-                   ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
+        Gift gift = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == giftId, cancellationToken)
+                    ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
 
         if (!gift.Available)
         {
             throw new ConflictException(ErrorCodes.GIFT_UNAVAILABLE);
         }
 
-        var entity = new Contribution
+        Contribution entity = new()
         {
             Id = Guid.NewGuid(),
             GiftId = giftId,

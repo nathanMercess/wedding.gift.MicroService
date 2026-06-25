@@ -9,7 +9,7 @@ public sealed class ApiRequestLogService(AppDbContext dbContext) : IApiRequestLo
 {
     public async Task SaveAsync(ApiRequestLogCreateDto dto, CancellationToken cancellationToken)
     {
-        var statusCode = dto.StatusCode <= 0 ? 500 : dto.StatusCode;
+        int statusCode = dto.StatusCode <= 0 ? 500 : dto.StatusCode;
 
         dbContext.ApiRequestLogs.Add(new ApiRequestLog
         {
@@ -43,7 +43,7 @@ public sealed class ApiRequestLogService(AppDbContext dbContext) : IApiRequestLo
             return string.Empty;
         }
 
-        var trimmed = value.Trim();
+        string trimmed = value.Trim();
         return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
     }
 }
