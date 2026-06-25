@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc.ApplicationModels;
 
-public class RouteConvention(string prefix) : IControllerModelConvention
+public sealed class RouteConvention(string prefix) : IControllerModelConvention
 {
     public void Apply(ControllerModel controller)
     {

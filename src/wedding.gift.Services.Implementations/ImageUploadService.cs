@@ -7,7 +7,7 @@ using wedding.gift.Services.Implementations.Exceptions;
 
 namespace wedding.gift.Services.Implementations;
 
-public class ImageUploadService(StorageClient storageClient, IOptions<GcsOptions> gcsOptions) : IImageUploadService
+public sealed class ImageUploadService(StorageClient storageClient, IOptions<GcsOptions> gcsOptions) : IImageUploadService
 {
     private static readonly HashSet<string> AllowedExtensions = [".jpg", ".jpeg", ".png", ".webp"];
     private static readonly HashSet<string> AllowedContentTypes = ["image/jpeg", "image/png", "image/webp"];

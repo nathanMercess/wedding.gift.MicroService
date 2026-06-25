@@ -9,7 +9,7 @@ using wedding.gift.Services.Implementations.Extensions;
 
 namespace wedding.gift.Services.Implementations;
 
-public class ContributionService(AppDbContext dbContext) : IContributionService
+public sealed class ContributionService(AppDbContext dbContext) : IContributionService
 {
     public async Task<IReadOnlyList<ContributionResponseDto>> GetAllAsync(CancellationToken cancellationToken)
     {

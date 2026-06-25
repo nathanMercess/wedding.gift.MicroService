@@ -8,7 +8,7 @@ using wedding.gift.Services.Implementations.Extensions;
 
 namespace wedding.gift.Services.Implementations;
 
-public class CoupleService(AppDbContext dbContext) : ICoupleService
+public sealed class CoupleService(AppDbContext dbContext) : ICoupleService
 {
     public async Task<CoupleResponseDto> GetAsync(CancellationToken cancellationToken)
     {

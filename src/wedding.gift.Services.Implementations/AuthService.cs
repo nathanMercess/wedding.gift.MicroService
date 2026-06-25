@@ -18,7 +18,7 @@ using wedding.gift.Services.Implementations.Security;
 
 namespace wedding.gift.Services.Implementations;
 
-public class AuthService(AppDbContext dbContext, IOptions<JwtOptions> jwtOptions, IEmailService emailService, ILogger<AuthService>? logger = null) : IAuthService
+public sealed class AuthService(AppDbContext dbContext, IOptions<JwtOptions> jwtOptions, IEmailService emailService, ILogger<AuthService>? logger = null) : IAuthService
 {
     private readonly JwtOptions _jwtOptions = jwtOptions.Value;
 

@@ -6,7 +6,7 @@ using wedding.gift.Services.Implementations.Exceptions;
 
 namespace wedding.gift.Application.Webapi.Infrastructure;
 
-public class ApiRequestLoggingMiddleware(RequestDelegate next, ILogger<ApiRequestLoggingMiddleware> logger)
+public sealed class ApiRequestLoggingMiddleware(RequestDelegate next, ILogger<ApiRequestLoggingMiddleware> logger)
 {
     private static readonly HashSet<string> SensitiveQueryKeys = new(StringComparer.OrdinalIgnoreCase)
     {

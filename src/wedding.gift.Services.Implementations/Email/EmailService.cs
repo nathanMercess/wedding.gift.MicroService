@@ -8,7 +8,7 @@ using wedding.gift.Services.Contracts;
 
 namespace wedding.gift.Services.Implementations.Email;
 
-public class EmailService(
+public sealed class EmailService(
     IOptions<SmtpOptions> smtpOptions,
     IOptions<ApiOptions> apiOptions,
     ILogger<EmailService> logger) : IEmailService

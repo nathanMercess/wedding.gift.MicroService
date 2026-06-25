@@ -5,7 +5,7 @@ using wedding.gift.Services.Contracts;
 
 namespace wedding.gift.Services.Implementations;
 
-public class ApiRequestLogService(AppDbContext dbContext) : IApiRequestLogService
+public sealed class ApiRequestLogService(AppDbContext dbContext) : IApiRequestLogService
 {
     public async Task SaveAsync(ApiRequestLogCreateDto dto, CancellationToken cancellationToken)
     {

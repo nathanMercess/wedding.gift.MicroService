@@ -12,7 +12,7 @@ using wedding.gift.Services.Implementations.Email;
 
 namespace wedding.gift.Services.Implementations;
 
-public class PaymentService(
+public sealed class PaymentService(
     IMercadoPagoService mercadoPagoService,
     AppDbContext dbContext,
     IPaymentRepository paymentRepository,

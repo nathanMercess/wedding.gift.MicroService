@@ -8,7 +8,7 @@ using wedding.gift.Services.Implementations.Exceptions;
 
 namespace wedding.gift.Services.Implementations;
 
-public class DashboardService(AppDbContext dbContext) : IDashboardService
+public sealed class DashboardService(AppDbContext dbContext) : IDashboardService
 {
     public async Task<DashboardResponseDto> GetAsync(DashboardQueryDto query, CancellationToken cancellationToken)
     {

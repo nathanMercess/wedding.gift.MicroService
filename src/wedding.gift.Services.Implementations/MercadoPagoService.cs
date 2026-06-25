@@ -12,7 +12,7 @@ using wedding.gift.Services.Contracts;
 
 namespace wedding.gift.Services.Implementations;
 
-public class MercadoPagoService(
+public sealed class MercadoPagoService(
     HttpClient httpClient,
     IConfiguration configuration,
     ILogger<MercadoPagoService> logger) : IMercadoPagoService
