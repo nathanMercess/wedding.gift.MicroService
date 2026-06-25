@@ -1,6 +1,6 @@
 namespace wedding.gift.Crosscutting.Models.DTOs.Auth;
 
-public class RegisterResponseDto
+public sealed class RegisterResponseDto
 {
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;

@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace wedding.gift.Crosscutting.Models.DTOs;
 
-public class ContributionCreateDto
+public sealed class ContributionCreateDto
 {
     [Required(ErrorMessage = "O GiftId é obrigatório.")]
     public Guid GiftId { get; set; }

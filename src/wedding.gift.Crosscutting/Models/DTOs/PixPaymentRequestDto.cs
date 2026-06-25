@@ -1,6 +1,6 @@
 namespace wedding.gift.Crosscutting.Models.DTOs;
 
-public class PixPaymentRequestDto
+public sealed class PixPaymentRequestDto
 {
     public required Guid GiftId { get; set; }
     public required string ContributorName { get; set; }

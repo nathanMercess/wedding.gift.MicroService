@@ -1,6 +1,6 @@
 namespace wedding.gift.Crosscutting.Models.DTOs;
 
-public class PagedResult<T>
+public sealed class PagedResult<T>
 {
     public IEnumerable<T> Items { get; set; } = Enumerable.Empty<T>();
     public int TotalCount { get; set; }

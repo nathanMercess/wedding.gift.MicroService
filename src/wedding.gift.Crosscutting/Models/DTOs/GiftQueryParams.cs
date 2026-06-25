@@ -1,6 +1,6 @@
 namespace wedding.gift.Crosscutting.Models.DTOs;
 
-public class GiftQueryParams
+public sealed class GiftQueryParams
 {
     public string? Search { get; set; }
     public string? Category { get; set; }

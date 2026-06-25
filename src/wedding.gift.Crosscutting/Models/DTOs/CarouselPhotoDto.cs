@@ -1,6 +1,6 @@
 namespace wedding.gift.Crosscutting.Models.DTOs;
 
-public class CarouselPhotoDto
+public sealed class CarouselPhotoDto
 {
     public string Url { get; set; } = string.Empty;
     public string Tag { get; set; } = string.Empty;

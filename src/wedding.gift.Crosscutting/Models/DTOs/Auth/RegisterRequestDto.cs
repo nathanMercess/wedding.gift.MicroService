@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace wedding.gift.Crosscutting.Models.DTOs.Auth;
 
-public class RegisterRequestDto
+public sealed class RegisterRequestDto
 {
     [Required(ErrorMessage = "O nome é obrigatório.")]
     [MaxLength(120, ErrorMessage = "O nome deve ter no máximo 120 caracteres.")]

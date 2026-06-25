@@ -1,6 +1,6 @@
 namespace wedding.gift.Crosscutting.Models.Configurations;
 
-public class SmtpOptions
+public sealed class SmtpOptions
 {
     public const string SectionName = "Smtp";
 

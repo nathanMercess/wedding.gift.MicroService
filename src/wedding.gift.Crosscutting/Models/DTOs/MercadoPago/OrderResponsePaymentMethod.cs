@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace wedding.gift.Crosscutting.Models.DTOs.MercadoPago;
 
-public class OrderResponsePaymentMethod
+public sealed class OrderResponsePaymentMethod
 {
     [JsonPropertyName("id")]
     public string? Id { get; set; }

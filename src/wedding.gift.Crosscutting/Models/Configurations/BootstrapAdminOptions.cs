@@ -2,7 +2,7 @@ using wedding.gift.Crosscutting.Constants;
 
 namespace wedding.gift.Crosscutting.Models.Configurations;
 
-public class BootstrapAdminOptions
+public sealed class BootstrapAdminOptions
 {
     public const string SectionName = "BootstrapAdmin";
 

@@ -1,6 +1,6 @@
 namespace wedding.gift.Crosscutting.Models.Configurations;
 
-public class ApiOptions
+public sealed class ApiOptions
 {
     public const string SectionName = "Api";
 

@@ -2,8 +2,8 @@ using System.Text.Json.Serialization;
 
 namespace wedding.gift.Crosscutting.Models.DTOs.MercadoPago;
 
-public sealed class OrderResponseTransactions
+public sealed class OrderTransactions
 {
     [JsonPropertyName("payments")]
-    public List<OrderResponsePayment> Payments { get; set; } = new();
+    public List<OrderPayment> Payments { get; set; } = new();
 }

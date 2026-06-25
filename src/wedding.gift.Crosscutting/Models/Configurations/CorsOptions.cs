@@ -1,6 +1,6 @@
 namespace wedding.gift.Crosscutting.Models.Configurations;
 
-public class CorsOptions
+public sealed class CorsOptions
 {
     public const string SectionName = "Cors";
 

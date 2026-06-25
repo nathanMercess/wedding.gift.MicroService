@@ -1,6 +1,6 @@
 namespace wedding.gift.Crosscutting.Models.DTOs;
 
-public class GiftEnrichResponseDto
+public sealed class GiftEnrichResponseDto
 {
     public string? Name { get; set; }
     public string? Description { get; set; }

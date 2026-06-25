@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace wedding.gift.Crosscutting.Models.DTOs;
 
-public class CoupleUpdateDto
+public sealed class CoupleUpdateDto
 {
     [Required(ErrorMessage = "Os nomes são obrigatórios.")]
     [MaxLength(200, ErrorMessage = "Os nomes devem ter no máximo 200 caracteres.")]

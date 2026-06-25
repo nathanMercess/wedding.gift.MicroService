@@ -1,6 +1,6 @@
 namespace wedding.gift.Crosscutting.Models.Configurations;
 
-public class GcsOptions
+public sealed class GcsOptions
 {
     public const string SectionName = "Gcs";
 

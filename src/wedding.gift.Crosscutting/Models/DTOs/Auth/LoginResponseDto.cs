@@ -1,6 +1,6 @@
 namespace wedding.gift.Crosscutting.Models.DTOs.Auth;
 
-public class LoginResponseDto
+public sealed class LoginResponseDto
 {
     public string AccessToken { get; set; } = string.Empty;
     public string TokenType { get; set; } = "Bearer";

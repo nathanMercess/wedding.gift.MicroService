@@ -1,6 +1,6 @@
 namespace wedding.gift.Crosscutting.Models.DTOs;
 
-public class GiftStatsDto
+public sealed class GiftStatsDto
 {
     public int Total { get; set; }
     public int Completed { get; set; }

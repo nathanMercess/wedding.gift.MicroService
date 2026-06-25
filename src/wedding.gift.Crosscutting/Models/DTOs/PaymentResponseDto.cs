@@ -1,6 +1,6 @@
 namespace wedding.gift.Crosscutting.Models.DTOs;
 
-public class PaymentResponseDto
+public sealed class PaymentResponseDto
 {
     public required string Status { get; set; }
     public string? StatusDetail { get; set; }
