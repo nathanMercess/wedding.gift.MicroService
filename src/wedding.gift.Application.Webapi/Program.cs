@@ -10,7 +10,9 @@ using wedding.gift.Application.Webapi.Infrastructure;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.Configurations;
 using wedding.gift.Domain.Model.Entities;
+using wedding.gift.Infra.Contracts;
 using wedding.gift.Infra.Implementations.DataContext;
+using wedding.gift.Infra.Implementations.Extensions;
 using wedding.gift.Services.Contracts;
 using wedding.gift.Services.Implementations;
 using wedding.gift.Services.Implementations.Exceptions;
@@ -83,9 +85,6 @@ builder.Services
     .AddTransientHttpErrorPolicy(policy => policy.WaitAndRetryAsync(
         3, retryAttempt => TimeSpan.FromMilliseconds(300 * Math.Pow(2, retryAttempt))));
 
-builder.Services.AddScoped<wedding.gift.Infra.Contracts.IPaymentRepository, wedding.gift.Infra.Implementations.Repositories.PaymentRepository>();
-builder.Services.AddScoped<wedding.gift.Services.Contracts.IPaymentService, wedding.gift.Services.Implementations.PaymentService>();
-
 builder.Services.AddSingleton<wedding.gift.Services.Contracts.IBackgroundTaskQueue, wedding.gift.Application.Webapi.Infrastructure.BackgroundTaskQueue>();
 builder.Services.AddHostedService<wedding.gift.Application.Webapi.Infrastructure.QueuedHostedService>();
 
@@ -104,6 +103,7 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
+builder.Services.AddRepositories();
 builder.Services.AddServices();
 
 WebApplication app = builder.Build();
@@ -133,58 +133,47 @@ static async Task EnsureBootstrapAdminAsync(IServiceProvider services, IConfigur
     BootstrapAdminOptions options = configuration.GetSection(BootstrapAdminOptions.SectionName).Get<BootstrapAdminOptions>() ?? new BootstrapAdminOptions();
 
     if (!options.Enabled || string.IsNullOrWhiteSpace(options.Email) || string.IsNullOrWhiteSpace(options.Password))
-    {
         return;
-    }
 
     using IServiceScope scope = services.CreateScope();
-    AppDbContext dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    IUserRepository userRepository = scope.ServiceProvider.GetRequiredService<IUserRepository>();
 
     string normalizedEmail = options.Email.Trim().ToLowerInvariant();
     string role = GetBootstrapAdminRole(options.Role);
-    bool exists = await dbContext.Users.AnyAsync(x => x.NormalizedEmail == normalizedEmail);
+    bool exists = await userRepository.ExistsByNormalizedEmailAsync(normalizedEmail, CancellationToken.None);
 
     if (exists)
-    {
         return;
-    }
 
     (string hash, string salt) = PasswordHasher.HashPassword(options.Password);
 
-    dbContext.Users.Add(new User
-    {
-        Id = Guid.NewGuid(),
-        Name = string.IsNullOrWhiteSpace(options.Name) ? "Administrador" : options.Name.Trim(),
-        Email = options.Email.Trim(),
-        NormalizedEmail = normalizedEmail,
-        PasswordHash = hash,
-        PasswordSalt = salt,
-        Role = role,
-        IsActive = true,
-        IsEmailConfirmed = true
-    });
+    User user = User.Create(
+        string.IsNullOrWhiteSpace(options.Name) ? "Administrador" : options.Name.Trim(),
+        options.Email,
+        normalizedEmail,
+        hash,
+        salt,
+        role,
+        true,
+        null,
+        null);
 
-    await dbContext.SaveChangesAsync(CancellationToken.None);
+    await userRepository.AddAsync(user, CancellationToken.None);
+    await userRepository.SaveChangesAsync(CancellationToken.None);
 }
 
 static string GetBootstrapAdminRole(string role)
 {
     if (string.IsNullOrWhiteSpace(role))
-    {
         return UserRoles.Admin;
-    }
 
     string normalizedRole = role.Trim();
 
     if (string.Equals(normalizedRole, UserRoles.Admin, StringComparison.OrdinalIgnoreCase))
-    {
         return UserRoles.Admin;
-    }
 
     if (string.Equals(normalizedRole, UserRoles.SuperAdmin, StringComparison.OrdinalIgnoreCase))
-    {
         return UserRoles.SuperAdmin;
-    }
 
     throw new BadRequestException(ErrorCodes.INVALID_BOOTSTRAP_ADMIN_ROLE);
 }

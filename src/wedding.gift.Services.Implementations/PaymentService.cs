@@ -1,13 +1,9 @@
-using System.Data;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Domain.Model.Entities;
 using wedding.gift.Infra.Contracts;
-using wedding.gift.Infra.Implementations.DataContext;
 using wedding.gift.Services.Contracts;
 using wedding.gift.Services.Implementations.Email;
 
@@ -15,8 +11,9 @@ namespace wedding.gift.Services.Implementations;
 
 public sealed class PaymentService(
     IMercadoPagoService mercadoPagoService,
-    AppDbContext dbContext,
     IPaymentRepository paymentRepository,
+    IGiftRepository giftRepository,
+    IContributionRepository contributionRepository,
     IContributionService contributionService,
     IEmailService emailService,
     IBackgroundTaskQueue backgroundTaskQueue,
@@ -92,10 +89,7 @@ public sealed class PaymentService(
         if (string.IsNullOrWhiteSpace(request.PayerDocNumber))
             return await BuildErrorResponseAsync("card", "validation", "PayerDocNumber is required.", PaymentErrorCodes.ValidationError, cancellationToken);
 
-        Gift gift = await dbContext.Gifts
-            .Include(x => x.Contributions)
-            .AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Id == request.GiftId, cancellationToken);
+        Gift gift = await giftRepository.GetByIdWithContributionsAsync(request.GiftId, cancellationToken);
 
         if (gift is null)
             return await BuildErrorResponseAsync("card", "validation", "Gift not found.", PaymentErrorCodes.ValidationError, cancellationToken);
@@ -157,28 +151,24 @@ public sealed class PaymentService(
             }, cancellationToken);
         }
 
-        await paymentRepository.SaveAsync(new Payment
-        {
-            Id = Guid.NewGuid(),
-            GiftId = request.GiftId,
-            ContributorName = request.ContributorName,
-            Message = request.Message?.Trim() ?? string.Empty,
-            PayerEmail = request.PayerEmail,
-            PayerDocType = request.PayerDocType,
-            PayerDocNumber = request.PayerDocNumber,
-            ContributionId = contributionId,
-            ContributionCreated = contributionId.HasValue,
-            OrderId = request.OrderId,
-            Method = request.Method,
-            Amount = request.Amount,
-            Installments = request.Installments,
-            Status = result.Status,
-            StatusDetail = result.StatusDetail,
-            MpOrderId = result.MpOrderId,
-            MpPaymentId = result.MpPaymentId,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        }, cancellationToken);
+        Payment payment = Payment.CreateCard(
+            request.GiftId,
+            request.ContributorName,
+            request.Message ?? string.Empty,
+            request.PayerEmail,
+            request.PayerDocType,
+            request.PayerDocNumber,
+            contributionId,
+            request.OrderId,
+            request.Method,
+            request.Amount,
+            request.Installments,
+            result.Status,
+            result.StatusDetail,
+            result.MpOrderId,
+            result.MpPaymentId);
+
+        await paymentRepository.SaveAsync(payment, cancellationToken);
 
         return result;
     }
@@ -219,28 +209,23 @@ public sealed class PaymentService(
         if (result.Status == "error")
             return await BuildErrorResponseAsync("pix", "mercado_pago", result, cancellationToken);
 
-        await paymentRepository.SaveAsync(new Payment
-        {
-            Id = Guid.NewGuid(),
-            GiftId = request.GiftId,
-            ContributorName = request.ContributorName,
-            Message = request.Message?.Trim() ?? string.Empty,
-            PayerEmail = request.PayerEmail,
-            PayerDocType = request.PayerDocType,
-            PayerDocNumber = request.PayerDocNumber,
-            ContributionCreated = false,
-            OrderId = request.OrderId,
-            Method = "pix",
-            Amount = request.Amount,
-            Status = result.Status,
-            StatusDetail = result.StatusDetail,
-            MpOrderId = result.MpOrderId,
-            MpPaymentId = result.MpPaymentId,
-            PixQrCode = result.QrCode,
-            QrCodeBase64 = result.QrCodeBase64,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        }, cancellationToken);
+        Payment payment = Payment.CreatePix(
+            request.GiftId,
+            request.ContributorName,
+            request.Message ?? string.Empty,
+            request.PayerEmail,
+            request.PayerDocType,
+            request.PayerDocNumber,
+            request.OrderId,
+            request.Amount,
+            result.Status,
+            result.StatusDetail,
+            result.MpOrderId,
+            result.MpPaymentId,
+            result.QrCode,
+            result.QrCodeBase64);
+
+        await paymentRepository.SaveAsync(payment, cancellationToken);
 
         if (result.Status == "approved" && !string.IsNullOrWhiteSpace(result.MpOrderId))
             await ProcessApprovedPixPaymentAsync(result.MpOrderId, cancellationToken);
@@ -299,9 +284,7 @@ public sealed class PaymentService(
         if (string.IsNullOrWhiteSpace(mpOrderId))
             return;
 
-        Payment existingPayment = await dbContext.Payments
-            .AsNoTracking()
-            .FirstOrDefaultAsync(x => x.MpOrderId == mpOrderId, cancellationToken);
+        Payment existingPayment = await paymentRepository.GetByMpOrderIdAsync(mpOrderId, cancellationToken);
 
         if (existingPayment is null)
         {
@@ -319,8 +302,7 @@ public sealed class PaymentService(
             if (providerStatus.Status == "error")
                 return;
 
-            Payment paymentToUpdate = await dbContext.Payments
-                .FirstOrDefaultAsync(x => x.MpOrderId == mpOrderId, cancellationToken);
+            Payment paymentToUpdate = await paymentRepository.GetByMpOrderIdForUpdateAsync(mpOrderId, cancellationToken);
 
             if (paymentToUpdate is null)
             {
@@ -328,14 +310,10 @@ public sealed class PaymentService(
                 return;
             }
 
-            paymentToUpdate.Status = providerStatus.Status;
-            paymentToUpdate.StatusDetail = providerStatus.StatusDetail;
-            paymentToUpdate.MpPaymentId = providerStatus.MpPaymentId ?? paymentToUpdate.MpPaymentId;
-            await dbContext.SaveChangesAsync(cancellationToken);
+            paymentToUpdate.UpdateProviderStatus(providerStatus.Status, providerStatus.StatusDetail, providerStatus.MpPaymentId);
+            await paymentRepository.SaveChangesAsync(cancellationToken);
 
-            existingPayment = await dbContext.Payments
-                .AsNoTracking()
-                .FirstOrDefaultAsync(x => x.MpOrderId == mpOrderId, cancellationToken);
+            existingPayment = await paymentRepository.GetByMpOrderIdAsync(mpOrderId, cancellationToken);
         }
 
         if (existingPayment?.ContributionCreated == true)
@@ -344,12 +322,9 @@ public sealed class PaymentService(
         if (!string.Equals(existingPayment?.Status, "approved", StringComparison.OrdinalIgnoreCase))
             return;
 
-        await using IDbContextTransaction transaction = dbContext.Database.IsRelational()
-            ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
-            : null;
+        await using IRepositoryTransaction transaction = await paymentRepository.BeginSerializableTransactionAsync(cancellationToken);
 
-        Payment payment = await dbContext.Payments
-            .FirstOrDefaultAsync(x => x.MpOrderId == mpOrderId, cancellationToken);
+        Payment payment = await paymentRepository.GetByMpOrderIdForUpdateAsync(mpOrderId, cancellationToken);
 
         if (payment is null)
         {
@@ -363,7 +338,7 @@ public sealed class PaymentService(
         if (!string.Equals(payment.Status, "approved", StringComparison.OrdinalIgnoreCase))
             return;
 
-        bool giftExists = await dbContext.Gifts.AnyAsync(x => x.Id == payment.GiftId, cancellationToken);
+        bool giftExists = await giftRepository.ExistsAsync(payment.GiftId, cancellationToken);
 
         if (!giftExists)
         {
@@ -375,27 +350,21 @@ public sealed class PaymentService(
             return;
         }
 
-        Contribution contribution = new()
-        {
-            Id = Guid.NewGuid(),
-            GiftId = payment.GiftId,
-            ContributorName = payment.ContributorName.Trim(),
-            Message = payment.Message.Trim(),
-            Amount = payment.Amount,
-            PaymentMethod = "pix",
-            PaidAt = DateTime.UtcNow,
-            Status = ContributionStatus.Paid
-        };
+        Contribution contribution = Contribution.Create(
+            payment.GiftId,
+            payment.ContributorName,
+            payment.Message,
+            payment.Amount,
+            "pix",
+            DateTime.UtcNow,
+            ContributionStatus.Paid);
 
-        dbContext.Contributions.Add(contribution);
-
-        payment.ContributionId = contribution.Id;
-        payment.ContributionCreated = true;
-        payment.Status = "approved";
+        await contributionRepository.AddAsync(contribution, cancellationToken);
+        payment.MarkContributionCreated(contribution.Id);
 
         try
         {
-            await dbContext.SaveChangesAsync(cancellationToken);
+            await paymentRepository.SaveChangesAsync(cancellationToken);
 
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
@@ -429,8 +398,7 @@ public sealed class PaymentService(
         if (string.IsNullOrWhiteSpace(mpOrderId))
             return;
 
-        Payment payment = await dbContext.Payments
-            .FirstOrDefaultAsync(x => x.MpOrderId == mpOrderId, cancellationToken);
+        Payment payment = await paymentRepository.GetByMpOrderIdForUpdateAsync(mpOrderId, cancellationToken);
 
         if (payment is null)
         {
@@ -440,8 +408,8 @@ public sealed class PaymentService(
 
         if (!string.Equals(payment.Status, status, StringComparison.OrdinalIgnoreCase))
         {
-            payment.Status = status;
-            await dbContext.SaveChangesAsync(cancellationToken);
+            payment.UpdateProviderStatus(status, payment.StatusDetail);
+            await paymentRepository.SaveChangesAsync(cancellationToken);
         }
 
         if (status == "approved")

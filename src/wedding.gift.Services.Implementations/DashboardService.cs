@@ -1,47 +1,33 @@
-using Microsoft.EntityFrameworkCore;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Domain.Model.Entities;
-using wedding.gift.Infra.Implementations.DataContext;
+using wedding.gift.Infra.Contracts;
 using wedding.gift.Services.Contracts;
 using wedding.gift.Services.Implementations.Exceptions;
 
 namespace wedding.gift.Services.Implementations;
 
-public sealed class DashboardService(AppDbContext dbContext) : IDashboardService
+public sealed class DashboardService(
+    IGiftRepository giftRepository,
+    IContributionRepository contributionRepository,
+    IPaymentRepository paymentRepository,
+    IApiRequestLogRepository apiRequestLogRepository) : IDashboardService
 {
     public async Task<DashboardResponseDto> GetAsync(DashboardQueryDto query, CancellationToken cancellationToken)
     {
         if (query.Days < 1 || query.Days > 365)
-        {
             throw new BadRequestException(ErrorCodes.INVALID_DASHBOARD_DAYS);
-        }
 
         if (query.RecentItems < 1 || query.RecentItems > 50)
-        {
             throw new BadRequestException(ErrorCodes.INVALID_DASHBOARD_RECENT_ITEMS);
-        }
 
         DateTime now = DateTime.UtcNow;
         DateTime fromUtc = now.Date.AddDays(-(query.Days - 1));
 
-        List<Gift> gifts = await dbContext.Gifts
-            .Include(x => x.Contributions)
-            .AsNoTracking()
-            .ToListAsync(cancellationToken);
-
-        List<Contribution> contributions = await dbContext.Contributions
-            .AsNoTracking()
-            .ToListAsync(cancellationToken);
-
-        List<Payment> payments = await dbContext.Payments
-            .AsNoTracking()
-            .ToListAsync(cancellationToken);
-
-        List<ApiRequestLog> requestLogs = await dbContext.ApiRequestLogs
-            .AsNoTracking()
-            .Where(x => x.StartedAtUtc >= fromUtc && x.StartedAtUtc <= now)
-            .ToListAsync(cancellationToken);
+        List<Gift> gifts = (await giftRepository.GetAllWithContributionsAsync(cancellationToken)).ToList();
+        List<Contribution> contributions = (await contributionRepository.GetAllAsync(cancellationToken)).ToList();
+        List<Payment> payments = (await paymentRepository.GetAllAsync(cancellationToken)).ToList();
+        List<ApiRequestLog> requestLogs = (await apiRequestLogRepository.GetByStartedAtRangeAsync(fromUtc, now, cancellationToken)).ToList();
 
         Dictionary<Guid, string> giftNames = gifts.ToDictionary(x => x.Id, x => x.Name);
         List<DashboardGiftFundingDto> giftFunding = BuildGiftFunding(gifts);

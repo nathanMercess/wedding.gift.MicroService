@@ -2,14 +2,16 @@ using Microsoft.EntityFrameworkCore;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Domain.Model.Entities;
-using wedding.gift.Infra.Implementations.DataContext;
+using wedding.gift.Infra.Contracts;
 using wedding.gift.Services.Contracts;
 using wedding.gift.Services.Implementations.Exceptions;
 using wedding.gift.Services.Implementations.Extensions;
 
 namespace wedding.gift.Services.Implementations;
 
-public sealed class GiftService(AppDbContext dbContext) : IGiftService
+public sealed class GiftService(
+    IGiftRepository giftRepository,
+    IContributionRepository contributionRepository) : IGiftService
 {
     public async Task<PagedResult<GiftResponseDto>> GetAllAsync(GiftQueryParams queryParams, CancellationToken cancellationToken)
     {
@@ -19,7 +21,7 @@ public sealed class GiftService(AppDbContext dbContext) : IGiftService
         if (queryParams.PageSize < 1 || queryParams.PageSize > 100)
             throw new BadRequestException(ErrorCodes.INVALID_GIFT_PAGE_SIZE);
 
-        IQueryable<Gift> query = dbContext.Gifts.Include(x => x.Contributions).AsNoTracking();
+        IQueryable<Gift> query = giftRepository.QueryWithContributions();
 
         if (!string.IsNullOrWhiteSpace(queryParams.Category))
             query = query.Where(x => x.Category == queryParams.Category);
@@ -74,31 +76,11 @@ public sealed class GiftService(AppDbContext dbContext) : IGiftService
 
     public async Task<GiftStatsDto> GetStatsAsync(CancellationToken cancellationToken)
     {
-        int total = await dbContext.Gifts.CountAsync(cancellationToken);
-        
-        int completed = await dbContext.Gifts
-            .GroupJoin(
-                dbContext.Contributions.Where(c => c.Status == ContributionStatus.Paid),
-                gift => gift.Id,
-                contribution => contribution.GiftId,
-                (gift, contributions) => new
-                {
-                    gift.Total,
-                    Raised = contributions.Sum(c => c.Amount)
-                })
-            .CountAsync(g => g.Raised >= g.Total, cancellationToken);
-       
-        decimal goal = await dbContext.Gifts.SumAsync(x => x.Total, cancellationToken);
-        
-        decimal raised = await dbContext.Contributions
-            .Where(x => x.Status == ContributionStatus.Paid)
-            .SumAsync(x => x.Amount, cancellationToken);
-        
-        int contributors = await dbContext.Contributions
-            .Where(x => x.Status == ContributionStatus.Paid)
-            .Select(x => x.ContributorName.Trim().ToLower())
-            .Distinct()
-            .CountAsync(cancellationToken);
+        int total = await giftRepository.CountAsync(cancellationToken);
+        int completed = await giftRepository.CountFullyFundedAsync(cancellationToken);
+        decimal goal = await giftRepository.SumTotalAsync(cancellationToken);
+        decimal raised = await contributionRepository.SumPaidAmountAsync(cancellationToken);
+        int contributors = await contributionRepository.CountUniquePaidContributorsAsync(cancellationToken);
 
         return new GiftStatsDto
         {
@@ -106,17 +88,14 @@ public sealed class GiftService(AppDbContext dbContext) : IGiftService
             Completed = completed,
             Contributors = contributors,
             Raised = raised,
-            Goal = goal,
+            Goal = goal
         };
     }
 
     public async Task<GiftResponseDto> GetByIdAsync(Guid id, CancellationToken cancellationToken)
     {
-        Gift entity = await dbContext.Gifts
-            .Include(x => x.Contributions)
-            .AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
-            ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
+        Gift entity = await giftRepository.GetByIdWithContributionsAsync(id, cancellationToken)
+                      ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
 
         return entity.ToResponseDto();
     }
@@ -124,86 +103,72 @@ public sealed class GiftService(AppDbContext dbContext) : IGiftService
     public async Task<GiftResponseDto> CreateAsync(GiftCreateDto dto, CancellationToken cancellationToken)
     {
         Gift entity = dto.ToEntity();
-        dbContext.Gifts.Add(entity);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await giftRepository.AddAsync(entity, cancellationToken);
+        await giftRepository.SaveChangesAsync(cancellationToken);
         return entity.ToResponseDto();
     }
 
     public async Task<GiftResponseDto> UpdateAsync(Guid id, GiftUpdateDto dto, CancellationToken cancellationToken)
     {
-        Gift entity = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
+        Gift entity = await giftRepository.GetByIdAsync(id, cancellationToken)
                       ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
 
         entity.ApplyUpdate(dto);
-
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await giftRepository.SaveChangesAsync(cancellationToken);
 
         return entity.ToResponseDto();
     }
 
     public async Task<GiftResponseDto> UpdateAvailabilityAsync(Guid id, bool available, CancellationToken cancellationToken)
     {
-        Gift entity = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
+        Gift entity = await giftRepository.GetByIdAsync(id, cancellationToken)
                       ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
 
-        entity.Available = available;
-        entity.UpdatedAt = DateTime.UtcNow;
-        await dbContext.SaveChangesAsync(cancellationToken);
+        entity.SetAvailability(available);
+        await giftRepository.SaveChangesAsync(cancellationToken);
 
         return entity.ToResponseDto();
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken)
     {
-        Gift entity = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
+        Gift entity = await giftRepository.GetByIdAsync(id, cancellationToken)
                       ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
 
-        dbContext.Gifts.Remove(entity);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        giftRepository.Delete(entity);
+        await giftRepository.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<ContributionResponseDto>> GetContributionsByGiftIdAsync(Guid giftId, CancellationToken cancellationToken)
     {
-        bool giftExists = await dbContext.Gifts.AnyAsync(x => x.Id == giftId, cancellationToken);
+        bool giftExists = await giftRepository.ExistsAsync(giftId, cancellationToken);
 
         if (!giftExists)
-        {
             throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
-        }
 
-        List<Contribution> contributions = await dbContext.Contributions
-            .AsNoTracking()
-            .Where(x => x.GiftId == giftId)
-            .OrderByDescending(x => x.PaidAt)
-            .ToListAsync(cancellationToken);
-
+        IReadOnlyList<Contribution> contributions = await contributionRepository.GetByGiftIdAsync(giftId, cancellationToken);
         return contributions.Select(x => x.ToResponseDto()).ToList();
     }
 
     public async Task<ContributionResponseDto> ContributeAsync(Guid giftId, ContributeDto dto, CancellationToken cancellationToken)
     {
-        Gift gift = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == giftId, cancellationToken)
+        Gift gift = await giftRepository.GetByIdAsync(giftId, cancellationToken)
                     ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
 
         if (!gift.Available)
-        {
             throw new ConflictException(ErrorCodes.GIFT_UNAVAILABLE);
-        }
 
-        Contribution entity = new()
-        {
-            Id = Guid.NewGuid(),
-            GiftId = giftId,
-            ContributorName = dto.GuestName.Trim(),
-            Message = dto.Message?.Trim() ?? string.Empty,
-            Amount = dto.Amount,
-            PaymentMethod = string.Empty,
-            PaidAt = DateTime.UtcNow,
-            Status = ContributionStatus.Pending
-        };
+        Contribution entity = Contribution.Create(
+            giftId,
+            dto.GuestName,
+            dto.Message ?? string.Empty,
+            dto.Amount,
+            string.Empty,
+            DateTime.UtcNow,
+            ContributionStatus.Pending);
 
-        dbContext.Contributions.Add(entity);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await contributionRepository.AddAsync(entity, cancellationToken);
+        await contributionRepository.SaveChangesAsync(cancellationToken);
 
         return entity.ToResponseDto();
     }

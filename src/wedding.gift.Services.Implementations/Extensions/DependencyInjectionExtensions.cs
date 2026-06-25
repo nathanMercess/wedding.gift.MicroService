@@ -15,6 +15,7 @@ public static class DependencyInjectionExtensions
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ICoupleService, CoupleService>();
         services.AddScoped<IDashboardService, DashboardService>();
+        services.AddScoped<IPaymentService, PaymentService>();
         services.AddTransient<IEmailService, EmailService>();
 
         services.AddSingleton(_ => StorageClient.Create());
