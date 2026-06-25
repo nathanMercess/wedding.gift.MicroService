@@ -102,24 +102,26 @@ public class GiftService(AppDbContext dbContext) : IGiftService
         };
     }
 
-    public async Task<Gift> GetByIdAsync(Guid id, CancellationToken cancellationToken)
+    public async Task<GiftResponseDto> GetByIdAsync(Guid id, CancellationToken cancellationToken)
     {
-        var entity = await dbContext.Gifts
+        Gift entity = await dbContext.Gifts
             .Include(x => x.Contributions)
             .AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
-        return entity ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
+            .FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
+            ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
+
+        return entity.ToResponseDto();
     }
 
-    public async Task<Gift> CreateAsync(GiftCreateDto dto, CancellationToken cancellationToken)
+    public async Task<GiftResponseDto> CreateAsync(GiftCreateDto dto, CancellationToken cancellationToken)
     {
         var entity = dto.ToEntity();
         dbContext.Gifts.Add(entity);
         await dbContext.SaveChangesAsync(cancellationToken);
-        return entity;
+        return entity.ToResponseDto();
     }
 
-    public async Task<Gift> UpdateAsync(Guid id, GiftUpdateDto dto, CancellationToken cancellationToken)
+    public async Task<GiftResponseDto> UpdateAsync(Guid id, GiftUpdateDto dto, CancellationToken cancellationToken)
     {
         var entity = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
                      ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
@@ -128,10 +130,10 @@ public class GiftService(AppDbContext dbContext) : IGiftService
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return entity;
+        return entity.ToResponseDto();
     }
 
-    public async Task<Gift> UpdateAvailabilityAsync(Guid id, bool available, CancellationToken cancellationToken)
+    public async Task<GiftResponseDto> UpdateAvailabilityAsync(Guid id, bool available, CancellationToken cancellationToken)
     {
         var entity = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
                      ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
@@ -140,7 +142,7 @@ public class GiftService(AppDbContext dbContext) : IGiftService
         entity.UpdatedAt = DateTime.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return entity;
+        return entity.ToResponseDto();
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken)
@@ -152,7 +154,7 @@ public class GiftService(AppDbContext dbContext) : IGiftService
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<Contribution>> GetContributionsByGiftIdAsync(Guid giftId, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<ContributionResponseDto>> GetContributionsByGiftIdAsync(Guid giftId, CancellationToken cancellationToken)
     {
         var giftExists = await dbContext.Gifts.AnyAsync(x => x.Id == giftId, cancellationToken);
 
@@ -161,14 +163,16 @@ public class GiftService(AppDbContext dbContext) : IGiftService
             throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
         }
 
-        return await dbContext.Contributions
+        List<Contribution> contributions = await dbContext.Contributions
             .AsNoTracking()
             .Where(x => x.GiftId == giftId)
             .OrderByDescending(x => x.PaidAt)
             .ToListAsync(cancellationToken);
+
+        return contributions.Select(x => x.ToResponseDto()).ToList();
     }
 
-    public async Task<Contribution> ContributeAsync(Guid giftId, ContributeDto dto, CancellationToken cancellationToken)
+    public async Task<ContributionResponseDto> ContributeAsync(Guid giftId, ContributeDto dto, CancellationToken cancellationToken)
     {
         var gift = await dbContext.Gifts.FirstOrDefaultAsync(x => x.Id == giftId, cancellationToken)
                    ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
@@ -193,6 +197,6 @@ public class GiftService(AppDbContext dbContext) : IGiftService
         dbContext.Contributions.Add(entity);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return entity;
+        return entity.ToResponseDto();
     }
 }

@@ -11,10 +11,7 @@ public sealed class AuthController(IAuthService authService) : ApiControllerBase
     [AllowAnonymous]
     [HttpPost("login")]
     public async Task<LoginResponseDto> Login([FromBody] LoginRequestDto dto, CancellationToken cancellationToken)
-    {
-        LoginResponseDto response = await authService.LoginAsync(dto, cancellationToken);
-        return response;
-    }
+        => await authService.LoginAsync(dto, cancellationToken);
 
     [AllowAnonymous]
     [HttpPost("register")]
@@ -28,7 +25,5 @@ public sealed class AuthController(IAuthService authService) : ApiControllerBase
     [AllowAnonymous]
     [HttpGet("confirm-email")]
     public async Task ConfirmEmail([FromQuery] string email, [FromQuery] string token, CancellationToken cancellationToken)
-    {
-        await authService.ConfirmEmailAsync(new ConfirmEmailRequestDto { Email = email, Token = token }, cancellationToken);
-    }
+        => await authService.ConfirmEmailAsync(new ConfirmEmailRequestDto { Email = email, Token = token }, cancellationToken);
 }

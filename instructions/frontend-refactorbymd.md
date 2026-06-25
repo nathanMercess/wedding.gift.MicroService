@@ -210,3 +210,54 @@ O front deve usar `error.code` também para pagamento. Para Pix aprovado/pendent
 - Confirmar que chamadas admin continuam enviando Bearer token.
 - Confirmar que upload de imagem usa `multipart/form-data` com campo `file`.
 - Confirmar que telas públicas continuam sem token: gifts, couple, contribuições públicas e pagamentos.
+
+## Prompt para o front
+
+Use este prompt no projeto frontend:
+
+```text
+Atualize a integração com a wedding-gift-api para o contrato novo.
+
+Todas as respostas JSON agora vêm no envelope:
+{
+  "success": boolean,
+  "data": T | null,
+  "error": {
+    "code": string,
+    "fields": Record<string, string[]> | null,
+    "details": unknown | null
+  } | null,
+  "correlationId": string
+}
+
+Regras:
+- Não ler mais payload direto da raiz da resposta; sempre usar response.data.
+- Não tratar ProblemDetails, ValidationProblemDetails, title, detail ou message como fonte principal de erro.
+- Centralizar um parser ApiResponse<T>.
+- Se success=true, retornar data para as telas.
+- Se success=false, traduzir error.code em mensagens locais do front.
+- Para validação, mapear error.fields por campo e traduzir FIELD_INVALID.
+- Guardar correlationId para suporte/logs.
+- Tratar 401/UNAUTHORIZED como sessão expirada ou token inválido.
+- Tratar 403/FORBIDDEN como usuário sem permissão.
+- Pagamentos também usam o mesmo envelope; em sucesso, PaymentResponseDto vem em data; em erro, usar error.code.
+- Para Pix, continuar lendo data.qrCode, data.qrCodeBase64 ou data.pixQrCode.
+- Para admin, manter Bearer token.
+- Para upload, manter multipart/form-data com campo file.
+
+Crie/atualize tipos TypeScript:
+type ApiResponse<T> = {
+  success: boolean;
+  data: T | null;
+  error: ApiError | null;
+  correlationId: string;
+};
+
+type ApiError = {
+  code: string;
+  fields?: Record<string, string[]> | null;
+  details?: unknown | null;
+};
+
+Atualize todos os services/clients HTTP para desembrulhar ApiResponse<T> e ajuste telas para consumir data.
+```

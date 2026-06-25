@@ -11,21 +11,25 @@ namespace wedding.gift.Services.Implementations;
 
 public class ContributionService(AppDbContext dbContext) : IContributionService
 {
-    public async Task<IReadOnlyList<Contribution>> GetAllAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<ContributionResponseDto>> GetAllAsync(CancellationToken cancellationToken)
     {
-        return await dbContext.Contributions
+        List<Contribution> contributions = await dbContext.Contributions
             .AsNoTracking()
             .OrderByDescending(x => x.PaidAt)
             .ToListAsync(cancellationToken);
+
+        return contributions.Select(x => x.ToResponseDto()).ToList();
     }
 
-    public async Task<Contribution> GetByIdAsync(Guid id, CancellationToken cancellationToken)
+    public async Task<ContributionResponseDto> GetByIdAsync(Guid id, CancellationToken cancellationToken)
     {
-        var entity = await dbContext.Contributions.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
-        return entity ?? throw new NotFoundException(ErrorCodes.CONTRIBUTION_NOT_FOUND);
+        Contribution entity = await dbContext.Contributions.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
+                              ?? throw new NotFoundException(ErrorCodes.CONTRIBUTION_NOT_FOUND);
+
+        return entity.ToResponseDto();
     }
 
-    public async Task<Contribution> CreateAsync(ContributionCreateDto dto, CancellationToken cancellationToken)
+    public async Task<ContributionResponseDto> CreateAsync(ContributionCreateDto dto, CancellationToken cancellationToken)
     {
         if (!ContributionStatus.Allowed.Contains(dto.Status))
         {
@@ -50,7 +54,7 @@ public class ContributionService(AppDbContext dbContext) : IContributionService
         dbContext.Contributions.Add(entity);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return entity;
+        return entity.ToResponseDto();
     }
 
     public async Task UpdateStatusAsync(Guid id, string status, DateTime paidAt, CancellationToken cancellationToken)

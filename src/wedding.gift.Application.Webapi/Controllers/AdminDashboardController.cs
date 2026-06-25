@@ -13,8 +13,5 @@ public sealed class AdminDashboardController(IDashboardService dashboardService)
 {
     [HttpGet]
     public async Task<DashboardResponseDto> Get([FromQuery] DashboardQueryDto query, CancellationToken cancellationToken)
-    {
-        DashboardResponseDto dashboard = await dashboardService.GetAsync(query, cancellationToken);
-        return dashboard;
-    }
+        => await dashboardService.GetAsync(query, cancellationToken);
 }

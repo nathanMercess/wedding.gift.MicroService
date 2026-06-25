@@ -4,19 +4,21 @@ using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Domain.Model.Entities;
 using wedding.gift.Infra.Implementations.DataContext;
 using wedding.gift.Services.Contracts;
+using wedding.gift.Services.Implementations.Extensions;
 
 namespace wedding.gift.Services.Implementations;
 
 public class CoupleService(AppDbContext dbContext) : ICoupleService
 {
-    public async Task<Couple?> GetAsync(CancellationToken cancellationToken)
+    public async Task<CoupleResponseDto> GetAsync(CancellationToken cancellationToken)
     {
-        return await dbContext.Couples.AsNoTracking().FirstOrDefaultAsync(cancellationToken);
+        Couple entity = await dbContext.Couples.AsNoTracking().FirstOrDefaultAsync(cancellationToken);
+        return entity is null ? new CoupleResponseDto() : entity.ToResponseDto();
     }
 
-    public async Task<Couple> UpdateAsync(CoupleUpdateDto dto, CancellationToken cancellationToken)
+    public async Task<CoupleResponseDto> UpdateAsync(CoupleUpdateDto dto, CancellationToken cancellationToken)
     {
-        var entity = await dbContext.Couples.FirstOrDefaultAsync(cancellationToken);
+        Couple entity = await dbContext.Couples.FirstOrDefaultAsync(cancellationToken);
 
         if (entity is null)
         {
@@ -31,7 +33,7 @@ public class CoupleService(AppDbContext dbContext) : ICoupleService
         entity.PrimaryColor = string.IsNullOrWhiteSpace(dto.PrimaryColor) ? "#C79A6D" : dto.PrimaryColor.Trim();
         entity.SecondaryColor = string.IsNullOrWhiteSpace(dto.SecondaryColor) ? "#F7F0EA" : dto.SecondaryColor.Trim();
 
-        var photos = dto.CarouselPhotos?
+        List<CarouselPhotoDto> photos = dto.CarouselPhotos?
             .Where(p => !string.IsNullOrWhiteSpace(p.Url))
             .Select(p => new CarouselPhotoDto { Url = p.Url.Trim(), Tag = p.Tag.Trim(), Title = p.Title.Trim() })
             .ToList();
@@ -39,6 +41,6 @@ public class CoupleService(AppDbContext dbContext) : ICoupleService
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return entity;
+        return entity.ToResponseDto();
     }
 }

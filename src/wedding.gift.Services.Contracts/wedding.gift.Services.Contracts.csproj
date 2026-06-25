@@ -20,7 +20,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\wedding.gift.Crosscutting\wedding.gift.Crosscutting.csproj" />
-    <ProjectReference Include="..\wedding.gift.Domain.Model\wedding.gift.Domain.Model.csproj" />
   </ItemGroup>
 
   <ItemGroup>
