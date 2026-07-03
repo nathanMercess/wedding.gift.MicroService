@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Caching.Memory;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Domain.Model.Entities;
 using wedding.gift.Infra.Contracts;
@@ -6,12 +7,20 @@ using wedding.gift.Services.Implementations.Extensions;
 
 namespace wedding.gift.Services.Implementations;
 
-public sealed class CoupleService(ICoupleRepository coupleRepository) : ICoupleService
+public sealed class CoupleService(ICoupleRepository coupleRepository, IMemoryCache cache) : ICoupleService
 {
+    private const string CacheKey = "couple:current";
+    private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(30);
     public async Task<CoupleResponseDto> GetAsync(CancellationToken cancellationToken)
     {
-        Couple entity = await coupleRepository.GetAsync(false, cancellationToken);
-        return entity is null ? new CoupleResponseDto() : entity.ToResponseDto();
+        CoupleResponseDto? cached = await cache.GetOrCreateAsync(CacheKey, async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = CacheDuration;
+            Couple entity = await coupleRepository.GetAsync(false, cancellationToken);
+            return entity is null ? new CoupleResponseDto() : entity.ToResponseDto();
+        });
+
+        return cached!;
     }
 
     public async Task<CoupleResponseDto> UpdateAsync(CoupleUpdateDto dto, CancellationToken cancellationToken)
@@ -34,6 +43,7 @@ public sealed class CoupleService(ICoupleRepository coupleRepository) : ICoupleS
             dto.ToCarouselPhotosJson());
 
         await coupleRepository.SaveChangesAsync(cancellationToken);
+        cache.Remove(CacheKey);
 
         return entity.ToResponseDto();
     }

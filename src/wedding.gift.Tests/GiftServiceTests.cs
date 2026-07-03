@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Xunit;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
@@ -147,7 +148,7 @@ public class GiftServiceTests
             .Options);
 
     private static GiftService CreateService(AppDbContext context)
-        => new(new GiftRepository(context), new ContributionRepository(context));
+        => new(new GiftRepository(context), new ContributionRepository(context), new MemoryCache(new MemoryCacheOptions()));
 
     private static Gift SeedGift(AppDbContext context, string name, decimal price, decimal? total = null, bool available = true)
     {

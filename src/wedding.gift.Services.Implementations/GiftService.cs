@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Domain.Model.Entities;
@@ -11,8 +12,12 @@ namespace wedding.gift.Services.Implementations;
 
 public sealed class GiftService(
     IGiftRepository giftRepository,
-    IContributionRepository contributionRepository) : IGiftService
+    IContributionRepository contributionRepository,
+    IMemoryCache cache) : IGiftService
 {
+    private const string CacheVersionKey = "gifts:version";
+    private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(30);
+
     public async Task<PagedResult<GiftResponseDto>> GetAllAsync(GiftQueryParams queryParams, CancellationToken cancellationToken)
     {
         if (queryParams.Page < 1)
@@ -21,19 +26,23 @@ public sealed class GiftService(
         if (queryParams.PageSize < 1 || queryParams.PageSize > 100)
             throw new BadRequestException(ErrorCodes.INVALID_GIFT_PAGE_SIZE);
 
-        IQueryable<Gift> query = giftRepository.QueryWithContributions();
-
-        if (!string.IsNullOrWhiteSpace(queryParams.Category))
-            query = query.Where(x => x.Category == queryParams.Category);
-
-        if (!string.IsNullOrWhiteSpace(queryParams.Search))
-            query = query.Where(x => x.Name.Contains(queryParams.Search) || x.Description.Contains(queryParams.Search));
-
-        if (queryParams.OnlyAvailable.HasValue)
-            query = query.Where(x => x.Available == queryParams.OnlyAvailable.Value);
-
-        query = (queryParams.OrderBy, queryParams.OrderDir) switch
+        string cacheKey = $"gifts:all:{GetCacheVersion()}:{queryParams.Page}:{queryParams.PageSize}:{queryParams.Category}:{queryParams.Search}:{queryParams.OnlyAvailable}:{queryParams.OrderBy}:{queryParams.OrderDir}";
+        PagedResult<GiftResponseDto>? cached = await cache.GetOrCreateAsync(cacheKey, async entry =>
         {
+            entry.AbsoluteExpirationRelativeToNow = CacheDuration;
+            IQueryable<Gift> query = giftRepository.QueryWithContributions();
+
+            if (!string.IsNullOrWhiteSpace(queryParams.Category))
+                query = query.Where(x => x.Category == queryParams.Category);
+
+            if (!string.IsNullOrWhiteSpace(queryParams.Search))
+                query = query.Where(x => x.Name.Contains(queryParams.Search) || x.Description.Contains(queryParams.Search));
+
+            if (queryParams.OnlyAvailable.HasValue)
+                query = query.Where(x => x.Available == queryParams.OnlyAvailable.Value);
+
+            query = (queryParams.OrderBy, queryParams.OrderDir) switch
+            {
             (GiftSortField.Price, SortDirection.Desc) => query.OrderByDescending(x => x.Price).ThenBy(x => x.Name),
             (GiftSortField.Price, _) => query.OrderBy(x => x.Price).ThenBy(x => x.Name),
 
@@ -56,48 +65,65 @@ public sealed class GiftService(
 
             (GiftSortField.Name, SortDirection.Desc) => query.OrderByDescending(x => x.Name),
             _ => query.OrderBy(x => x.Name)
-        };
+            };
 
-        int totalCount = await query.CountAsync(cancellationToken);
+            int totalCount = await query.CountAsync(cancellationToken);
 
-        List<Gift> items = await query
-            .Skip((queryParams.Page - 1) * queryParams.PageSize)
-            .Take(queryParams.PageSize)
-            .ToListAsync(cancellationToken);
+            List<Gift> items = await query
+                .Skip((queryParams.Page - 1) * queryParams.PageSize)
+                .Take(queryParams.PageSize)
+                .ToListAsync(cancellationToken);
 
-        return new PagedResult<GiftResponseDto>
-        {
-            Items = items.Select(g => g.ToResponseDto()),
-            TotalCount = totalCount,
-            Page = queryParams.Page,
-            PageSize = queryParams.PageSize
-        };
+            return new PagedResult<GiftResponseDto>
+            {
+                Items = items.Select(g => g.ToResponseDto()).ToList(),
+                TotalCount = totalCount,
+                Page = queryParams.Page,
+                PageSize = queryParams.PageSize
+            };
+        });
+
+        return cached!;
     }
 
     public async Task<GiftStatsDto> GetStatsAsync(CancellationToken cancellationToken)
     {
-        int total = await giftRepository.CountAsync(cancellationToken);
-        int completed = await giftRepository.CountFullyFundedAsync(cancellationToken);
-        decimal goal = await giftRepository.SumTotalAsync(cancellationToken);
-        decimal raised = await contributionRepository.SumPaidAmountAsync(cancellationToken);
-        int contributors = await contributionRepository.CountUniquePaidContributorsAsync(cancellationToken);
-
-        return new GiftStatsDto
+        string cacheKey = $"gifts:stats:{GetCacheVersion()}";
+        GiftStatsDto? cached = await cache.GetOrCreateAsync(cacheKey, async entry =>
         {
-            Total = total,
-            Completed = completed,
-            Contributors = contributors,
-            Raised = raised,
-            Goal = goal
-        };
+            entry.AbsoluteExpirationRelativeToNow = CacheDuration;
+            int total = await giftRepository.CountAsync(cancellationToken);
+            int completed = await giftRepository.CountFullyFundedAsync(cancellationToken);
+            decimal goal = await giftRepository.SumTotalAsync(cancellationToken);
+            decimal raised = await contributionRepository.SumPaidAmountAsync(cancellationToken);
+            int contributors = await contributionRepository.CountUniquePaidContributorsAsync(cancellationToken);
+
+            return new GiftStatsDto
+            {
+                Total = total,
+                Completed = completed,
+                Contributors = contributors,
+                Raised = raised,
+                Goal = goal
+            };
+        });
+
+        return cached!;
     }
 
     public async Task<GiftResponseDto> GetByIdAsync(Guid id, CancellationToken cancellationToken)
     {
-        Gift entity = await giftRepository.GetByIdWithContributionsAsync(id, cancellationToken)
-                      ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
+        string cacheKey = $"gifts:by-id:{GetCacheVersion()}:{id}";
+        GiftResponseDto? cached = await cache.GetOrCreateAsync(cacheKey, async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = CacheDuration;
+            Gift entity = await giftRepository.GetByIdWithContributionsAsync(id, cancellationToken)
+                          ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
 
-        return entity.ToResponseDto();
+            return entity.ToResponseDto();
+        });
+
+        return cached!;
     }
 
     public async Task<GiftResponseDto> CreateAsync(GiftCreateDto dto, CancellationToken cancellationToken)
@@ -105,6 +131,7 @@ public sealed class GiftService(
         Gift entity = dto.ToEntity();
         await giftRepository.AddAsync(entity, cancellationToken);
         await giftRepository.SaveChangesAsync(cancellationToken);
+        InvalidateGiftCache();
         return entity.ToResponseDto();
     }
 
@@ -115,6 +142,7 @@ public sealed class GiftService(
 
         entity.ApplyUpdate(dto);
         await giftRepository.SaveChangesAsync(cancellationToken);
+        InvalidateGiftCache();
 
         return entity.ToResponseDto();
     }
@@ -126,6 +154,7 @@ public sealed class GiftService(
 
         entity.SetAvailability(available);
         await giftRepository.SaveChangesAsync(cancellationToken);
+        InvalidateGiftCache();
 
         return entity.ToResponseDto();
     }
@@ -137,6 +166,7 @@ public sealed class GiftService(
 
         giftRepository.Delete(entity);
         await giftRepository.SaveChangesAsync(cancellationToken);
+        InvalidateGiftCache();
     }
 
     public async Task<IReadOnlyList<ContributionResponseDto>> GetContributionsByGiftIdAsync(Guid giftId, CancellationToken cancellationToken)
@@ -172,4 +202,17 @@ public sealed class GiftService(
 
         return entity.ToResponseDto();
     }
+
+    private string GetCacheVersion()
+        => cache.GetOrCreate(CacheVersionKey, entry =>
+        {
+            entry.Priority = CacheItemPriority.NeverRemove;
+            return Guid.NewGuid().ToString("N");
+        })!;
+
+    private void InvalidateGiftCache()
+        => cache.Set(CacheVersionKey, Guid.NewGuid().ToString("N"), new MemoryCacheEntryOptions
+        {
+            Priority = CacheItemPriority.NeverRemove
+        });
 }
