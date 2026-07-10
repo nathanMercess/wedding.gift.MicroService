@@ -11,6 +11,11 @@ public sealed class DashboardResponseDto
     public DashboardMessageSummaryDto Messages { get; set; } = new();
     public DashboardRequestSummaryDto Requests { get; set; } = new();
     public DashboardMonitoringDto Monitoring { get; set; } = new();
+    public DashboardActionCenterDto ActionCenter { get; set; } = new();
+    public DashboardRevenueDto Revenue { get; set; } = new();
+    public DashboardPaymentHealthDto PaymentHealth { get; set; } = new();
+    public DashboardGiftInsightsDto GiftInsights { get; set; } = new();
+    public DashboardApiHealthDto ApiHealth { get; set; } = new();
     public List<DashboardTimeSeriesPointDto> ContributionsByDay { get; set; } = [];
     public List<DashboardStatusChartDto> PaymentsByStatus { get; set; } = [];
     public List<DashboardPaymentMethodChartDto> PaymentsByMethod { get; set; } = [];
@@ -23,4 +28,5 @@ public sealed class DashboardResponseDto
     public List<DashboardPaymentActivityDto> RecentPayments { get; set; } = [];
     public List<DashboardPaymentActivityDto> RecentFailedPayments { get; set; } = [];
     public List<DashboardContributionActivityDto> RecentContributions { get; set; } = [];
+    public List<DashboardActivityFeedItemDto> ActivityFeed { get; set; } = [];
 }

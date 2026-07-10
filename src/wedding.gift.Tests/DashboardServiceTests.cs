@@ -45,7 +45,7 @@ public class DashboardServiceTests
         DashboardResponseDto dashboard = await service.GetAsync(new DashboardQueryDto
         {
             Days = 7,
-            RecentItems = 5
+            RecentItems = 10
         }, CancellationToken.None);
 
         Assert.Equal(2, dashboard.Gifts.Total);
@@ -86,6 +86,25 @@ public class DashboardServiceTests
         Assert.Equal("ApiRequestLogs ativo", dashboard.Monitoring.ApplicationLogsStatus);
         Assert.Equal(1, dashboard.Monitoring.ServerErrorRequests);
         Assert.Equal(1, dashboard.Monitoring.SlowRequests);
+        Assert.Equal("critical", dashboard.ActionCenter.HealthStatus);
+        Assert.Contains(dashboard.ActionCenter.Items, x => x.Category == "api" && x.Severity == "critical");
+        Assert.Contains(dashboard.ActionCenter.Items, x => x.Category == "gifts" && x.Severity == "critical");
+        Assert.Equal(150m, dashboard.Revenue.TotalRaised);
+        Assert.Equal(250m, dashboard.Revenue.RemainingAmount);
+        Assert.Equal(1, dashboard.PaymentHealth.FailedLast24Hours);
+        Assert.Single(dashboard.PaymentHealth.TopFailureReasons);
+        Assert.Equal(1, dashboard.GiftInsights.FullyFundedButAvailable);
+        Assert.Equal(1, dashboard.ApiHealth.ServerErrors);
+        Assert.Equal(1, dashboard.ApiHealth.SlowRequests);
+        Assert.Contains(dashboard.ActivityFeed, x => x.Type == "api" && x.Severity == "critical" && x.CorrelationId == "req_500");
+
+        DashboardActionCenterDto actionCenter = await service.GetActionCenterAsync(new DashboardQueryDto
+        {
+            Days = 7,
+            RecentItems = 10
+        }, CancellationToken.None);
+
+        Assert.Equal(dashboard.ActionCenter.HealthStatus, actionCenter.HealthStatus);
     }
 
     [Fact]
