@@ -101,21 +101,23 @@ public class PaymentServiceTests
     }
 
     [Fact]
-    public async Task ProcessCardPaymentAsync_DeveRetornarValidationError_QuandoAmountExcedeRestante()
+    public async Task ProcessCardPaymentAsync_DeveAceitarAmountMaiorQueRestante()
     {
         var context = CreateContext();
         var gift = SeedGift(context, total: 500m);
         context.Contributions.Add(Contribution.Create(gift.Id, "Bruno", string.Empty, 100m, "pix", DateTime.UtcNow, ContributionStatus.Paid));
         await context.SaveChangesAsync(CancellationToken.None);
-        var mp = new FakeMercadoPago();
+        var mp = new FakeMercadoPago { CardResult = new PaymentResponseDto { Status = "approved", MpOrderId = "mp_1" } };
         var service = CreateService(context, mp);
 
         var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 401m), CancellationToken.None);
 
-        Assert.Equal("error", result.Status);
-        Assert.Equal(PaymentErrorCodes.ValidationError, result.ErrorCode);
-        Assert.Null(mp.LastCardRequest);
-        Assert.Empty(context.Payments);
+        Assert.Equal("approved", result.Status);
+        Assert.Equal(401m, mp.LastCardRequest.Amount);
+        Assert.Equal(2, context.Contributions.Count());
+        Assert.Contains(context.Contributions, x => x.Amount == 401m && x.Status == ContributionStatus.Paid);
+        Assert.Single(context.Payments);
+        Assert.Equal(401m, context.Payments.Single().Amount);
     }
 
     [Fact]

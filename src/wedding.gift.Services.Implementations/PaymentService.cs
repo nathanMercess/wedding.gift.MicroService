@@ -75,14 +75,6 @@ public sealed class PaymentService(
         if (!gift.Available)
             return await BuildErrorResponseAsync("card", "validation", "Gift is not available.", PaymentErrorCodes.ValidationError, cancellationToken);
 
-        decimal raised = gift.Contributions
-            .Where(x => x.Status == ContributionStatus.Paid)
-            .Sum(x => x.Amount);
-        decimal remainingAmount = gift.Total - raised;
-
-        if (request.Amount > remainingAmount)
-            return await BuildErrorResponseAsync("card", "validation", "Amount exceeds remaining gift amount.", PaymentErrorCodes.ValidationError, cancellationToken);
-
         PaymentResponseDto result = await mercadoPagoService.CreateCardOrderAsync(request, cancellationToken);
 
         if (result.Status == "error")
