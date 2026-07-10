@@ -1,4 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
@@ -16,7 +15,6 @@ public sealed class PaymentService(
     IContributionRepository contributionRepository,
     IContributionService contributionService,
     IEmailService emailService,
-    IBackgroundTaskQueue backgroundTaskQueue,
     ILogger<PaymentService> logger) : IPaymentService
 {
     private const int CreditCardMaxInstallments = 12;
@@ -97,13 +95,14 @@ public sealed class PaymentService(
 
             contributionId = contribution.Id;
 
-            string contributorName = request.ContributorName;
-            decimal amount = request.Amount;
-            await backgroundTaskQueue.EnqueueAsync(async (sp, ct) =>
+            try
             {
-                IEmailService email = sp.GetRequiredService<IEmailService>();
-                await email.SendContributionNotificationAsync(contributorName, amount, ct);
-            }, cancellationToken);
+                await emailService.SendContributionNotificationAsync(request.ContributorName, request.Amount, cancellationToken);
+            }
+            catch (EmailDeliveryException ex)
+            {
+                logger.LogError(ex, "Contribution {ContributionId} confirmed, but email notification failed.", contributionId);
+            }
         }
 
         Payment payment = Payment.CreateCard(
@@ -371,7 +370,7 @@ public sealed class PaymentService(
             await ProcessApprovedPixPaymentAsync(mpOrderId, cancellationToken);
     }
 
-    private ValueTask QueuePaymentAttemptNotificationAsync(
+    private async Task QueuePaymentAttemptNotificationAsync(
         string paymentMethod,
         string? contributorName,
         Guid giftId,
@@ -393,14 +392,17 @@ public sealed class PaymentService(
             UTC time: {DateTime.UtcNow:u}
             """;
 
-        return backgroundTaskQueue.EnqueueAsync(async (sp, ct) =>
+        try
         {
-            IEmailService email = sp.GetRequiredService<IEmailService>();
-            await email.SendPaymentAttemptNotificationAsync(subject, body, ct);
-        }, cancellationToken);
+            await emailService.SendPaymentAttemptNotificationAsync(subject, body, cancellationToken);
+        }
+        catch (EmailDeliveryException ex)
+        {
+            logger.LogError(ex, "Payment attempt notification failed. PaymentMethod={PaymentMethod}, OrderId={OrderId}.", paymentMethod, orderId);
+        }
     }
 
-    private ValueTask QueuePaymentErrorNotificationAsync(
+    private async Task QueuePaymentErrorNotificationAsync(
         string paymentMethod,
         string stage,
         string message,
@@ -418,11 +420,14 @@ public sealed class PaymentService(
             UTC time: {DateTime.UtcNow:u}
             """;
 
-        return backgroundTaskQueue.EnqueueAsync(async (sp, ct) =>
+        try
         {
-            IEmailService email = sp.GetRequiredService<IEmailService>();
-            await email.SendErrorNotificationAsync(subject, body, ct);
-        }, cancellationToken);
+            await emailService.SendErrorNotificationAsync(subject, body, cancellationToken);
+        }
+        catch (EmailDeliveryException ex)
+        {
+            logger.LogError(ex, "Payment error notification failed. PaymentMethod={PaymentMethod}, Stage={Stage}.", paymentMethod, stage);
+        }
     }
 
     private async Task<PaymentResponseDto> BuildErrorResponseAsync(

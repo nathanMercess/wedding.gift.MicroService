@@ -26,7 +26,7 @@ public static class ExceptionHandlingExtensions
 
         LogException(exception, context, logger, correlationId);
 
-        if (exception is not null) await QueueErrorNotificationAsync(context, exception, correlationId);
+        if (exception is not null) await SendErrorNotificationAsync(context, exception, correlationId);
 
         ApiResponseDto<object> response = CreateErrorResponse(exception, correlationId);
         int statusCode = exception is AppException appException
@@ -62,18 +62,22 @@ public static class ExceptionHandlingExtensions
         }
     }
 
-    private static async Task QueueErrorNotificationAsync(HttpContext context, Exception exception, string correlationId)
+    private static async Task SendErrorNotificationAsync(HttpContext context, Exception exception, string correlationId)
     {
-        IBackgroundTaskQueue queue = context.RequestServices.GetRequiredService<IBackgroundTaskQueue>();
+        IEmailService emailService = context.RequestServices.GetRequiredService<IEmailService>();
+        ILogger<Program> logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
         string subject = $"[wedding.gift] {exception.GetType().Name}: {exception.Message}";
         string body = $"CorrelationId: {correlationId}\nPath: {context.Request.Path}\n" +
                       $"Method: {context.Request.Method}\nTime: {DateTime.UtcNow:u}\n\n{exception}";
 
-        await queue.EnqueueAsync(async (sp, ct) =>
+        try
         {
-            IEmailService emailService = sp.GetRequiredService<IEmailService>();
-            await emailService.SendErrorNotificationAsync(subject, body, ct);
-        }, CancellationToken.None);
+            await emailService.SendErrorNotificationAsync(subject, body, context.RequestAborted);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error notification email failed. CorrelationId={CorrelationId}", correlationId);
+        }
     }
 
     private static ApiResponseDto<object> CreateErrorResponse(Exception exception, string correlationId)

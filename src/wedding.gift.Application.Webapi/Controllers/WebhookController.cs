@@ -17,7 +17,8 @@ namespace wedding.gift.Application.Webapi.Controllers;
 [Route("webhook")]
 [Route("~/webhook")]
 public sealed class WebhookController(
-    IBackgroundTaskQueue queue,
+    IMercadoPagoService mercadoPago,
+    IPaymentService payments,
     IConfiguration config,
     IWebHostEnvironment env,
     ILogger<WebhookController> logger) : ApiControllerBase
@@ -49,31 +50,24 @@ public sealed class WebhookController(
             return;
         }
 
-        await queue.EnqueueAsync(async (sp, ct) =>
+        PaymentResponseDto status = await mercadoPago.GetOrderStatusAsync(dataId, cancellationToken);
+
+        if (status.Status == "error")
         {
-            IMercadoPagoService mercadoPago = sp.GetRequiredService<IMercadoPagoService>();
-            IPaymentService payments = sp.GetRequiredService<IPaymentService>();
+            logger.LogError(
+                "Falha ao consultar status real do Mercado Pago no webhook. DataId={DataId}, ErrorCode={ErrorCode}, Message={Message}.",
+                dataId,
+                status.ErrorCode,
+                status.Message);
+            return;
+        }
 
-            PaymentResponseDto status = await mercadoPago.GetOrderStatusAsync(dataId, ct);
+        if (!string.IsNullOrWhiteSpace(status.MpOrderId))
+        {
+            await payments.ConfirmPaymentAsync(status.MpOrderId, status.Status, cancellationToken);
 
-            if (status.Status == "error")
-            {
-                logger.LogError(
-                    "Falha ao consultar status real do Mercado Pago no webhook. DataId={DataId}, ErrorCode={ErrorCode}, Message={Message}.",
-                    dataId,
-                    status.ErrorCode,
-                    status.Message);
-                return;
-            }
-
-            if (!string.IsNullOrWhiteSpace(status.MpOrderId))
-            {
-                await payments.ConfirmPaymentAsync(status.MpOrderId, status.Status, ct);
-
-                if (status.Status == "approved") await payments.ProcessApprovedPixPaymentAsync(status.MpOrderId, ct);
-            }
-        }, cancellationToken);
-
+            if (status.Status == "approved") await payments.ProcessApprovedPixPaymentAsync(status.MpOrderId, cancellationToken);
+        }
     }
 
     private bool ValidateMercadoPagoSignature(HttpRequest request, string? dataId)

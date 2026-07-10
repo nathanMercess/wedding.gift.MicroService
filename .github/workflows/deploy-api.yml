@@ -4,6 +4,24 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        default: production
+        options:
+          - production
+          - development
+
+env:
+  PROJECT_ID: weddinggift
+  PROJECT_NUMBER: "528711077873"
+  REGION: us-central1
+  REPOSITORY: wedding-gift
+  IMAGE_NAME: api
+  RUNTIME_SERVICE_ACCOUNT: 528711077873-compute@developer.gserviceaccount.com
 
 jobs:
   build-and-deploy:
@@ -12,7 +30,7 @@ jobs:
 
     permissions:
       contents: read
-      id-token: write  # obrigatório para Workload Identity Federation
+      id-token: write
 
     steps:
       - name: Checkout code
@@ -24,30 +42,63 @@ jobs:
           workload_identity_provider: "projects/528711077873/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
           service_account: "github-actions@weddinggift.iam.gserviceaccount.com"
 
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Resolve target
+        id: target
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TARGET="${{ inputs.environment }}"
+          else
+            TARGET="development"
+          fi
+
+          if [[ "$TARGET" == "production" ]]; then
+            echo "service=wedding-gift-api-prod" >> "$GITHUB_OUTPUT"
+            echo "aspnet_environment=Production" >> "$GITHUB_OUTPUT"
+            echo "api_base_url=https://davidmaira.com" >> "$GITHUB_OUTPUT"
+          else
+            echo "service=wedding-gift-api-dev" >> "$GITHUB_OUTPUT"
+            echo "aspnet_environment=Development" >> "$GITHUB_OUTPUT"
+            echo "api_base_url=https://dev.davidmaira.com" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Test
+        run: dotnet test
+
       - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker southamerica-east1-docker.pkg.dev --quiet
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
 
       - name: Build API image
         run: |
-          docker build \
-            -t southamerica-east1-docker.pkg.dev/weddinggift/wedding-gift/api:latest \
-            -t southamerica-east1-docker.pkg.dev/weddinggift/wedding-gift/api:${{ github.sha }} \
-            .
+          IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          docker build -t "$IMAGE" .
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
 
       - name: Push API image
-        run: |
-          docker push southamerica-east1-docker.pkg.dev/weddinggift/wedding-gift/api:latest
-          docker push southamerica-east1-docker.pkg.dev/weddinggift/wedding-gift/api:${{ github.sha }}
+        run: docker push "$IMAGE"
 
-      - name: Deploy to VM via SSH
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.VM_HOST }}
-          username: ${{ secrets.VM_USER }}
-          key: ${{ secrets.VM_SSH_KEY }}
-          script: |
-            gcloud auth configure-docker southamerica-east1-docker.pkg.dev --quiet
-            docker pull southamerica-east1-docker.pkg.dev/weddinggift/wedding-gift/api:latest
-            cd /home/nathan66merces/app
-            docker compose up -d api
-            docker image prune -f
+      - name: Deploy API to Cloud Run
+        run: |
+          gcloud run deploy "${{ steps.target.outputs.service }}" \
+            --project "${{ env.PROJECT_ID }}" \
+            --region "${{ env.REGION }}" \
+            --platform managed \
+            --image "$IMAGE" \
+            --allow-unauthenticated \
+            --service-account "${{ env.RUNTIME_SERVICE_ACCOUNT }}" \
+            --execution-environment gen2 \
+            --network default \
+            --subnet default \
+            --vpc-egress private-ranges-only \
+            --cpu 1 \
+            --memory 512Mi \
+            --concurrency 80 \
+            --timeout 300 \
+            --min-instances 0 \
+            --max-instances 2 \
+            --set-env-vars "ASPNETCORE_ENVIRONMENT=${{ steps.target.outputs.aspnet_environment }},ASPNETCORE_URLS=http://+:8080,BootstrapAdmin__Enabled=false,Api__BaseUrl=${{ steps.target.outputs.api_base_url }}" \
+            --set-secrets "ConnectionStrings__DefaultConnection=wedding-gift-vm-connection-string:latest,Smtp__Host=smtp-host:latest,Smtp__Port=smtp-port:latest,Smtp__Username=smtp-username:latest,Smtp__Password=smtp-password:latest,Smtp__FromEmail=smtp-from-email:latest,Smtp__FromName=smtp-from-name:latest,Smtp__EnableSsl=smtp-enable-ssl:latest,Smtp__ErrorNotificationRecipient=smtp-error-notification-recipient:latest,Smtp__CoupleNotificationRecipient=smtp-couple-notification-recipient:latest" \
+            --quiet

@@ -21,8 +21,8 @@ public class PaymentServiceTests
         var context = CreateContext();
         var gift = SeedGift(context, total: 500m);
         var mp = new FakeMercadoPago { CardResult = new PaymentResponseDto { Status = "approved", MpOrderId = "mp_1" } };
-        var queue = new FakeQueue();
-        var service = CreateService(context, mp, queue: queue);
+        var email = new FakeEmail();
+        var service = CreateService(context, mp, email);
 
         var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 500m), CancellationToken.None);
 
@@ -35,7 +35,8 @@ public class PaymentServiceTests
         Assert.Equal("approved", context.Payments.Single().Status);
         Assert.NotNull(context.Payments.Single().ContributionId);
         Assert.True(context.Gifts.Single().Available);
-        Assert.Equal(2, queue.Items.Count);
+        Assert.Equal(1, email.AttemptCount);
+        Assert.Equal(1, email.NotificationCount);
     }
 
     [Fact]
@@ -135,8 +136,8 @@ public class PaymentServiceTests
                 MpOrderId = "mp_r"
             }
         };
-        var queue = new FakeQueue();
-        var service = CreateService(context, mp, queue: queue);
+        var email = new FakeEmail();
+        var service = CreateService(context, mp, email);
 
         var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 128.63m), CancellationToken.None);
 
@@ -146,15 +147,15 @@ public class PaymentServiceTests
         Assert.Equal("rejected", context.Payments.Single().Status);
         Assert.Null(context.Payments.Single().ContributionId);
         Assert.True(context.Gifts.Single().Available);
-        Assert.Single(queue.Items);
+        Assert.Equal(1, email.AttemptCount);
     }
 
     [Fact]
     public async Task ProcessCardPaymentAsync_DeveRetornarValidationError_QuandoCampoObrigatorioFaltando()
     {
         var context = CreateContext();
-        var queue = new FakeQueue();
-        var service = CreateService(context, new FakeMercadoPago(), queue: queue);
+        var email = new FakeEmail();
+        var service = CreateService(context, new FakeMercadoPago(), email);
 
         var request = Card(Guid.NewGuid());
         request.PayerEmail = "";
@@ -164,7 +165,8 @@ public class PaymentServiceTests
         Assert.Equal("error", result.Status);
         Assert.Equal(PaymentErrorCodes.ValidationError, result.ErrorCode);
         Assert.Empty(context.Contributions);
-        Assert.Equal(2, queue.Items.Count);
+        Assert.Equal(1, email.AttemptCount);
+        Assert.Equal(1, email.ErrorCount);
     }
 
     [Fact]
@@ -176,8 +178,8 @@ public class PaymentServiceTests
         {
             PixResult = new PaymentResponseDto { Status = "pending", MpOrderId = "mp_pix", QrCodeBase64 = "qr==" }
         };
-        var queue = new FakeQueue();
-        var service = CreateService(context, mp, queue: queue);
+        var email = new FakeEmail();
+        var service = CreateService(context, mp, email);
 
         var result = await service.ProcessPixPaymentAsync(Pix(gift.Id), CancellationToken.None);
 
@@ -188,7 +190,7 @@ public class PaymentServiceTests
         Assert.False(payment.ContributionCreated);
         Assert.Null(payment.ContributionId);
         Assert.True(context.Gifts.Single().Available);
-        Assert.Single(queue.Items);
+        Assert.Equal(1, email.AttemptCount);
     }
 
     [Fact]
@@ -252,7 +254,7 @@ public class PaymentServiceTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options);
 
-    private static PaymentService CreateService(AppDbContext context, IMercadoPagoService mp, IEmailService? email = null, IBackgroundTaskQueue? queue = null)
+    private static PaymentService CreateService(AppDbContext context, IMercadoPagoService mp, IEmailService? email = null)
     {
         var giftRepository = new GiftRepository(context);
         var contributionRepository = new ContributionRepository(context);
@@ -266,7 +268,6 @@ public class PaymentServiceTests
             contributionRepository,
             contributionService,
             email ?? new FakeEmail(),
-            queue ?? new FakeQueue(),
             NullLogger<PaymentService>.Instance);
     }
 
@@ -330,9 +331,13 @@ public class PaymentServiceTests
     {
         public int NotificationCount;
         public int AttemptCount;
+        public int ErrorCount;
 
         public Task SendErrorNotificationAsync(string subject, string body, CancellationToken cancellationToken)
-            => Task.CompletedTask;
+        {
+            ErrorCount++;
+            return Task.CompletedTask;
+        }
 
         public Task SendEmailConfirmationAsync(string toEmail, string toName, string token, CancellationToken cancellationToken)
             => Task.CompletedTask;
@@ -350,17 +355,4 @@ public class PaymentServiceTests
         }
     }
 
-    private sealed class FakeQueue : IBackgroundTaskQueue
-    {
-        public readonly List<Func<IServiceProvider, CancellationToken, Task>> Items = [];
-
-        public ValueTask EnqueueAsync(Func<IServiceProvider, CancellationToken, Task> workItem, CancellationToken cancellationToken)
-        {
-            Items.Add(workItem);
-            return ValueTask.CompletedTask;
-        }
-
-        public ValueTask<Func<IServiceProvider, CancellationToken, Task>> DequeueAsync(CancellationToken cancellationToken)
-            => throw new NotImplementedException();
-    }
 }
