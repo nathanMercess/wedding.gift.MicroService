@@ -102,7 +102,8 @@ public sealed class ApiResponseMiddleware(RequestDelegate next)
             if (context.Response.StatusCode >= StatusCodes.Status400BadRequest)
             {
                 string code = ExtractErrorCode(document.RootElement, context.Response.StatusCode);
-                ApiResponseDto<object> failure = ApiResponseDto<object>.Fail(code, context.TraceIdentifier);
+                object details = ExtractErrorDetails(document.RootElement);
+                ApiResponseDto<object> failure = ApiResponseDto<object>.Fail(code, context.TraceIdentifier, details: details);
                 await context.Response.WriteAsJsonAsync(failure, cancellationToken: context.RequestAborted);
                 return;
             }
@@ -159,6 +160,33 @@ public sealed class ApiResponseMiddleware(RequestDelegate next)
         }
 
         return GetDefaultErrorCode(statusCode);
+    }
+
+    private static object ExtractErrorDetails(JsonElement root)
+    {
+        Dictionary<string, string> details = [];
+
+        AddStringDetail(root, details, "message");
+        AddStringDetail(root, details, "detail");
+        AddStringDetail(root, details, "statusDetail");
+        AddStringDetail(root, details, "mpRequestId");
+
+        if (root.ValueKind == JsonValueKind.Object &&
+            root.TryGetProperty("error", out JsonElement error))
+        {
+            AddStringDetail(error, details, "message");
+            AddStringDetail(error, details, "detail");
+            AddStringDetail(error, details, "statusDetail");
+            AddStringDetail(error, details, "mpRequestId");
+        }
+
+        return details.Count == 0 ? null : details;
+    }
+
+    private static void AddStringDetail(JsonElement root, IDictionary<string, string> details, string propertyName)
+    {
+        if (TryGetStringProperty(root, propertyName, out string value))
+            details[propertyName] = value;
     }
 
     private static bool TryGetStringProperty(JsonElement root, string propertyName, out string value)

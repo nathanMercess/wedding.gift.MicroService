@@ -69,20 +69,19 @@ public class PaymentServiceTests
     }
 
     [Fact]
-    public async Task ProcessCardPaymentAsync_DeveRetornarValidationError_QuandoValorBrutoDivergeDaTaxa()
+    public async Task ProcessCardPaymentAsync_DeveUsarValorBrutoDoRequest_QuandoCredito()
     {
         var context = CreateContext();
         var gift = SeedGift(context, total: 500m);
-        var mp = new FakeMercadoPago();
+        var mp = new FakeMercadoPago { CardResult = new PaymentResponseDto { Status = "approved", MpOrderId = "mp_1" } };
         var service = CreateService(context, mp);
 
-        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 600m, netAmount: 500m), CancellationToken.None);
+        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 49m, netAmount: 49m), CancellationToken.None);
 
-        Assert.Equal("error", result.Status);
-        Assert.Equal(PaymentErrorCodes.ValidationError, result.ErrorCode);
-        Assert.Null(mp.LastCardRequest);
-        Assert.Empty(context.Contributions);
-        Assert.Empty(context.Payments);
+        Assert.Equal("approved", result.Status);
+        Assert.Equal(49m, mp.LastCardRequest.Amount);
+        Assert.Equal(49m, context.Contributions.Single().Amount);
+        Assert.Equal(49m, context.Payments.Single().Amount);
     }
 
     [Fact]

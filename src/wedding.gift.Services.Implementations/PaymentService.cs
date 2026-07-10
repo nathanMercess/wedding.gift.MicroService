@@ -20,22 +20,6 @@ public sealed class PaymentService(
     ILogger<PaymentService> logger) : IPaymentService
 {
     private const int CreditCardMaxInstallments = 12;
-    private const decimal CreditCardFeePercentForBrickAmount = 22.26m;
-    private static readonly IReadOnlyDictionary<int, decimal> CreditCardFeePercentByInstallment = new Dictionary<int, decimal>
-    {
-        [1] = 7.97m,
-        [2] = 7.51m,
-        [3] = 9.60m,
-        [4] = 11.67m,
-        [5] = 13.64m,
-        [6] = 14.94m,
-        [7] = 16.22m,
-        [8] = 17.48m,
-        [9] = 18.71m,
-        [10] = 18.91m,
-        [11] = 21.10m,
-        [12] = CreditCardFeePercentForBrickAmount
-    };
 
     public async Task<PaymentResponseDto> ProcessCardPaymentAsync(
         CardPaymentRequestDto request,
@@ -104,21 +88,6 @@ public sealed class PaymentService(
 
         if (request.NetAmount > remainingAmount)
             return await BuildErrorResponseAsync("card", "validation", "Net amount exceeds remaining gift amount.", PaymentErrorCodes.ValidationError, cancellationToken);
-
-        if (request.Method == "credit_card")
-        {
-            if (!CreditCardFeePercentByInstallment.ContainsKey(request.Installments))
-                return await BuildErrorResponseAsync("card", "validation", "Installments exceed the card limit.", PaymentErrorCodes.ValidationError, cancellationToken);
-
-            decimal expectedAmount = CalculateExpectedCardAmount(request.NetAmount, CreditCardFeePercentForBrickAmount);
-
-            if (Math.Abs(expectedAmount - request.Amount) > 0.01m)
-                return await BuildErrorResponseAsync("card", "validation", "Amount does not match the configured credit card fee.", PaymentErrorCodes.ValidationError, cancellationToken);
-        }
-        else if (Math.Abs(request.NetAmount - request.Amount) > 0.01m)
-        {
-            return await BuildErrorResponseAsync("card", "validation", "Debit card amount must match net amount.", PaymentErrorCodes.ValidationError, cancellationToken);
-        }
 
         PaymentResponseDto result = await mercadoPagoService.CreateCardOrderAsync(request, cancellationToken);
 
@@ -506,12 +475,4 @@ public sealed class PaymentService(
     private static string NormalizeValue(string? value)
         => string.IsNullOrWhiteSpace(value) ? "-" : value.Trim();
 
-    private static decimal CalculateExpectedCardAmount(decimal netAmount, decimal feePercent)
-    {
-        if (feePercent <= 0)
-            return Math.Round(netAmount, 2, MidpointRounding.AwayFromZero);
-
-        decimal feeFactor = 1 - (feePercent / 100);
-        return Math.Round(netAmount / feeFactor, 2, MidpointRounding.AwayFromZero);
-    }
 }
