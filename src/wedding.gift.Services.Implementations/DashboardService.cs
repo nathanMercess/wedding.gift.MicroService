@@ -393,7 +393,7 @@ public sealed class DashboardService(
                 GiftId = x.GiftId,
                 GiftName = GetGiftName(giftNames, x.GiftId),
                 ContributorName = x.ContributorName,
-                Message = x.Message.Trim(),
+                Message = x.Message?.Trim() ?? string.Empty,
                 Amount = x.Amount,
                 Status = x.Status,
                 CreatedAtUtc = x.PaidAt
@@ -414,7 +414,7 @@ public sealed class DashboardService(
                 GiftId = x.GiftId,
                 GiftName = GetGiftName(giftNames, x.GiftId),
                 ContributorName = x.ContributorName,
-                Message = x.Message.Trim(),
+                Message = x.Message?.Trim() ?? string.Empty,
                 Amount = x.Amount,
                 Status = x.Status,
                 CreatedAtUtc = x.CreatedAt

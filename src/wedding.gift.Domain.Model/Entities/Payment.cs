@@ -9,7 +9,7 @@ public sealed class Payment
     public Guid Id { get; private set; }
     public Guid GiftId { get; private set; }
     public string ContributorName { get; private set; } = string.Empty;
-    public string Message { get; private set; } = string.Empty;
+    public string? Message { get; private set; }
     public string PayerEmail { get; private set; } = string.Empty;
     public string PayerDocType { get; private set; } = string.Empty;
     public string PayerDocNumber { get; private set; } = string.Empty;
@@ -22,10 +22,10 @@ public sealed class Payment
     public int Installments { get; private set; }
     public string Status { get; private set; } = string.Empty;
     public string? StatusDetail { get; private set; }
-    public string Nsu { get; private set; } = string.Empty;
+    public string? Nsu { get; private set; }
     public string? MpOrderId { get; private set; }
     public string? MpPaymentId { get; private set; }
-    public string PixQrCode { get; private set; } = string.Empty;
+    public string? PixQrCode { get; private set; }
     public string? QrCodeBase64 { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
