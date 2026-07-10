@@ -26,7 +26,7 @@ public static class ExceptionHandlingExtensions
 
         LogException(exception, context, logger, correlationId);
 
-        if (exception is not null) await SendErrorNotificationAsync(context, exception, correlationId);
+        if (exception is not null && exception is not AppException) await SendErrorNotificationAsync(context, exception, correlationId);
 
         ApiResponseDto<object> response = CreateErrorResponse(exception, correlationId);
         int statusCode = exception is AppException appException

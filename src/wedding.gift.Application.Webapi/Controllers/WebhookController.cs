@@ -26,37 +26,42 @@ public sealed class WebhookController(
     [HttpPost("mercadopago")]
     public async Task ReceiveMercadoPagoNotification(
         [FromQuery(Name = "data.id")] string? dataId,
+        [FromQuery] string? id,
         [FromQuery] string? type,
+        [FromQuery] string? topic,
         CancellationToken cancellationToken)
     {
+        string? notificationId = string.IsNullOrWhiteSpace(dataId) ? id : dataId;
+        string? notificationType = string.IsNullOrWhiteSpace(type) ? topic : type;
+
         logger.LogInformation(
             "Webhook Mercado Pago recebido. Path={Path}, Type={Type}, DataId={DataId}, RequestId={RequestId}.",
             Request.Path,
-            type,
-            dataId,
+            notificationType,
+            notificationId,
             Request.Headers.TryGetValue("x-request-id", out StringValues requestIdHeader) ? requestIdHeader.ToString() : "-");
 
-        if (!ValidateMercadoPagoSignature(Request, dataId)) throw new UnauthorizedException(ErrorCodes.UNAUTHORIZED_WEBHOOK);
+        if (!ValidateMercadoPagoSignature(Request, notificationId)) throw new UnauthorizedException(ErrorCodes.UNAUTHORIZED_WEBHOOK);
 
-        if (type != "payment" && type != "order")
+        if (notificationType != "payment" && notificationType != "order")
         {
-            logger.LogInformation("Webhook Mercado Pago ignorado por tipo nao suportado. Type={Type}, DataId={DataId}.", type, dataId);
+            logger.LogInformation("Webhook Mercado Pago ignorado por tipo nao suportado. Type={Type}, DataId={DataId}.", notificationType, notificationId);
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(dataId))
+        if (string.IsNullOrWhiteSpace(notificationId))
         {
-            logger.LogWarning("Webhook Mercado Pago recebido sem data.id. Type={Type}.", type);
+            logger.LogWarning("Webhook Mercado Pago recebido sem identificador. Type={Type}.", notificationType);
             return;
         }
 
-        PaymentResponseDto status = await mercadoPago.GetOrderStatusAsync(dataId, cancellationToken);
+        PaymentResponseDto status = await mercadoPago.GetOrderStatusAsync(notificationId, cancellationToken);
 
         if (status.Status == "error")
         {
             logger.LogError(
                 "Falha ao consultar status real do Mercado Pago no webhook. DataId={DataId}, ErrorCode={ErrorCode}, Message={Message}.",
-                dataId,
+                notificationId,
                 status.ErrorCode,
                 status.Message);
             return;
