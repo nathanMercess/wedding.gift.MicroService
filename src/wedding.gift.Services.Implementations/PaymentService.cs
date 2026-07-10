@@ -49,12 +49,6 @@ public sealed class PaymentService(
         if (request.Amount <= 0)
             return await BuildErrorResponseAsync("card", "validation", "Invalid amount.", PaymentErrorCodes.ValidationError, cancellationToken);
 
-        if (request.NetAmount <= 0)
-            return await BuildErrorResponseAsync("card", "validation", "Invalid net amount.", PaymentErrorCodes.ValidationError, cancellationToken);
-
-        if (request.Amount < request.NetAmount)
-            return await BuildErrorResponseAsync("card", "validation", "Amount cannot be less than net amount.", PaymentErrorCodes.ValidationError, cancellationToken);
-
         if (request.Installments <= 0)
             return await BuildErrorResponseAsync("card", "validation", "Invalid installments.", PaymentErrorCodes.ValidationError, cancellationToken);
 
@@ -86,8 +80,8 @@ public sealed class PaymentService(
             .Sum(x => x.Amount);
         decimal remainingAmount = gift.Total - raised;
 
-        if (request.NetAmount > remainingAmount)
-            return await BuildErrorResponseAsync("card", "validation", "Net amount exceeds remaining gift amount.", PaymentErrorCodes.ValidationError, cancellationToken);
+        if (request.Amount > remainingAmount)
+            return await BuildErrorResponseAsync("card", "validation", "Amount exceeds remaining gift amount.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         PaymentResponseDto result = await mercadoPagoService.CreateCardOrderAsync(request, cancellationToken);
 
@@ -103,7 +97,7 @@ public sealed class PaymentService(
                 GiftId = request.GiftId,
                 ContributorName = request.ContributorName,
                 Message = request.Message?.Trim() ?? string.Empty,
-                Amount = request.NetAmount,
+                Amount = request.Amount,
                 PaymentMethod = request.Method,
                 Status = ContributionStatus.Paid,
                 PaidAt = DateTime.UtcNow
@@ -112,7 +106,7 @@ public sealed class PaymentService(
             contributionId = contribution.Id;
 
             string contributorName = request.ContributorName;
-            decimal amount = request.NetAmount;
+            decimal amount = request.Amount;
             await backgroundTaskQueue.EnqueueAsync(async (sp, ct) =>
             {
                 IEmailService email = sp.GetRequiredService<IEmailService>();

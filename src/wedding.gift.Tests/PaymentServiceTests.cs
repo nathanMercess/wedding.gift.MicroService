@@ -1,3 +1,5 @@
+#nullable enable
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -22,11 +24,10 @@ public class PaymentServiceTests
         var queue = new FakeQueue();
         var service = CreateService(context, mp, queue: queue);
 
-        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 643.17m, netAmount: 500m), CancellationToken.None);
+        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 500m), CancellationToken.None);
 
         Assert.Equal("approved", result.Status);
-        Assert.Equal(643.17m, mp.LastCardRequest.Amount);
-        Assert.Equal(500m, mp.LastCardRequest.NetAmount);
+        Assert.Equal(500m, mp.LastCardRequest.Amount);
         var contribution = Assert.Single(context.Contributions);
         Assert.Equal(ContributionStatus.Paid, contribution.Status);
         Assert.Equal(500m, contribution.Amount);
@@ -38,19 +39,19 @@ public class PaymentServiceTests
     }
 
     [Fact]
-    public async Task ProcessCardPaymentAsync_DeveCobrarValorBrutoGlobalEContribuirValorLiquido_QuandoCredito()
+    public async Task ProcessCardPaymentAsync_DeveUsarAmountParaCobrarEContribuir_QuandoCredito()
     {
         var context = CreateContext();
         var gift = SeedGift(context, total: 500m);
         var mp = new FakeMercadoPago { CardResult = new PaymentResponseDto { Status = "approved", MpOrderId = "mp_1" } };
         var service = CreateService(context, mp);
 
-        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 643.17m, netAmount: 500m, installments: 12), CancellationToken.None);
+        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 499m, installments: 12), CancellationToken.None);
 
         Assert.Equal("approved", result.Status);
-        Assert.Equal(643.17m, mp.LastCardRequest.Amount);
-        Assert.Equal(500m, context.Contributions.Single().Amount);
-        Assert.Equal(643.17m, context.Payments.Single().Amount);
+        Assert.Equal(499m, mp.LastCardRequest.Amount);
+        Assert.Equal(499m, context.Contributions.Single().Amount);
+        Assert.Equal(499m, context.Payments.Single().Amount);
     }
 
     [Fact]
@@ -61,7 +62,7 @@ public class PaymentServiceTests
         var mp = new FakeMercadoPago { CardResult = new PaymentResponseDto { Status = "approved", MpOrderId = "mp_1" } };
         var service = CreateService(context, mp);
 
-        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 500m, netAmount: 500m, method: "debit_card"), CancellationToken.None);
+        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 500m, method: "debit_card"), CancellationToken.None);
 
         Assert.Equal("approved", result.Status);
         Assert.Equal(500m, mp.LastCardRequest.Amount);
@@ -76,7 +77,7 @@ public class PaymentServiceTests
         var mp = new FakeMercadoPago { CardResult = new PaymentResponseDto { Status = "approved", MpOrderId = "mp_1" } };
         var service = CreateService(context, mp);
 
-        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 49m, netAmount: 49m), CancellationToken.None);
+        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 49m), CancellationToken.None);
 
         Assert.Equal("approved", result.Status);
         Assert.Equal(49m, mp.LastCardRequest.Amount);
@@ -92,7 +93,7 @@ public class PaymentServiceTests
         var mp = new FakeMercadoPago();
         var service = CreateService(context, mp);
 
-        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 128.63m, netAmount: 100m, installments: 13), CancellationToken.None);
+        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 128.63m, installments: 13), CancellationToken.None);
 
         Assert.Equal("error", result.Status);
         Assert.Equal(PaymentErrorCodes.ValidationError, result.ErrorCode);
@@ -100,7 +101,7 @@ public class PaymentServiceTests
     }
 
     [Fact]
-    public async Task ProcessCardPaymentAsync_DeveRetornarValidationError_QuandoValorLiquidoExcedeRestante()
+    public async Task ProcessCardPaymentAsync_DeveRetornarValidationError_QuandoAmountExcedeRestante()
     {
         var context = CreateContext();
         var gift = SeedGift(context, total: 500m);
@@ -109,7 +110,7 @@ public class PaymentServiceTests
         var mp = new FakeMercadoPago();
         var service = CreateService(context, mp);
 
-        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 401m, netAmount: 401m), CancellationToken.None);
+        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 401m), CancellationToken.None);
 
         Assert.Equal("error", result.Status);
         Assert.Equal(PaymentErrorCodes.ValidationError, result.ErrorCode);
@@ -135,7 +136,7 @@ public class PaymentServiceTests
         var queue = new FakeQueue();
         var service = CreateService(context, mp, queue: queue);
 
-        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 128.63m, netAmount: 100m), CancellationToken.None);
+        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 128.63m), CancellationToken.None);
 
         Assert.Equal("rejected", result.Status);
         Assert.Empty(context.Contributions);
@@ -278,7 +279,6 @@ public class PaymentServiceTests
     private static CardPaymentRequestDto Card(
         Guid giftId,
         decimal amount = 100m,
-        decimal netAmount = -1m,
         int installments = 1,
         string method = "credit_card") => new()
     {
@@ -287,7 +287,6 @@ public class PaymentServiceTests
         CardToken = "tok_123",
         OrderId = Guid.NewGuid().ToString(),
         Amount = amount,
-        NetAmount = netAmount < 0 ? amount : netAmount,
         Installments = installments,
         Method = method,
         PaymentMethodId = "visa",
