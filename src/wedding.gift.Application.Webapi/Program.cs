@@ -112,7 +112,7 @@ WebApplication app = builder.Build();
 using (IServiceScope scope = app.Services.CreateScope())
 {
     AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    //await db.Database.MigrateAsync();
+    await db.Database.MigrateAsync();
 }
 
 await EnsureBootstrapAdminAsync(app.Services, builder.Configuration);
