@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
@@ -111,7 +112,8 @@ public class DashboardServiceTests
             new GiftRepository(context),
             new ContributionRepository(context),
             new PaymentRepository(context),
-            new ApiRequestLogRepository(context));
+            new ApiRequestLogRepository(context),
+            NullLogger<DashboardService>.Instance);
 
     private static Gift SeedGift(AppDbContext context, string name, string category, decimal total)
     {

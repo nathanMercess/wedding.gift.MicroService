@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Domain.Model.Entities;
@@ -11,7 +12,8 @@ public sealed class DashboardService(
     IGiftRepository giftRepository,
     IContributionRepository contributionRepository,
     IPaymentRepository paymentRepository,
-    IApiRequestLogRepository apiRequestLogRepository) : IDashboardService
+    IApiRequestLogRepository apiRequestLogRepository,
+    ILogger<DashboardService> logger) : IDashboardService
 {
     public async Task<DashboardResponseDto> GetAsync(DashboardQueryDto query, CancellationToken cancellationToken)
     {
@@ -27,7 +29,7 @@ public sealed class DashboardService(
         List<Gift> gifts = (await giftRepository.GetAllWithContributionsAsync(cancellationToken)).ToList();
         List<Contribution> contributions = (await contributionRepository.GetAllAsync(cancellationToken)).ToList();
         List<Payment> payments = (await paymentRepository.GetAllAsync(cancellationToken)).ToList();
-        List<ApiRequestLog> requestLogs = (await apiRequestLogRepository.GetByStartedAtRangeAsync(fromUtc, now, cancellationToken)).ToList();
+        List<ApiRequestLog> requestLogs = await GetRequestLogsAsync(fromUtc, now, cancellationToken);
 
         Dictionary<Guid, string> giftNames = gifts.ToDictionary(x => x.Id, x => x.Name);
         List<DashboardGiftFundingDto> giftFunding = BuildGiftFunding(gifts);
@@ -178,6 +180,22 @@ public sealed class DashboardService(
                 .Select(x => ToContributionActivityDto(x, giftNames))
                 .ToList()
         };
+    }
+
+    private async Task<List<ApiRequestLog>> GetRequestLogsAsync(
+        DateTime fromUtc,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return (await apiRequestLogRepository.GetByStartedAtRangeAsync(fromUtc, now, cancellationToken)).ToList();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Falha ao carregar logs de request para o dashboard.");
+            return [];
+        }
     }
 
     private static DashboardRequestSummaryDto BuildRequestSummary(IReadOnlyCollection<ApiRequestLog> requestLogs)
