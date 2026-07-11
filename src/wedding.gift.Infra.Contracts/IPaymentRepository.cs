@@ -6,6 +6,7 @@ public interface IPaymentRepository
 {
     IQueryable<Payment> Query();
     Task<IReadOnlyList<Payment>> GetAllAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<Payment>> GetApprovedWithoutContributionAsync(CancellationToken cancellationToken);
     Task SaveAsync(Payment payment, CancellationToken cancellationToken);
     Task<Payment?> GetByNsuAsync(string nsu, CancellationToken cancellationToken);
     Task<Payment?> GetByMpOrderIdAsync(string mpOrderId, CancellationToken cancellationToken);

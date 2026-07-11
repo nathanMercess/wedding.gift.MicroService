@@ -14,6 +14,13 @@ public sealed class PaymentRepository(AppDbContext context) : IPaymentRepository
     public async Task<IReadOnlyList<Payment>> GetAllAsync(CancellationToken cancellationToken)
         => await context.Payments.AsNoTracking().ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<Payment>> GetApprovedWithoutContributionAsync(CancellationToken cancellationToken)
+        => await context.Payments
+            .AsNoTracking()
+            .Where(payment => payment.Status == "approved" && !payment.ContributionCreated)
+            .OrderBy(payment => payment.CreatedAt)
+            .ToListAsync(cancellationToken);
+
     public async Task SaveAsync(Payment payment, CancellationToken cancellationToken)
     {
         await context.Payments.AddAsync(payment, cancellationToken);

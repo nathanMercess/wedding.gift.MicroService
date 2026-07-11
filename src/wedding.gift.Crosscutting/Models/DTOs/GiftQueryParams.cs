@@ -5,7 +5,6 @@ public sealed class GiftQueryParams
     public string? Search { get; set; }
     public string? Category { get; set; }
 
-    // Agora usando os Enums com valores padrão
     public GiftSortField OrderBy { get; set; } = GiftSortField.Name;
     public SortDirection OrderDir { get; set; } = SortDirection.Asc;
 

@@ -231,37 +231,97 @@ public sealed class PaymentService(
         return result;
     }
 
+    public async Task<PaymentReconciliationResponseDto> ReconcileApprovedPaymentsAsync(CancellationToken cancellationToken)
+    {
+        IReadOnlyList<Payment> payments = await paymentRepository.GetApprovedWithoutContributionAsync(cancellationToken);
+        PaymentReconciliationResponseDto response = new()
+        {
+            CheckedCount = payments.Count
+        };
+
+        foreach (Payment payment in payments)
+        {
+            PaymentReconciliationItemDto item = new()
+            {
+                MpOrderId = payment.MpOrderId ?? string.Empty,
+                OrderId = payment.OrderId,
+                Method = payment.Method,
+                Status = payment.Status,
+                ContributionCreated = payment.ContributionCreated
+            };
+
+            if (string.IsNullOrWhiteSpace(payment.MpOrderId))
+            {
+                item.Result = "missing_mp_order_id";
+                response.SkippedCount++;
+                response.Items.Add(item);
+                continue;
+            }
+
+            try
+            {
+                bool created = await TryCreateContributionForApprovedPaymentAsync(payment.MpOrderId, cancellationToken);
+                Payment? updatedPayment = await paymentRepository.GetByMpOrderIdAsync(payment.MpOrderId, cancellationToken);
+
+                item.ContributionCreated = updatedPayment?.ContributionCreated ?? false;
+                item.Result = created ? "created" : item.ContributionCreated ? "already_created" : "not_created";
+
+                if (created)
+                    response.CreatedCount++;
+                else
+                    response.SkippedCount++;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(
+                    ex,
+                    "Falha ao reconciliar pagamento aprovado. MpOrderId={MpOrderId}, OrderId={OrderId}.",
+                    payment.MpOrderId,
+                    payment.OrderId);
+
+                item.Result = "failed";
+                response.FailedCount++;
+            }
+
+            response.Items.Add(item);
+        }
+
+        return response;
+    }
+
     public async Task ProcessApprovedPixPaymentAsync(
+        string mpOrderId,
+        CancellationToken cancellationToken)
+        => await TryCreateContributionForApprovedPaymentAsync(mpOrderId, cancellationToken);
+
+    private async Task<bool> TryCreateContributionForApprovedPaymentAsync(
         string mpOrderId,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(mpOrderId))
-            return;
+            return false;
 
         Payment existingPayment = await paymentRepository.GetByMpOrderIdAsync(mpOrderId, cancellationToken);
 
         if (existingPayment is null)
         {
-            logger.LogError("Pix aprovado com MpOrderId={MpOrderId}, mas a intencao de pagamento nao foi encontrada.", mpOrderId);
-            return;
+            logger.LogError("Pagamento aprovado com MpOrderId={MpOrderId}, mas a intencao de pagamento nao foi encontrada.", mpOrderId);
+            return false;
         }
-
-        if (existingPayment.Method != "pix")
-            return;
 
         if (!string.Equals(existingPayment.Status, "approved", StringComparison.OrdinalIgnoreCase))
         {
             PaymentResponseDto providerStatus = await mercadoPagoService.GetOrderStatusAsync(mpOrderId, cancellationToken);
 
             if (providerStatus.Status == "error")
-                return;
+                return false;
 
             Payment paymentToUpdate = await paymentRepository.GetByMpOrderIdForUpdateAsync(mpOrderId, cancellationToken);
 
             if (paymentToUpdate is null)
             {
-                logger.LogError("Pix aprovado com MpOrderId={MpOrderId}, mas a intencao de pagamento nao foi encontrada ao atualizar status.", mpOrderId);
-                return;
+                logger.LogError("Pagamento aprovado com MpOrderId={MpOrderId}, mas a intencao de pagamento nao foi encontrada ao atualizar status.", mpOrderId);
+                return false;
             }
 
             paymentToUpdate.UpdateProviderStatus(providerStatus.Status, providerStatus.StatusDetail, providerStatus.MpPaymentId);
@@ -271,10 +331,10 @@ public sealed class PaymentService(
         }
 
         if (existingPayment?.ContributionCreated == true)
-            return;
+            return false;
 
         if (!string.Equals(existingPayment?.Status, "approved", StringComparison.OrdinalIgnoreCase))
-            return;
+            return false;
 
         await using IRepositoryTransaction transaction = await paymentRepository.BeginSerializableTransactionAsync(cancellationToken);
 
@@ -282,26 +342,26 @@ public sealed class PaymentService(
 
         if (payment is null)
         {
-            logger.LogError("Pix aprovado com MpOrderId={MpOrderId}, mas a intencao de pagamento nao foi encontrada dentro da transacao.", mpOrderId);
-            return;
+            logger.LogError("Pagamento aprovado com MpOrderId={MpOrderId}, mas a intencao de pagamento nao foi encontrada dentro da transacao.", mpOrderId);
+            return false;
         }
 
         if (payment.ContributionCreated)
-            return;
+            return false;
 
         if (!string.Equals(payment.Status, "approved", StringComparison.OrdinalIgnoreCase))
-            return;
+            return false;
 
         bool giftExists = await giftRepository.ExistsAsync(payment.GiftId, cancellationToken);
 
         if (!giftExists)
         {
             logger.LogError(
-                "Pix aprovado com MpOrderId={MpOrderId}, OrderId={OrderId}, GiftId={GiftId}, mas o presente nao foi encontrado.",
+                "Pagamento aprovado com MpOrderId={MpOrderId}, OrderId={OrderId}, GiftId={GiftId}, mas o presente nao foi encontrado.",
                 payment.MpOrderId,
                 payment.OrderId,
                 payment.GiftId);
-            return;
+            return false;
         }
 
         Contribution contribution = Contribution.Create(
@@ -309,7 +369,7 @@ public sealed class PaymentService(
             payment.ContributorName,
             payment.Message,
             payment.Amount,
-            "pix",
+            payment.Method,
             DateTime.UtcNow,
             ContributionStatus.Paid);
 
@@ -342,6 +402,8 @@ public sealed class PaymentService(
         {
             logger.LogError(ex, "Contribution {ContributionId} confirmed, but email notification failed.", payment.ContributionId);
         }
+
+        return true;
     }
 
     public async Task ConfirmPaymentAsync(

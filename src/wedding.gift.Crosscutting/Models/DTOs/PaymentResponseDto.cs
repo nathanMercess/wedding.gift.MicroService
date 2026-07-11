@@ -11,12 +11,10 @@ public sealed class PaymentResponseDto
     public string? MpPaymentId { get; set; }
     public bool? ContributionCreated { get; set; }
 
-    /// <summary>x-request-id da resposta do Mercado Pago — usar em chamados de suporte.</summary>
     public string? MpRequestId { get; set; }
     public string QrCode { get; set; } = string.Empty;
     public string? QrCodeBase64 { get; set; }
 
-    // Mantém PixQrCode para compatibilidade com código existente
     public string PixQrCode
     {
         get => QrCode;

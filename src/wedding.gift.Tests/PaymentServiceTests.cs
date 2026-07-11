@@ -219,6 +219,52 @@ public class PaymentServiceTests
     }
 
     [Fact]
+    public async Task ReconcileApprovedPaymentsAsync_DeveCriarContribuicoes_QuandoAprovadosSemContribuicao()
+    {
+        AppDbContext context = CreateContext();
+        Gift gift = SeedGift(context, total: 500m);
+        Payment pixPayment = Payment.CreatePix(gift.Id, "Ana", "Pix", "ana@test.com", "CPF", "12345678909", "ord_pix", 200m, "approved", null, "mp_pix", null, string.Empty, null);
+        Payment cardPayment = Payment.CreateCard(gift.Id, "Bruno", "Cartao", "bruno@test.com", "CPF", "12345678909", null, "ord_card", "credit_card", 300m, 1, "approved", null, "mp_card", null);
+        FakeEmail email = new();
+        PaymentService service = CreateService(context, new FakeMercadoPago(), email);
+
+        context.Payments.AddRange(pixPayment, cardPayment);
+        await context.SaveChangesAsync(CancellationToken.None);
+
+        PaymentReconciliationResponseDto result = await service.ReconcileApprovedPaymentsAsync(CancellationToken.None);
+
+        Assert.Equal(2, result.CheckedCount);
+        Assert.Equal(2, result.CreatedCount);
+        Assert.Equal(0, result.FailedCount);
+        Assert.Equal(2, context.Contributions.Count());
+        Assert.All(context.Payments, payment => Assert.True(payment.ContributionCreated));
+        Assert.Contains(context.Contributions, contribution => contribution.PaymentMethod == "pix" && contribution.Amount == 200m);
+        Assert.Contains(context.Contributions, contribution => contribution.PaymentMethod == "credit_card" && contribution.Amount == 300m);
+        Assert.Equal(2, email.NotificationCount);
+    }
+
+    [Fact]
+    public async Task ReconcileApprovedPaymentsAsync_DeveIgnorarPagamento_QuandoMpOrderIdNaoExiste()
+    {
+        AppDbContext context = CreateContext();
+        Gift gift = SeedGift(context, total: 200m);
+        Payment payment = Payment.CreateCard(gift.Id, "Ana", string.Empty, "ana@test.com", "CPF", "12345678909", null, "ord_card", "credit_card", 200m, 1, "approved", null, null, null);
+        PaymentService service = CreateService(context, new FakeMercadoPago());
+
+        context.Payments.Add(payment);
+        await context.SaveChangesAsync(CancellationToken.None);
+
+        PaymentReconciliationResponseDto result = await service.ReconcileApprovedPaymentsAsync(CancellationToken.None);
+
+        Assert.Equal(1, result.CheckedCount);
+        Assert.Equal(0, result.CreatedCount);
+        Assert.Equal(1, result.SkippedCount);
+        Assert.Equal("missing_mp_order_id", Assert.Single(result.Items).Result);
+        Assert.Empty(context.Contributions);
+        Assert.False(context.Payments.Single().ContributionCreated);
+    }
+
+    [Fact]
     public async Task ConfirmPaymentAsync_NaoDeveNotificarNemPromover_QuandoNaoAprovado()
     {
         var context = CreateContext();
