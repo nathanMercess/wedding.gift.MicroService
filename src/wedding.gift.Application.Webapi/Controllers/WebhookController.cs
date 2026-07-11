@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Primitives;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using wedding.gift.Application.Webapi.Controllers.Base;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Services.Contracts;
@@ -41,6 +42,13 @@ public sealed class WebhookController(
             notificationId,
             Request.Headers.TryGetValue("x-request-id", out StringValues requestIdHeader) ? requestIdHeader.ToString() : "-");
 
+        if (!HasMercadoPagoSignatureHeaders(Request) &&
+            await IsMercadoPagoPanelValidationRequestAsync(Request, cancellationToken))
+        {
+            logger.LogInformation("Webhook Mercado Pago: teste de URL do painel aceito.");
+            return NoContent();
+        }
+
         if (!ValidateMercadoPagoSignature(Request, notificationId))
             return Unauthorized();
 
@@ -76,6 +84,58 @@ public sealed class WebhookController(
         }
 
         return NoContent();
+    }
+
+    private static bool HasMercadoPagoSignatureHeaders(HttpRequest request)
+        => request.Headers.ContainsKey("x-signature") && request.Headers.ContainsKey("x-request-id");
+
+    private static async Task<bool> IsMercadoPagoPanelValidationRequestAsync(
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        request.EnableBuffering();
+
+        try
+        {
+            JsonDocument document = await JsonDocument.ParseAsync(request.Body, cancellationToken: cancellationToken);
+
+            using (document)
+            {
+                JsonElement root = document.RootElement;
+
+                return TryGetString(root, "action", out string action) &&
+                       TryGetString(root, "api_version", out string apiVersion) &&
+                       TryGetString(root, "id", out string id) &&
+                       TryGetString(root, "type", out string type) &&
+                       root.TryGetProperty("live_mode", out JsonElement liveMode) &&
+                       liveMode.ValueKind == JsonValueKind.False &&
+                       root.TryGetProperty("data", out JsonElement data) &&
+                       TryGetString(data, "id", out string dataId) &&
+                       action == "payment.updated" &&
+                       apiVersion == "v1" &&
+                       id == "123456" &&
+                       dataId == "123456" &&
+                       type == "payment";
+            }
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+        finally
+        {
+            request.Body.Position = 0;
+        }
+    }
+
+    private static bool TryGetString(JsonElement element, string propertyName, out string value)
+    {
+        value = string.Empty;
+
+        return element.ValueKind == JsonValueKind.Object &&
+               element.TryGetProperty(propertyName, out JsonElement property) &&
+               property.ValueKind == JsonValueKind.String &&
+               !string.IsNullOrWhiteSpace(value = property.GetString() ?? string.Empty);
     }
 
     private bool ValidateMercadoPagoSignature(HttpRequest request, string? dataId)

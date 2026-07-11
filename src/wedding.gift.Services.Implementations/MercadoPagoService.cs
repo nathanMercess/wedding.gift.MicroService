@@ -21,41 +21,26 @@ public sealed class MercadoPagoService(
         CardPaymentRequestDto request,
         CancellationToken cancellationToken)
     {
-        MercadoPagoOrderRequest order = new()
+        MercadoPagoPaymentRequest payment = new()
         {
-            Type = "online",
-            ProcessingMode = "automatic",
-            TotalAmount = request.Amount.ToString("F2", CultureInfo.InvariantCulture),
+            TransactionAmount = request.Amount,
+            Token = request.CardToken,
+            Description = "Wedding gift",
+            Installments = request.Installments,
+            PaymentMethodId = request.PaymentMethodId,
             ExternalReference = request.OrderId,
-            Payer = new OrderPayer
+            Payer = new MercadoPagoPaymentPayer
             {
                 Email = request.PayerEmail,
-                Identification = new OrderPayerIdentification
+                Identification = new MercadoPagoPaymentIdentification
                 {
                     Type = request.PayerDocType,
                     Number = request.PayerDocNumber
                 }
-            },
-            Transactions = new OrderTransactions
-            {
-                Payments = new List<OrderPayment>
-                {
-                    new()
-                    {
-                        Amount = request.Amount.ToString("F2", CultureInfo.InvariantCulture),
-                        PaymentMethod = new OrderPaymentMethod
-                        {
-                            Id = request.PaymentMethodId,
-                            Type = request.Method,
-                            Token = request.CardToken,
-                            Installments = request.Installments,
-                        }
-                    }
-                }
             }
         };
 
-        return await SendOrderAsync(order, cancellationToken);
+        return await SendPaymentAsync(payment, cancellationToken);
     }
 
     public async Task<PaymentResponseDto> CreatePixOrderAsync(
@@ -98,6 +83,13 @@ public sealed class MercadoPagoService(
     }
 
     public async Task<PaymentResponseDto> GetOrderStatusAsync(
+        string mpOrderId,
+        CancellationToken cancellationToken)
+        => mpOrderId.StartsWith("ORD", StringComparison.OrdinalIgnoreCase)
+            ? await GetOrderStatusFromOrderAsync(mpOrderId, cancellationToken)
+            : await GetPaymentStatusFromPaymentAsync(mpOrderId, cancellationToken);
+
+    private async Task<PaymentResponseDto> GetOrderStatusFromOrderAsync(
         string mpOrderId,
         CancellationToken cancellationToken)
     {
@@ -145,6 +137,58 @@ public sealed class MercadoPagoService(
         MercadoPagoOrderResponse order = await response.Content.ReadFromJsonAsync<MercadoPagoOrderResponse>(cancellationToken: cancellationToken);
 
         PaymentResponseDto dto = MapResponse(order);
+        dto.MpRequestId = requestId;
+        return dto;
+    }
+
+    private async Task<PaymentResponseDto> GetPaymentStatusFromPaymentAsync(
+        string mpPaymentId,
+        CancellationToken cancellationToken)
+    {
+        string baseUrl = configuration["MercadoPago:BaseUrl"];
+
+        using HttpRequestMessage httpRequest = new(HttpMethod.Get, $"{baseUrl}/v1/payments/{mpPaymentId}");
+
+        if (!TryApplyAuth(httpRequest, out PaymentResponseDto? authError))
+            return authError!;
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await httpClient.SendAsync(httpRequest, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Falha de transporte ao consultar payment {MpPaymentId} no Mercado Pago.", mpPaymentId);
+            return ProviderError("Falha de comunicação ao consultar o status do pagamento.");
+        }
+
+        string requestId = ExtractRequestId(response);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            string raw = await response.Content.ReadAsStringAsync(cancellationToken);
+            MpError mpError = TryParseMpError(raw);
+
+            logger.LogError("Erro MP {Status} ao consultar payment {MpPaymentId}. x-request-id={RequestId} payload={Payload}",
+                (int)response.StatusCode, mpPaymentId, requestId, raw);
+
+            return new PaymentResponseDto
+            {
+                Status = "error",
+                ErrorCode = MapMpError((int)response.StatusCode, mpError),
+                Message = mpError?.Message ?? "Falha ao consultar o status do pagamento.",
+                MpRequestId = requestId
+            };
+        }
+
+        MercadoPagoPaymentResponse payment = await response.Content.ReadFromJsonAsync<MercadoPagoPaymentResponse>(cancellationToken: cancellationToken);
+
+        PaymentResponseDto dto = MapPaymentResponse(payment);
         dto.MpRequestId = requestId;
         return dto;
     }
@@ -203,6 +247,65 @@ public sealed class MercadoPagoService(
         MercadoPagoOrderResponse result = await response.Content.ReadFromJsonAsync<MercadoPagoOrderResponse>(cancellationToken: cancellationToken);
 
         PaymentResponseDto dto = MapResponse(result);
+        dto.MpRequestId = requestId;
+        return dto;
+    }
+
+    private async Task<PaymentResponseDto> SendPaymentAsync(
+        MercadoPagoPaymentRequest payment,
+        CancellationToken cancellationToken)
+    {
+        string baseUrl = configuration["MercadoPago:BaseUrl"];
+
+        using HttpRequestMessage httpRequest = new(HttpMethod.Post, $"{baseUrl}/v1/payments")
+        {
+            Content = JsonContent.Create(payment)
+        };
+
+        if (!TryApplyAuth(httpRequest, out PaymentResponseDto? authError))
+            return authError!;
+
+        httpRequest.Headers.Add("X-Idempotency-Key", payment.ExternalReference);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await httpClient.SendAsync(httpRequest, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Falha de transporte ao criar payment no Mercado Pago. ExternalReference={Ref}", payment.ExternalReference);
+            return ProviderError("Falha de comunicação com o provedor de pagamento.");
+        }
+
+        string requestId = ExtractRequestId(response);
+        string raw = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            MpError mpError = TryParseMpError(raw);
+
+            logger.LogError("Erro MP {Status} ao criar payment. x-request-id={RequestId} ExternalReference={Ref} payload={Payload}",
+                (int)response.StatusCode, requestId, payment.ExternalReference, raw);
+
+            return new PaymentResponseDto
+            {
+                Status = "error",
+                ErrorCode = MapMpError((int)response.StatusCode, mpError),
+                Message = mpError?.Message ?? "Erro ao processar o pagamento.",
+                MpRequestId = requestId
+            };
+        }
+
+        MercadoPagoPaymentResponse result = JsonSerializer.Deserialize<MercadoPagoPaymentResponse>(
+            raw,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        PaymentResponseDto dto = MapPaymentResponse(result);
         dto.MpRequestId = requestId;
         return dto;
     }
@@ -308,6 +411,31 @@ public sealed class MercadoPagoService(
         };
     }
 
+    private static PaymentResponseDto MapPaymentResponse(MercadoPagoPaymentResponse? payment)
+    {
+        string finalStatus = payment?.Status == "processed" ? "approved" : payment?.Status ?? "error";
+        string? statusDetail = payment?.StatusDetail;
+        string? id = payment?.IdAsString();
+
+        string errorCode = finalStatus switch
+        {
+            "rejected" => statusDetail == "cc_rejected_card_disabled"
+                ? PaymentErrorCodes.InvalidCardToken
+                : PaymentErrorCodes.PaymentDeclined,
+            "error" => PaymentErrorCodes.ProviderError,
+            _ => null
+        };
+
+        return new PaymentResponseDto
+        {
+            Status = finalStatus,
+            StatusDetail = statusDetail,
+            ErrorCode = errorCode,
+            MpOrderId = id,
+            MpPaymentId = id
+        };
+    }
+
     private sealed class MpError
     {
         [JsonPropertyName("message")] public string? Message { get; set; }
@@ -327,5 +455,45 @@ public sealed class MercadoPagoService(
     {
         [JsonPropertyName("code")] public string? Code { get; set; }
         [JsonPropertyName("message")] public string? Message { get; set; }
+    }
+
+    private sealed class MercadoPagoPaymentRequest
+    {
+        [JsonPropertyName("transaction_amount")] public decimal TransactionAmount { get; set; }
+        [JsonPropertyName("token")] public string Token { get; set; } = string.Empty;
+        [JsonPropertyName("description")] public string Description { get; set; } = string.Empty;
+        [JsonPropertyName("installments")] public int Installments { get; set; }
+        [JsonPropertyName("payment_method_id")] public string PaymentMethodId { get; set; } = string.Empty;
+        [JsonPropertyName("external_reference")] public string ExternalReference { get; set; } = string.Empty;
+        [JsonPropertyName("payer")] public MercadoPagoPaymentPayer Payer { get; set; } = new();
+    }
+
+    private sealed class MercadoPagoPaymentPayer
+    {
+        [JsonPropertyName("email")] public string Email { get; set; } = string.Empty;
+        [JsonPropertyName("identification")] public MercadoPagoPaymentIdentification Identification { get; set; } = new();
+    }
+
+    private sealed class MercadoPagoPaymentIdentification
+    {
+        [JsonPropertyName("type")] public string Type { get; set; } = "CPF";
+        [JsonPropertyName("number")] public string Number { get; set; } = string.Empty;
+    }
+
+    private sealed class MercadoPagoPaymentResponse
+    {
+        [JsonPropertyName("id")] public JsonElement Id { get; set; }
+        [JsonPropertyName("status")] public string? Status { get; set; }
+        [JsonPropertyName("status_detail")] public string? StatusDetail { get; set; }
+
+        public string? IdAsString()
+        {
+            return Id.ValueKind switch
+            {
+                JsonValueKind.String => Id.GetString(),
+                JsonValueKind.Number => Id.GetRawText(),
+                _ => null
+            };
+        }
     }
 }
