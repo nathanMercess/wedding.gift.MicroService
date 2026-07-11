@@ -60,11 +60,13 @@ jobs:
             echo "aspnet_environment=Production" >> "$GITHUB_OUTPUT"
             echo "api_base_url=https://davidmaira.com" >> "$GITHUB_OUTPUT"
             echo "mercadopago_access_token_secret=mercadopago-access-token-prod" >> "$GITHUB_OUTPUT"
+            echo "mercadopago_webhook_secret=mercadopago-webhook-secret-prod" >> "$GITHUB_OUTPUT"
           else
             echo "service=wedding-gift-api-dev" >> "$GITHUB_OUTPUT"
             echo "aspnet_environment=Development" >> "$GITHUB_OUTPUT"
             echo "api_base_url=https://dev.davidmaira.com" >> "$GITHUB_OUTPUT"
             echo "mercadopago_access_token_secret=mercadopago-access-token-dev" >> "$GITHUB_OUTPUT"
+            echo "mercadopago_webhook_secret=mercadopago-webhook-secret-dev" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Test
@@ -102,5 +104,5 @@ jobs:
             --min-instances 0 \
             --max-instances 2 \
             --set-env-vars "ASPNETCORE_ENVIRONMENT=${{ steps.target.outputs.aspnet_environment }},ASPNETCORE_URLS=http://+:8080,BootstrapAdmin__Enabled=false,Api__BaseUrl=${{ steps.target.outputs.api_base_url }}" \
-            --set-secrets "ConnectionStrings__DefaultConnection=wedding-gift-vm-connection-string:latest,Smtp__Host=smtp-host:latest,Smtp__Port=smtp-port:latest,Smtp__Username=smtp-username:latest,Smtp__Password=smtp-password:latest,Smtp__FromEmail=smtp-from-email:latest,Smtp__FromName=smtp-from-name:latest,Smtp__EnableSsl=smtp-enable-ssl:latest,Smtp__ErrorNotificationRecipient=smtp-error-notification-recipient:latest,Smtp__CoupleNotificationRecipient=smtp-couple-notification-recipient:latest,MercadoPago__AccessToken=${{ steps.target.outputs.mercadopago_access_token_secret }}:latest" \
+            --set-secrets "ConnectionStrings__DefaultConnection=wedding-gift-vm-connection-string:latest,Smtp__Host=smtp-host:latest,Smtp__Port=smtp-port:latest,Smtp__Username=smtp-username:latest,Smtp__Password=smtp-password:latest,Smtp__FromEmail=smtp-from-email:latest,Smtp__FromName=smtp-from-name:latest,Smtp__EnableSsl=smtp-enable-ssl:latest,Smtp__ErrorNotificationRecipient=smtp-error-notification-recipient:latest,Smtp__CoupleNotificationRecipient=smtp-couple-notification-recipient:latest,MercadoPago__AccessToken=${{ steps.target.outputs.mercadopago_access_token_secret }}:latest,MercadoPago__WebhookSecret=${{ steps.target.outputs.mercadopago_webhook_secret }}:latest" \
             --quiet
