@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
-using Xunit;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Domain.Model.Entities;
@@ -8,6 +8,7 @@ using wedding.gift.Infra.Implementations.DataContext;
 using wedding.gift.Infra.Implementations.Repositories;
 using wedding.gift.Services.Implementations;
 using wedding.gift.Services.Implementations.Exceptions;
+using Xunit;
 
 namespace wedding.gift.Tests;
 
@@ -132,6 +133,7 @@ public class DashboardServiceTests
             new ContributionRepository(context),
             new PaymentRepository(context),
             new ApiRequestLogRepository(context),
+            new MemoryCache(new MemoryCacheOptions()),
             NullLogger<DashboardService>.Instance);
 
     private static Gift SeedGift(AppDbContext context, string name, string category, decimal total)

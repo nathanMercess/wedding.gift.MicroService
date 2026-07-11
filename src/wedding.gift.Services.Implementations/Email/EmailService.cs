@@ -1,8 +1,8 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System.Globalization;
 using System.Net;
 using System.Net.Mail;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using wedding.gift.Crosscutting.Models.Configurations;
 using wedding.gift.Services.Contracts;
 
@@ -82,16 +82,30 @@ public sealed class EmailService(
 
     private async Task SendAsync(string toEmail, string toName, string subject, string htmlBody, CancellationToken cancellationToken)
     {
+        if (!TryCreateMailAddress(_smtp.FromEmail, _smtp.FromName, out MailAddress fromAddress))
+        {
+            logger.LogWarning("E-mail nao enviado: remetente SMTP invalido.");
+            return;
+        }
+
+        if (!TryCreateMailAddress(toEmail, toName, out MailAddress toAddress))
+        {
+            logger.LogWarning("E-mail nao enviado: destinatario invalido para o assunto {Subject}.", subject);
+            return;
+        }
+
+        string safeSubject = NormalizeHeaderText(subject);
+
         try
         {
             using MailMessage message = new()
             {
-                From = new MailAddress(_smtp.FromEmail, _smtp.FromName),
-                Subject = subject,
+                From = fromAddress,
+                Subject = safeSubject,
                 Body = htmlBody,
                 IsBodyHtml = true
             };
-            message.To.Add(new MailAddress(toEmail, toName));
+            message.To.Add(toAddress);
 
             using SmtpClient client = new(_smtp.Host, _smtp.Port)
             {
@@ -102,12 +116,40 @@ public sealed class EmailService(
 
             await client.SendMailAsync(message, cancellationToken);
 
-            logger.LogInformation("E-mail enviado para {Recipient} (assunto: {Subject}).", toEmail, subject);
+            logger.LogInformation("E-mail enviado para {Recipient} (assunto: {Subject}).", toAddress.Address, safeSubject);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Falha ao enviar e-mail para {Recipient} (assunto: {Subject}).", toEmail, subject);
-            throw new EmailDeliveryException(toEmail, subject, ex);
+            logger.LogError(ex, "Falha ao enviar e-mail para {Recipient} (assunto: {Subject}).", toAddress.Address, safeSubject);
+            throw new EmailDeliveryException(toAddress.Address, safeSubject, ex);
         }
+    }
+
+    private static bool TryCreateMailAddress(string email, string displayName, out MailAddress address)
+    {
+        address = null!;
+        string normalizedEmail = NormalizeHeaderText(email);
+        string normalizedDisplayName = NormalizeHeaderText(displayName);
+
+        if (string.IsNullOrWhiteSpace(normalizedEmail))
+            return false;
+
+        try
+        {
+            address = new MailAddress(normalizedEmail, normalizedDisplayName);
+            return true;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+
+    private static string NormalizeHeaderText(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        return new string(value.Trim().Where(c => !char.IsControl(c)).ToArray());
     }
 }

@@ -1,15 +1,13 @@
 #nullable enable
 
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Primitives;
+using System.Security.Cryptography;
+using System.Text;
 using wedding.gift.Application.Webapi.Controllers.Base;
-using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Services.Contracts;
-using wedding.gift.Services.Implementations.Exceptions;
 
 namespace wedding.gift.Application.Webapi.Controllers;
 
@@ -24,7 +22,9 @@ public sealed class WebhookController(
     ILogger<WebhookController> logger) : ApiControllerBase
 {
     [HttpPost("mercadopago")]
-    public async Task ReceiveMercadoPagoNotification(
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> ReceiveMercadoPagoNotification(
         [FromQuery(Name = "data.id")] string? dataId,
         [FromQuery] string? id,
         [FromQuery] string? type,
@@ -41,18 +41,19 @@ public sealed class WebhookController(
             notificationId,
             Request.Headers.TryGetValue("x-request-id", out StringValues requestIdHeader) ? requestIdHeader.ToString() : "-");
 
-        if (!ValidateMercadoPagoSignature(Request, notificationId)) throw new UnauthorizedException(ErrorCodes.UNAUTHORIZED_WEBHOOK);
+        if (!ValidateMercadoPagoSignature(Request, notificationId))
+            return Unauthorized();
 
         if (notificationType != "payment" && notificationType != "order")
         {
             logger.LogInformation("Webhook Mercado Pago ignorado por tipo nao suportado. Type={Type}, DataId={DataId}.", notificationType, notificationId);
-            return;
+            return NoContent();
         }
 
         if (string.IsNullOrWhiteSpace(notificationId))
         {
             logger.LogWarning("Webhook Mercado Pago recebido sem identificador. Type={Type}.", notificationType);
-            return;
+            return NoContent();
         }
 
         PaymentResponseDto status = await mercadoPago.GetOrderStatusAsync(notificationId, cancellationToken);
@@ -64,7 +65,7 @@ public sealed class WebhookController(
                 notificationId,
                 status.ErrorCode,
                 status.Message);
-            return;
+            return NoContent();
         }
 
         if (!string.IsNullOrWhiteSpace(status.MpOrderId))
@@ -73,6 +74,8 @@ public sealed class WebhookController(
 
             if (status.Status == "approved") await payments.ProcessApprovedPixPaymentAsync(status.MpOrderId, cancellationToken);
         }
+
+        return NoContent();
     }
 
     private bool ValidateMercadoPagoSignature(HttpRequest request, string? dataId)
@@ -115,7 +118,7 @@ public sealed class WebhookController(
             return false;
         }
 
-        string manifest = $"id:{dataId};request-id:{requestIdHeader};ts:{ts};";
+        string manifest = BuildSignatureManifest(dataId, requestIdHeader.ToString(), ts);
 
         using HMACSHA256 hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
         byte[] expected = hmac.ComputeHash(Encoding.UTF8.GetBytes(manifest));
@@ -137,5 +140,20 @@ public sealed class WebhookController(
         if (!isValid) logger.LogWarning("Webhook Mercado Pago rejeitado: assinatura invalida. DataId={DataId}.", dataId);
 
         return isValid;
+    }
+
+    private static string BuildSignatureManifest(string? dataId, string? requestId, string ts)
+    {
+        StringBuilder manifest = new();
+
+        if (!string.IsNullOrWhiteSpace(dataId))
+            manifest.Append("id:").Append(dataId.Trim()).Append(';');
+
+        if (!string.IsNullOrWhiteSpace(requestId))
+            manifest.Append("request-id:").Append(requestId.Trim()).Append(';');
+
+        manifest.Append("ts:").Append(ts.Trim()).Append(';');
+
+        return manifest.ToString();
     }
 }

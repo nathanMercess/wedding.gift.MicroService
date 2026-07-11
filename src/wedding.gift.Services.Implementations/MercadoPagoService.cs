@@ -1,10 +1,10 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Crosscutting.Models.DTOs.MercadoPago;
@@ -104,7 +104,9 @@ public sealed class MercadoPagoService(
         string baseUrl = configuration["MercadoPago:BaseUrl"];
 
         using HttpRequestMessage httpRequest = new(HttpMethod.Get, $"{baseUrl}/v1/orders/{mpOrderId}");
-        ApplyAuth(httpRequest);
+
+        if (!TryApplyAuth(httpRequest, out PaymentResponseDto? authError))
+            return authError!;
 
         HttpResponseMessage response;
         try
@@ -157,7 +159,9 @@ public sealed class MercadoPagoService(
         {
             Content = JsonContent.Create(order)
         };
-        ApplyAuth(httpRequest);
+
+        if (!TryApplyAuth(httpRequest, out PaymentResponseDto? authError))
+            return authError!;
 
         string methodId = order.Transactions?.Payments?.FirstOrDefault()?.PaymentMethod?.Id ?? "order";
         httpRequest.Headers.Add("X-Idempotency-Key", $"{order.ExternalReference}:{methodId}");
@@ -203,10 +207,28 @@ public sealed class MercadoPagoService(
         return dto;
     }
 
-    private void ApplyAuth(HttpRequestMessage request)
+    private bool TryApplyAuth(HttpRequestMessage request, out PaymentResponseDto? error)
     {
-        string accessToken = configuration["MercadoPago:AccessToken"];
+        string accessToken = NormalizeAccessToken(configuration["MercadoPago:AccessToken"]);
+
+        if (string.IsNullOrWhiteSpace(accessToken))
+        {
+            logger.LogError("MercadoPago:AccessToken nao configurado.");
+            error = ProviderError("Mercado Pago nao esta configurado para processar pagamentos.");
+            return false;
+        }
+
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        error = null;
+        return true;
+    }
+
+    private static string NormalizeAccessToken(string? accessToken)
+    {
+        if (string.IsNullOrWhiteSpace(accessToken))
+            return string.Empty;
+
+        return new string(accessToken.Where(c => !char.IsControl(c)).ToArray()).Trim();
     }
 
     private static string? ExtractRequestId(HttpResponseMessage response)
