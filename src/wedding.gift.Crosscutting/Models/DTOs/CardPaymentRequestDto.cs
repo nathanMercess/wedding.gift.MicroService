@@ -12,6 +12,7 @@ public sealed class CardPaymentRequestDto
     public required string Method { get; set; }
     public required string PaymentMethodId { get; set; }
     public string? IssuerId { get; set; }
+    public string? DeviceId { get; set; }
     public required string PayerEmail { get; set; }
     public string PayerDocType { get; set; } = "CPF";
     public required string PayerDocNumber { get; set; }

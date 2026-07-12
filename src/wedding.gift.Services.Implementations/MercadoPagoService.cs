@@ -28,6 +28,7 @@ public sealed class MercadoPagoService(
             Description = "Wedding gift",
             Installments = request.Installments,
             PaymentMethodId = request.PaymentMethodId,
+            IssuerId = request.IssuerId,
             ExternalReference = request.OrderId,
             Payer = new MercadoPagoPaymentPayer
             {
@@ -40,7 +41,7 @@ public sealed class MercadoPagoService(
             }
         };
 
-        return await SendPaymentAsync(payment, cancellationToken);
+        return await SendPaymentAsync(payment, request.DeviceId, cancellationToken);
     }
 
     public async Task<PaymentResponseDto> CreatePixOrderAsync(
@@ -253,6 +254,7 @@ public sealed class MercadoPagoService(
 
     private async Task<PaymentResponseDto> SendPaymentAsync(
         MercadoPagoPaymentRequest payment,
+        string? deviceId,
         CancellationToken cancellationToken)
     {
         string baseUrl = configuration["MercadoPago:BaseUrl"];
@@ -266,6 +268,9 @@ public sealed class MercadoPagoService(
             return authError!;
 
         httpRequest.Headers.Add("X-Idempotency-Key", payment.ExternalReference);
+
+        if (!string.IsNullOrWhiteSpace(deviceId))
+            httpRequest.Headers.Add("X-meli-session-id", deviceId.Trim());
 
         HttpResponseMessage response;
         try
@@ -464,6 +469,7 @@ public sealed class MercadoPagoService(
         [JsonPropertyName("description")] public string Description { get; set; } = string.Empty;
         [JsonPropertyName("installments")] public int Installments { get; set; }
         [JsonPropertyName("payment_method_id")] public string PaymentMethodId { get; set; } = string.Empty;
+        [JsonPropertyName("issuer_id")] public string? IssuerId { get; set; }
         [JsonPropertyName("external_reference")] public string ExternalReference { get; set; } = string.Empty;
         [JsonPropertyName("payer")] public MercadoPagoPaymentPayer Payer { get; set; } = new();
     }
