@@ -14,4 +14,5 @@ public sealed class CoupleResponseDto
     public string SecondaryColor { get; set; } = "#F7F0EA";
     public string GiftDisplayMode { get; set; } = GiftDisplayModes.Traditional;
     public List<CarouselPhotoDto> CarouselPhotos { get; set; } = [];
+    public SiteSettingsDto SiteSettings { get; set; } = new();
 }

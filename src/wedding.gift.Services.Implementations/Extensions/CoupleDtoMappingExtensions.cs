@@ -18,7 +18,8 @@ public static class CoupleDtoMappingExtensions
             PrimaryColor = entity.PrimaryColor,
             SecondaryColor = entity.SecondaryColor,
             GiftDisplayMode = entity.GiftDisplayMode,
-            CarouselPhotos = DeserializeCarouselPhotos(entity.CarouselPhotosJson)
+            CarouselPhotos = DeserializeCarouselPhotos(entity.CarouselPhotosJson),
+            SiteSettings = SiteSettingsExtensions.Normalize(entity.SiteSettingsJson)
         };
 
     public static string? ToCarouselPhotosJson(this CoupleUpdateDto dto)

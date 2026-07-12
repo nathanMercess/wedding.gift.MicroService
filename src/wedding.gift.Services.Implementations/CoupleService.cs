@@ -33,7 +33,8 @@ public sealed class CoupleService(ICoupleRepository coupleRepository, IApplicati
             dto.PrimaryColor,
             dto.SecondaryColor,
             dto.GiftDisplayMode,
-            dto.ToCarouselPhotosJson());
+            dto.ToCarouselPhotosJson(),
+            SiteSettingsExtensions.Merge(entity.SiteSettingsJson, dto.SiteSettings).ToSiteSettingsJson());
 
         await coupleRepository.SaveChangesAsync(cancellationToken);
         cacheService.Invalidate();
