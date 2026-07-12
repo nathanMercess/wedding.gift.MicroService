@@ -191,9 +191,9 @@ public sealed class DashboardService(
             },
             Overview = new DashboardOverviewDto
             {
-                TotalRaised = data.PaidContributions.Sum(x => x.Amount),
+                TotalRaised = data.PaidContributions.Sum(x => x.NetAmount),
                 TotalGoal = data.Gifts.Sum(x => x.Total),
-                FundingPercent = CalculatePercent(data.PaidContributions.Sum(x => x.Amount), data.Gifts.Sum(x => x.Total)),
+                FundingPercent = CalculatePercent(data.PaidContributions.Sum(x => x.NetAmount), data.Gifts.Sum(x => x.Total)),
                 TotalGifts = data.Gifts.Count,
                 FullyFundedGifts = data.GiftFunding.Count(x => x.FullyFunded),
                 PaidContributions = data.PaidContributions.Count,
@@ -208,14 +208,14 @@ public sealed class DashboardService(
                 Paid = data.PaidContributions.Count,
                 Pending = data.PendingContributions.Count,
                 Cancelled = data.CancelledContributions.Count,
-                PaidAmount = data.PaidContributions.Sum(x => x.Amount),
+                PaidAmount = data.PaidContributions.Sum(x => x.NetAmount),
                 PendingAmount = data.PendingContributions.Sum(x => x.Amount),
                 CancelledAmount = data.CancelledContributions.Sum(x => x.Amount),
-                AveragePaidAmount = data.PaidContributions.Count == 0 ? 0 : Math.Round(data.PaidContributions.Average(x => x.Amount), 2),
+                AveragePaidAmount = data.PaidContributions.Count == 0 ? 0 : Math.Round(data.PaidContributions.Average(x => x.NetAmount), 2),
                 UniqueContributors = CountUniqueContributors(data.PaidContributions),
                 MessagesCount = data.ContributionMessages.Count,
                 PeriodPaidCount = data.PeriodPaidContributions.Count,
-                PeriodPaidAmount = data.PeriodPaidContributions.Sum(x => x.Amount)
+                PeriodPaidAmount = data.PeriodPaidContributions.Sum(x => x.NetAmount)
             },
             Payments = new DashboardPaymentSummaryDto
             {
@@ -326,17 +326,17 @@ public sealed class DashboardService(
             .OrderByDescending(x => x.Amount)
             .ThenByDescending(x => x.Count)
             .FirstOrDefault();
-        decimal totalRaised = data.PaidContributions.Sum(x => x.Amount);
+        decimal totalRaised = data.PaidContributions.Sum(x => x.NetAmount);
         decimal totalGoal = data.Gifts.Sum(x => x.Total);
-        decimal periodRaised = data.PeriodPaidContributions.Sum(x => x.Amount);
+        decimal periodRaised = data.PeriodPaidContributions.Sum(x => x.NetAmount);
 
         return new DashboardRevenueDto
         {
             TotalRaised = totalRaised,
             PeriodRaised = periodRaised,
             RemainingAmount = Math.Max(totalGoal - totalRaised, 0),
-            AverageTicket = data.PaidContributions.Count == 0 ? 0 : Math.Round(data.PaidContributions.Average(x => x.Amount), 2),
-            LargestContribution = data.PaidContributions.Count == 0 ? 0 : data.PaidContributions.Max(x => x.Amount),
+            AverageTicket = data.PaidContributions.Count == 0 ? 0 : Math.Round(data.PaidContributions.Average(x => x.NetAmount), 2),
+            LargestContribution = data.PaidContributions.Count == 0 ? 0 : data.PaidContributions.Max(x => x.NetAmount),
             PeriodPaidCount = data.PeriodPaidContributions.Count,
             FundingPercent = CalculatePercent(totalRaised, totalGoal),
             DailyAverage = data.Query.Days == 0 ? 0 : Math.Round(periodRaised / data.Query.Days, 2),
@@ -526,8 +526,8 @@ public sealed class DashboardService(
         return new DashboardGiftSummaryDto
         {
             Total = gifts.Count,
-            Available = gifts.Count(x => x.Available),
-            Unavailable = gifts.Count(x => !x.Available),
+            Available = gifts.Count(x => !x.FullyFunded),
+            Unavailable = gifts.Count(x => x.FullyFunded),
             FullyFunded = giftFunding.Count(x => x.FullyFunded),
             PartiallyFunded = giftFunding.Count(x => x.Raised > 0 && !x.FullyFunded),
             WithoutContributions = giftFunding.Count(x => x.Raised == 0),
@@ -546,7 +546,7 @@ public sealed class DashboardService(
                 List<Contribution> paidContributions = gift.Contributions
                     .Where(x => string.Equals(x.Status, ContributionStatus.Paid, StringComparison.OrdinalIgnoreCase))
                     .ToList();
-                decimal raised = paidContributions.Sum(x => x.Amount);
+                decimal raised = paidContributions.Sum(x => x.NetAmount);
                 decimal remaining = Math.Max(gift.Total - raised, 0);
 
                 return new DashboardGiftFundingDto
@@ -559,7 +559,7 @@ public sealed class DashboardService(
                     Remaining = remaining,
                     FundingPercent = CalculatePercent(raised, gift.Total),
                     PaidContributions = paidContributions.Count,
-                    Available = gift.Available,
+                    Available = !gift.FullyFunded,
                     FullyFunded = raised >= gift.Total && gift.Total > 0
                 };
             })
@@ -576,7 +576,7 @@ public sealed class DashboardService(
             .ToDictionary(x => x.Key, x => new DashboardTimeSeriesPointDto
             {
                 Count = x.Count(),
-                Amount = x.Sum(c => c.Amount)
+                Amount = x.Sum(c => c.NetAmount)
             });
 
         return Enumerable.Range(0, days)

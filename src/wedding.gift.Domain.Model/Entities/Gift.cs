@@ -11,18 +11,19 @@ public sealed class Gift
     }
 
     public Guid Id { get; private set; }
+    public Guid CoupleId { get; private set; }
     public string Name { get; private set; } = string.Empty;
     public string Description { get; private set; } = string.Empty;
     public decimal Price { get; private set; }
     public decimal Total { get; private set; }
     public string Image { get; private set; } = string.Empty;
-    public string Category { get; private set; } = string.Empty;
-    public bool Available { get; private set; } = true;
+    public string? Category { get; private set; }
     public bool AllowPartialContribution { get; private set; } = true;
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
+    public byte[] RowVersion { get; private set; } = [];
     public ICollection<Contribution> Contributions => _contributions;
-    public decimal RaisedAmount => _contributions.Where(x => x.Status == ContributionStatus.Paid).Sum(x => x.Amount);
+    public decimal RaisedAmount => _contributions.Where(x => x.Status == ContributionStatus.Paid).Sum(x => x.NetAmount);
     public decimal RemainingAmount => Math.Max(Total - RaisedAmount, 0);
     public bool FullyFunded => Total > 0 && RaisedAmount >= Total;
 
@@ -33,15 +34,16 @@ public sealed class Gift
         decimal total,
         string image,
         string category,
-        bool available,
-        bool allowPartialContribution)
+        bool allowPartialContribution,
+        Guid? coupleId = null)
     {
         Gift gift = new()
         {
-            Id = Guid.NewGuid()
+            Id = Guid.NewGuid(),
+            CoupleId = coupleId ?? Couple.SingletonId
         };
 
-        gift.Update(name, description, price, total, image, category, available, allowPartialContribution);
+        gift.Update(name, description, price, total, image, category, allowPartialContribution);
         gift.CreatedAt = gift.UpdatedAt;
 
         return gift;
@@ -55,19 +57,19 @@ public sealed class Gift
         decimal total,
         string image,
         string category,
-        bool available,
-        DateTime createdAt)
+        DateTime createdAt,
+        Guid? coupleId = null)
     {
         Gift gift = new()
         {
             Id = id,
+            CoupleId = coupleId ?? Couple.SingletonId,
             Name = name.Trim(),
             Description = description.Trim(),
             Price = price,
             Total = total > 0 ? total : price,
             Image = image.Trim(),
-            Category = category.Trim(),
-            Available = available,
+            Category = string.IsNullOrWhiteSpace(category) ? string.Empty : category.Trim(),
             AllowPartialContribution = true,
             CreatedAt = createdAt,
             UpdatedAt = createdAt
@@ -82,8 +84,7 @@ public sealed class Gift
         decimal price,
         decimal total,
         string image,
-        string category,
-        bool available,
+        string? category,
         bool allowPartialContribution)
     {
         Name = name.Trim();
@@ -91,20 +92,13 @@ public sealed class Gift
         Price = price;
         Total = total > 0 ? total : price;
         Image = image.Trim();
-        Category = category?.Trim() ?? string.Empty;
-        Available = available;
+        Category = string.IsNullOrWhiteSpace(category) ? string.Empty : category.Trim();
         AllowPartialContribution = allowPartialContribution;
         Touch();
     }
 
-    public void SetAvailability(bool available)
-    {
-        Available = available;
-        Touch();
-    }
-
     public bool CanReceiveContribution(decimal amount)
-        => Available && (AllowPartialContribution || amount >= RemainingAmount) && amount <= RemainingAmount;
+        => (AllowPartialContribution || amount >= RemainingAmount) && amount <= RemainingAmount;
 
     private void Touch()
         => UpdatedAt = DateTime.UtcNow;

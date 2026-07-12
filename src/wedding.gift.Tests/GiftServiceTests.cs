@@ -3,7 +3,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using System.Text.Json;
-using Xunit;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Domain.Model.Entities;
@@ -11,6 +10,7 @@ using wedding.gift.Infra.Implementations.DataContext;
 using wedding.gift.Infra.Implementations.Repositories;
 using wedding.gift.Services.Implementations;
 using wedding.gift.Services.Implementations.Extensions;
+using Xunit;
 
 namespace wedding.gift.Tests;
 
@@ -200,7 +200,7 @@ public class GiftServiceTests
     }
 
     [Fact]
-    public async Task GetAllAsync_DeveMarcarFullyFundedSemIndisponibilizarPresente()
+    public async Task GetAllAsync_DeveMarcarPresenteCompletoComoIndisponivel()
     {
         AppDbContext context = CreateContext();
         Gift gift = SeedGift(context, "Completo", price: 100m);
@@ -210,7 +210,7 @@ public class GiftServiceTests
         PagedResult<GiftResponseDto> result = await service.GetAllAsync(new GiftQueryParams(), CancellationToken.None);
         GiftResponseDto item = Assert.Single(result.Items);
 
-        Assert.True(item.Available);
+        Assert.False(item.Available);
         Assert.True(item.FullyFunded);
     }
 
@@ -219,10 +219,10 @@ public class GiftServiceTests
     {
         AppDbContext context = CreateContext();
         Gift completed = SeedGift(context, "Completo", price: 100m);
-        Gift unavailable = SeedGift(context, "Indisponivel", price: 100m, available: false);
+        Gift partiallyFunded = SeedGift(context, "Parcial", price: 100m);
         SeedContribution(context, completed.Id, 100m);
-        SeedContribution(context, unavailable.Id, 50m);
-        SeedContribution(context, unavailable.Id, 50m, contributorName: "Bruno", status: ContributionStatus.Pending);
+        SeedContribution(context, partiallyFunded.Id, 50m);
+        SeedContribution(context, partiallyFunded.Id, 50m, contributorName: "Bruno", status: ContributionStatus.Pending);
         GiftService service = CreateService(context);
 
         GiftStatsDto stats = await service.GetStatsAsync(CancellationToken.None);
@@ -257,7 +257,8 @@ public class GiftServiceTests
     public async Task ContributeAsync_DeveAceitarPresenteIndisponivel_QuandoModoPrivadoIlimitado()
     {
         AppDbContext context = CreateContext();
-        Gift gift = SeedGift(context, "Indisponivel", price: 500m, available: false);
+        Gift gift = SeedGift(context, "Completo", price: 500m);
+        SeedContribution(context, gift.Id, 500m);
         SeedCouple(context, GiftDisplayModes.PrivateUnlimited);
         GiftService service = CreateService(context);
 
@@ -337,10 +338,9 @@ public class GiftServiceTests
         string name,
         decimal price,
         decimal? total = null,
-        bool available = true,
         string category = GiftCategories.Casa)
     {
-        Gift gift = Gift.Create(name, $"{name} description", price, total ?? price, $"{name}.jpg", category, available, true);
+        Gift gift = Gift.Create(name, $"{name} description", price, total ?? price, $"{name}.jpg", category, true);
 
         context.Gifts.Add(gift);
         context.SaveChanges();

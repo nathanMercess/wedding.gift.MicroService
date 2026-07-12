@@ -6,6 +6,7 @@ public sealed class PaymentResponseDto
     public Guid? GiftId { get; set; }
     public string GiftName { get; set; } = string.Empty;
     public decimal? Amount { get; set; }
+    public decimal? RefundedAmount { get; set; }
     public string ContributorName { get; set; } = string.Empty;
     public string Method { get; set; } = string.Empty;
     public required string Status { get; set; }

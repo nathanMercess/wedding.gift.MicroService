@@ -22,7 +22,7 @@ public sealed class EmailService(
 
     public Task SendEmailConfirmationAsync(string toEmail, string toName, string token, CancellationToken cancellationToken)
     {
-        string confirmUrl = $"{_api.BaseUrl.TrimEnd('/')}/api/auth/confirm-email" +
+        string confirmUrl = $"{_api.BaseUrl.TrimEnd('/')}/confirm-email" +
                             $"?email={Uri.EscapeDataString(toEmail)}&token={Uri.EscapeDataString(token)}";
 
         string body = EmailTemplateRenderer.Render(EmailConfirmationTemplate, new Dictionary<string, string>
@@ -73,6 +73,60 @@ public sealed class EmailService(
         return SendAsync(recipient, "Casal", "Nova contribuicao recebida - Wedding Gift", body, cancellationToken);
     }
 
+    public Task SendGuestReceiptAsync(string toEmail, string contributorName, string giftName, string orderId, decimal amount, CancellationToken cancellationToken)
+    {
+        string amountText = amount.ToString("C", new CultureInfo("pt-BR"));
+        string body = $"""
+            Obrigado por presentear o casal.
+
+            Presente: {giftName}
+            Valor: {amountText}
+            Pedido: {orderId}
+
+            Guarde este numero para consultar o pagamento.
+            """;
+        string html = RenderSystemNotification("Presente confirmado", body);
+        return SendAsync(toEmail, contributorName, "Seu presente foi confirmado - Wedding Gift", html, cancellationToken);
+    }
+
+    public Task SendGuestReceiptAsync(
+        string toEmail,
+        string contributorName,
+        string coupleNames,
+        string giftName,
+        string orderId,
+        decimal amount,
+        string method,
+        DateTime paymentDateUtc,
+        string message,
+        string lookupToken,
+        CancellationToken cancellationToken)
+    {
+        string lookupUrl = $"{_api.BaseUrl.TrimEnd('/')}/pedido/{Uri.EscapeDataString(lookupToken)}";
+        string body = $"""
+            Presente confirmado para {coupleNames}.
+
+            Presente: {giftName}
+            Valor: {amount.ToString("C", new CultureInfo("pt-BR"))}
+            Metodo: {method}
+            Pedido: {orderId}
+            Data UTC: {paymentDateUtc:u}
+            Mensagem: {message}
+
+            Consulte o pedido uma unica vez: {lookupUrl}
+            """;
+        return SendAsync(toEmail, contributorName, "Seu presente foi confirmado - Wedding Gift", RenderSystemNotification("Presente confirmado", body), cancellationToken);
+    }
+
+    public Task SendPasswordResetAsync(string toEmail, string toName, string token, CancellationToken cancellationToken)
+    {
+        string resetUrl = $"{_api.BaseUrl.TrimEnd('/')}/reset-password" +
+                          $"?email={Uri.EscapeDataString(toEmail)}&token={Uri.EscapeDataString(token)}";
+        string body = $"Use o link a seguir para redefinir sua senha. O link expira em uma hora.\n\n{resetUrl}";
+        string html = RenderSystemNotification("Redefinição de senha", body);
+        return SendAsync(toEmail, toName, "Redefina sua senha - Wedding Gift", html, cancellationToken);
+    }
+
     private static string RenderSystemNotification(string subject, string body)
         => EmailTemplateRenderer.Render(SystemNotificationTemplate, new Dictionary<string, string>
         {
@@ -85,13 +139,13 @@ public sealed class EmailService(
         if (!TryCreateMailAddress(_smtp.FromEmail, _smtp.FromName, out MailAddress fromAddress))
         {
             logger.LogWarning("E-mail nao enviado: remetente SMTP invalido.");
-            return;
+            throw new EmailDeliveryException(toEmail, subject, new InvalidOperationException("SMTP_FROM_INVALID"));
         }
 
         if (!TryCreateMailAddress(toEmail, toName, out MailAddress toAddress))
         {
             logger.LogWarning("E-mail nao enviado: destinatario invalido para o assunto {Subject}.", subject);
-            return;
+            throw new EmailDeliveryException(string.Empty, subject, new InvalidOperationException("SMTP_RECIPIENT_INVALID"));
         }
 
         string safeSubject = NormalizeHeaderText(subject);

@@ -11,7 +11,7 @@ public sealed class GiftResponseDto
     public decimal Remaining { get; set; }
     public bool FullyFunded { get; set; }
     public string Image { get; set; } = string.Empty;
-    public string Category { get; set; } = string.Empty;
+    public string? Category { get; set; }
     public bool Available { get; set; }
     public bool AllowPartialContribution { get; set; }
 }

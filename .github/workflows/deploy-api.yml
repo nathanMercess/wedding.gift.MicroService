@@ -27,6 +27,7 @@ jobs:
   build-and-deploy:
     name: Build, Push and Deploy API
     runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'development' }}
 
     permissions:
       contents: read
@@ -35,6 +36,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
 
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v2
@@ -61,16 +67,33 @@ jobs:
             echo "api_base_url=https://davidmaira.com" >> "$GITHUB_OUTPUT"
             echo "mercadopago_access_token_secret=mercadopago-access-token-prod" >> "$GITHUB_OUTPUT"
             echo "mercadopago_webhook_secret=mercadopago-webhook-secret-prod" >> "$GITHUB_OUTPUT"
+            echo "jwt_signing_key_secret=jwt-signing-key-prod" >> "$GITHUB_OUTPUT"
           else
             echo "service=wedding-gift-api-dev" >> "$GITHUB_OUTPUT"
             echo "aspnet_environment=Development" >> "$GITHUB_OUTPUT"
             echo "api_base_url=https://dev.davidmaira.com" >> "$GITHUB_OUTPUT"
             echo "mercadopago_access_token_secret=mercadopago-access-token-dev" >> "$GITHUB_OUTPUT"
             echo "mercadopago_webhook_secret=mercadopago-webhook-secret-dev" >> "$GITHUB_OUTPUT"
+            echo "jwt_signing_key_secret=jwt-signing-key-dev" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Test
-        run: dotnet test
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore -warnaserror
+
+      - name: Test with coverage
+        run: dotnet test --configuration Release --no-build --collect:"XPlat Code Coverage" --settings coverlet.runsettings --results-directory TestResults
+
+      - name: Audit packages
+        run: dotnet list package --vulnerable --include-transitive
+
+      - name: Install EF tool
+        run: dotnet tool install --global dotnet-ef --version 10.0.9
+
+      - name: Verify migrations
+        run: dotnet ef migrations has-pending-model-changes --project src/wedding.gift.Infra.Implementations --startup-project src/wedding.gift.Application.Webapi --context AppDbContext --no-build --configuration Release
 
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
@@ -104,5 +127,5 @@ jobs:
             --min-instances 0 \
             --max-instances 2 \
             --set-env-vars "ASPNETCORE_ENVIRONMENT=${{ steps.target.outputs.aspnet_environment }},ASPNETCORE_URLS=http://+:8080,BootstrapAdmin__Enabled=false,Api__BaseUrl=${{ steps.target.outputs.api_base_url }}" \
-            --set-secrets "ConnectionStrings__DefaultConnection=wedding-gift-vm-connection-string:latest,Smtp__Host=smtp-host:latest,Smtp__Port=smtp-port:latest,Smtp__Username=smtp-username:latest,Smtp__Password=smtp-password:latest,Smtp__FromEmail=smtp-from-email:latest,Smtp__FromName=smtp-from-name:latest,Smtp__EnableSsl=smtp-enable-ssl:latest,Smtp__ErrorNotificationRecipient=smtp-error-notification-recipient:latest,Smtp__CoupleNotificationRecipient=smtp-couple-notification-recipient:latest,MercadoPago__AccessToken=${{ steps.target.outputs.mercadopago_access_token_secret }}:latest,MercadoPago__WebhookSecret=${{ steps.target.outputs.mercadopago_webhook_secret }}:latest" \
+            --set-secrets "ConnectionStrings__DefaultConnection=wedding-gift-vm-connection-string:latest,Jwt__SigningKey=${{ steps.target.outputs.jwt_signing_key_secret }}:latest,Smtp__Host=smtp-host:latest,Smtp__Port=smtp-port:latest,Smtp__Username=smtp-username:latest,Smtp__Password=smtp-password:latest,Smtp__FromEmail=smtp-from-email:latest,Smtp__FromName=smtp-from-name:latest,Smtp__EnableSsl=smtp-enable-ssl:latest,Smtp__ErrorNotificationRecipient=smtp-error-notification-recipient:latest,Smtp__CoupleNotificationRecipient=smtp-couple-notification-recipient:latest,MercadoPago__AccessToken=${{ steps.target.outputs.mercadopago_access_token_secret }}:latest,MercadoPago__WebhookSecret=${{ steps.target.outputs.mercadopago_webhook_secret }}:latest" \
             --quiet

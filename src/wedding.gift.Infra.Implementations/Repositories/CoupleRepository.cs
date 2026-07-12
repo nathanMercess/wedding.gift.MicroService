@@ -14,7 +14,16 @@ public sealed class CoupleRepository(AppDbContext context) : ICoupleRepository
         if (!tracking)
             query = query.AsNoTracking();
 
-        return await query.FirstOrDefaultAsync(cancellationToken);
+        return await query.FirstOrDefaultAsync(x => x.Id == Couple.SingletonId, cancellationToken)
+               ?? await query.FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<Couple?> GetByIdAsync(Guid id, bool tracking, CancellationToken cancellationToken)
+    {
+        IQueryable<Couple> query = context.Couples;
+        if (!tracking)
+            query = query.AsNoTracking();
+        return await query.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
     }
 
     public async Task AddAsync(Couple couple, CancellationToken cancellationToken)

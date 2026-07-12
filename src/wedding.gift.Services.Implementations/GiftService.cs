@@ -16,27 +16,32 @@ public sealed class GiftService(
     IPaymentRepository paymentRepository,
     ICoupleRepository coupleRepository,
     IMemoryCache cache,
-    IApplicationCacheService cacheService) : IGiftService
+    IApplicationCacheService cacheService,
+    IRequestContext? requestContext = null,
+    IOperationalRepository? operationalRepository = null) : IGiftService
 {
-    private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(30);
+    private static readonly TimeSpan CacheDuration = TimeSpan.FromSeconds(15);
 
     public async Task<PagedResult<GiftResponseDto>> GetPublicAsync(GiftQueryParams queryParams, CancellationToken cancellationToken)
     {
         Couple? couple = await coupleRepository.GetAsync(false, cancellationToken);
         SiteSettingsDto settings = SiteSettingsExtensions.Normalize(couple?.SiteSettingsJson);
+        bool allowsUnlimitedPurchases = GiftDisplayModes.AllowsUnlimitedPurchases(couple?.GiftDisplayMode);
 
-        return await GetAllCoreAsync(queryParams, settings, cancellationToken);
+        return await GetAllCoreAsync(queryParams, settings, allowsUnlimitedPurchases, Couple.SingletonId, cancellationToken);
     }
 
     public async Task<PagedResult<GiftResponseDto>> GetAllAsync(GiftQueryParams queryParams, CancellationToken cancellationToken)
         => await GetPublicAsync(queryParams, cancellationToken);
 
     public async Task<PagedResult<GiftResponseDto>> GetAllAdminAsync(GiftQueryParams queryParams, CancellationToken cancellationToken)
-        => await GetAllCoreAsync(queryParams, null, cancellationToken);
+        => await GetAllCoreAsync(queryParams, null, false, GetAdministrativeCoupleId(), cancellationToken);
 
     private async Task<PagedResult<GiftResponseDto>> GetAllCoreAsync(
         GiftQueryParams queryParams,
         SiteSettingsDto? siteSettings,
+        bool allowsUnlimitedPurchases,
+        Guid? coupleId,
         CancellationToken cancellationToken)
     {
         if (queryParams.Page < 1)
@@ -45,9 +50,17 @@ public sealed class GiftService(
         if (queryParams.PageSize < 1 || queryParams.PageSize > 100)
             throw new BadRequestException(ErrorCodes.INVALID_GIFT_PAGE_SIZE);
 
+        if (queryParams.MinTotal.HasValue && queryParams.MaxTotal.HasValue &&
+            queryParams.MinTotal.Value > queryParams.MaxTotal.Value)
+        {
+            throw new BadRequestException(ErrorCodes.INVALID_GIFT_PRICE_RANGE);
+        }
+
         ValidateCategory(queryParams.Category, allowEmpty: true);
 
         IQueryable<Gift> query = giftRepository.QueryWithContributions();
+        if (coupleId.HasValue)
+            query = query.Where(x => x.CoupleId == coupleId.Value);
 
         if (siteSettings?.ShowGiftCategories == true)
         {
@@ -78,8 +91,34 @@ public sealed class GiftService(
         if (queryParams.MaxTotal.HasValue)
             query = query.Where(x => x.Total <= queryParams.MaxTotal.Value);
 
-        if (queryParams.OnlyAvailable.HasValue)
-            query = query.Where(x => x.Available == queryParams.OnlyAvailable.Value);
+        DateTime now = DateTime.UtcNow;
+        IQueryable<Payment> activeReservations = paymentRepository.Query()
+            .Where(x => (!coupleId.HasValue || x.CoupleId == coupleId.Value) &&
+                        !x.ContributionCreated &&
+                        x.ExpiresAt > now &&
+                        PaymentStatuses.Reserving.Contains(x.Status));
+
+        if (queryParams.OnlyAvailable.HasValue && !allowsUnlimitedPurchases)
+        {
+            query = queryParams.OnlyAvailable.Value
+                ? query.Where(x => x.Total >
+                    (x.Contributions.Where(c => c.Status == ContributionStatus.Paid).Sum(c => (decimal?)(c.Amount - c.RefundedAmount)) ?? 0) +
+                    (activeReservations.Where(p => p.GiftId == x.Id).Sum(p => (decimal?)p.Amount) ?? 0))
+                : query.Where(x => x.Total <=
+                    (x.Contributions.Where(c => c.Status == ContributionStatus.Paid).Sum(c => (decimal?)(c.Amount - c.RefundedAmount)) ?? 0) +
+                    (activeReservations.Where(p => p.GiftId == x.Id).Sum(p => (decimal?)p.Amount) ?? 0));
+        }
+
+        if (queryParams.OnlyAvailable == false && allowsUnlimitedPurchases)
+        {
+            return new PagedResult<GiftResponseDto>
+            {
+                Items = [],
+                TotalCount = 0,
+                Page = queryParams.Page,
+                PageSize = queryParams.PageSize
+            };
+        }
 
         query = (queryParams.OrderBy, queryParams.OrderDir) switch
         {
@@ -92,16 +131,24 @@ public sealed class GiftService(
             (GiftSortField.Raised, SortDirection.Desc) => query
                 .OrderByDescending(x => x.Contributions
                     .Where(c => c.Status == ContributionStatus.Paid)
-                    .Sum(c => c.Amount))
+                    .Sum(c => c.Amount - c.RefundedAmount))
                 .ThenBy(x => x.Name),
             (GiftSortField.Raised, _) => query
                 .OrderBy(x => x.Contributions
                     .Where(c => c.Status == ContributionStatus.Paid)
-                    .Sum(c => c.Amount))
+                    .Sum(c => c.Amount - c.RefundedAmount))
                 .ThenBy(x => x.Name),
 
-            (GiftSortField.Available, SortDirection.Desc) => query.OrderByDescending(x => x.Available).ThenBy(x => x.Name),
-            (GiftSortField.Available, _) => query.OrderBy(x => x.Available).ThenBy(x => x.Name),
+            (GiftSortField.Available, SortDirection.Desc) => query
+                .OrderByDescending(x => x.Total >
+                    (x.Contributions.Where(c => c.Status == ContributionStatus.Paid).Sum(c => (decimal?)(c.Amount - c.RefundedAmount)) ?? 0) +
+                    (activeReservations.Where(p => p.GiftId == x.Id).Sum(p => (decimal?)p.Amount) ?? 0))
+                .ThenBy(x => x.Name),
+            (GiftSortField.Available, _) => query
+                .OrderBy(x => x.Total >
+                    (x.Contributions.Where(c => c.Status == ContributionStatus.Paid).Sum(c => (decimal?)(c.Amount - c.RefundedAmount)) ?? 0) +
+                    (activeReservations.Where(p => p.GiftId == x.Id).Sum(p => (decimal?)p.Amount) ?? 0))
+                .ThenBy(x => x.Name),
 
             (GiftSortField.Name, SortDirection.Desc) => query.OrderByDescending(x => x.Name),
             _ => query.OrderBy(x => x.Name)
@@ -122,7 +169,8 @@ public sealed class GiftService(
         {
             Items = items.Select(g => g.ToResponseDto(
                 reservedAmounts.GetValueOrDefault(g.Id),
-                siteSettings?.ShowGiftCategories ?? true)).ToList(),
+                siteSettings?.ShowGiftCategories ?? true,
+                allowsUnlimitedPurchases)).ToList(),
             TotalCount = totalCount,
             Page = queryParams.Page,
             PageSize = queryParams.PageSize
@@ -159,16 +207,19 @@ public sealed class GiftService(
         Gift entity = await giftRepository.GetByIdWithContributionsAsync(id, cancellationToken)
                       ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
 
+        EnsureCoupleAccess(entity.CoupleId);
         decimal reservedAmount = await GetActiveReservationAmountAsync(id, cancellationToken);
-        return entity.ToResponseDto(reservedAmount);
+        bool allowsUnlimitedPurchases = await CoupleAllowsUnlimitedPurchasesAsync(cancellationToken);
+        return entity.ToResponseDto(reservedAmount, allowsUnlimitedPurchases: allowsUnlimitedPurchases);
     }
 
     public async Task<GiftResponseDto> CreateAsync(GiftCreateDto dto, CancellationToken cancellationToken)
     {
         ValidateCategory(dto.Category, allowEmpty: true);
 
-        Gift entity = dto.ToEntity();
+        Gift entity = dto.ToEntity(GetRequiredCoupleId());
         await giftRepository.AddAsync(entity, cancellationToken);
+        await AddAuditAsync("GiftCreated", entity, cancellationToken);
         await giftRepository.SaveChangesAsync(cancellationToken);
         cacheService.Invalidate();
         return entity.ToResponseDto();
@@ -181,20 +232,10 @@ public sealed class GiftService(
         Gift entity = await giftRepository.GetByIdAsync(id, cancellationToken)
                       ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
 
+        EnsureCoupleAccess(entity.CoupleId);
         entity.ApplyUpdate(dto);
-        await giftRepository.SaveChangesAsync(cancellationToken);
-        cacheService.Invalidate();
-
-        return entity.ToResponseDto();
-    }
-
-    public async Task<GiftResponseDto> UpdateAvailabilityAsync(Guid id, bool available, CancellationToken cancellationToken)
-    {
-        Gift entity = await giftRepository.GetByIdAsync(id, cancellationToken)
-                      ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
-
-        entity.SetAvailability(available);
-        await giftRepository.SaveChangesAsync(cancellationToken);
+        await AddAuditAsync("GiftUpdated", entity, cancellationToken);
+        await SaveGiftChangesAsync(cancellationToken);
         cacheService.Invalidate();
 
         return entity.ToResponseDto();
@@ -205,28 +246,41 @@ public sealed class GiftService(
         Gift entity = await giftRepository.GetByIdAsync(id, cancellationToken)
                       ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
 
+        EnsureCoupleAccess(entity.CoupleId);
+        await AddAuditAsync("GiftDeleted", entity, cancellationToken);
+        bool hasFinancialHistory = await contributionRepository.Query()
+            .AnyAsync(x => x.GiftId == id, cancellationToken) ||
+            await paymentRepository.Query().AnyAsync(x => x.GiftId == id, cancellationToken);
+
+        if (hasFinancialHistory)
+            throw new ConflictException(ErrorCodes.GIFT_HAS_FINANCIAL_HISTORY);
+
         giftRepository.Delete(entity);
-        await giftRepository.SaveChangesAsync(cancellationToken);
+        await SaveGiftChangesAsync(cancellationToken);
         cacheService.Invalidate();
     }
 
     public async Task<IReadOnlyList<ContributionResponseDto>> GetContributionsByGiftIdAsync(Guid giftId, CancellationToken cancellationToken)
     {
-        bool giftExists = await giftRepository.ExistsAsync(giftId, cancellationToken);
-
-        if (!giftExists)
-            throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
+        Gift gift = await giftRepository.GetByIdAsync(giftId, cancellationToken)
+                    ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
+        EnsureCoupleAccess(gift.CoupleId);
 
         IReadOnlyList<Contribution> contributions = await contributionRepository.GetByGiftIdAsync(giftId, cancellationToken);
-        return contributions.Select(x => x.ToResponseDto()).ToList();
+        return contributions
+            .Where(x => x.Status == ContributionStatus.Paid)
+            .Take(100)
+            .Select(x => x.ToPublicResponseDto())
+            .ToList();
     }
 
     public async Task<ContributionResponseDto> ContributeAsync(Guid giftId, ContributeDto dto, CancellationToken cancellationToken)
     {
-        Gift gift = await giftRepository.GetByIdAsync(giftId, cancellationToken)
+        Gift gift = await giftRepository.GetByIdWithContributionsAsync(giftId, cancellationToken)
                     ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
 
-        if (!gift.Available && !await CoupleAllowsUnlimitedPurchasesAsync(cancellationToken))
+        EnsureCoupleAccess(gift.CoupleId);
+        if (gift.RemainingAmount <= 0 && !await CoupleAllowsUnlimitedPurchasesAsync(cancellationToken))
             throw new ConflictException(ErrorCodes.GIFT_UNAVAILABLE);
 
         Contribution entity = Contribution.Create(
@@ -294,5 +348,42 @@ public sealed class GiftService(
     {
         Couple? couple = await coupleRepository.GetAsync(false, cancellationToken);
         return GiftDisplayModes.AllowsUnlimitedPurchases(couple?.GiftDisplayMode);
+    }
+
+    private async Task SaveGiftChangesAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await giftRepository.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new ConflictException(ErrorCodes.CONCURRENT_MODIFICATION);
+        }
+    }
+
+    private Guid? GetAdministrativeCoupleId()
+        => requestContext?.IsSuperAdmin == true ? null : GetRequiredCoupleId();
+
+    private Guid GetRequiredCoupleId()
+        => requestContext?.CoupleId ?? Couple.SingletonId;
+
+    private void EnsureCoupleAccess(Guid coupleId)
+    {
+        if (requestContext?.IsSuperAdmin == true)
+            return;
+
+        if (coupleId != GetRequiredCoupleId())
+            throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
+    }
+
+    private async Task AddAuditAsync(string action, Gift gift, CancellationToken cancellationToken)
+    {
+        if (operationalRepository is null)
+            return;
+
+        await operationalRepository.AddAuditLogAsync(
+            AuditLog.Create(requestContext?.UserId, gift.CoupleId, action, "Gift", gift.Id.ToString(), requestContext?.CorrelationId ?? string.Empty),
+            cancellationToken);
     }
 }

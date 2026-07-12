@@ -6,4 +6,7 @@ public sealed class OrderResponseTransactions
 {
     [JsonPropertyName("payments")]
     public List<OrderResponsePayment> Payments { get; set; } = new();
+
+    [JsonPropertyName("refunds")]
+    public List<OrderResponseRefund> Refunds { get; set; } = new();
 }

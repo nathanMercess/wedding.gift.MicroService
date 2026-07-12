@@ -7,7 +7,7 @@ public sealed class BackgroundTaskQueue : IBackgroundTaskQueue
 {
     private readonly Channel<Func<IServiceProvider, CancellationToken, Task>> _queue =
         Channel.CreateBounded<Func<IServiceProvider, CancellationToken, Task>>(
-            new BoundedChannelOptions(200) { FullMode = BoundedChannelFullMode.Wait });
+            new BoundedChannelOptions(500) { FullMode = BoundedChannelFullMode.DropOldest });
 
     public async ValueTask EnqueueAsync(Func<IServiceProvider, CancellationToken, Task> workItem, CancellationToken cancellationToken)
     {

@@ -47,7 +47,7 @@ public sealed class GiftRepository(AppDbContext context) : IGiftRepository
                 (gift, contributions) => new
                 {
                     gift.Total,
-                    Raised = contributions.Sum(c => c.Amount)
+                    Raised = contributions.Sum(c => c.Amount - c.RefundedAmount)
                 })
             .CountAsync(g => g.Raised >= g.Total, cancellationToken);
 

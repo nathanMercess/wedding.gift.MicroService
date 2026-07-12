@@ -1,11 +1,13 @@
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System.Globalization;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using wedding.gift.Crosscutting.Constants;
+using wedding.gift.Crosscutting.Models.Configurations;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Crosscutting.Models.DTOs.MercadoPago;
 using wedding.gift.Services.Contracts;
@@ -14,9 +16,10 @@ namespace wedding.gift.Services.Implementations;
 
 public sealed class MercadoPagoService(
     HttpClient httpClient,
-    IConfiguration configuration,
+    IOptions<MercadoPagoOptions> mercadoPagoOptions,
     ILogger<MercadoPagoService> logger) : IMercadoPagoService
 {
+    private readonly MercadoPagoOptions _options = mercadoPagoOptions.Value;
     public async Task<PaymentResponseDto> CreateCardOrderAsync(
         CardPaymentRequestDto request,
         CancellationToken cancellationToken)
@@ -70,6 +73,7 @@ public sealed class MercadoPagoService(
                     new()
                     {
                         Amount = request.Amount.ToString("F2", CultureInfo.InvariantCulture),
+                        ExpirationTime = "PT30M",
                         PaymentMethod = new OrderPaymentMethod
                         {
                             Id = "pix",
@@ -90,11 +94,97 @@ public sealed class MercadoPagoService(
             ? await GetOrderStatusFromOrderAsync(mpOrderId, cancellationToken)
             : await GetPaymentStatusFromPaymentAsync(mpOrderId, cancellationToken);
 
+    public async Task<PaymentResponseDto> RefundAsync(
+        string? mpOrderId,
+        string? mpPaymentId,
+        string idempotencyKey,
+        CancellationToken cancellationToken)
+        => await RefundAsync(mpOrderId, mpPaymentId, null, idempotencyKey, cancellationToken);
+
+    public async Task<PaymentResponseDto> RefundAsync(
+        string? mpOrderId,
+        string? mpPaymentId,
+        decimal? amount,
+        string idempotencyKey,
+        CancellationToken cancellationToken)
+    {
+        bool useOrderApi = !string.IsNullOrWhiteSpace(mpOrderId) &&
+                           mpOrderId.StartsWith("ORD", StringComparison.OrdinalIgnoreCase);
+        string? providerId = useOrderApi ? mpOrderId : mpPaymentId ?? mpOrderId;
+
+        if (string.IsNullOrWhiteSpace(providerId))
+            return ProviderError("O pagamento não possui identificador no provedor.");
+
+        string path = useOrderApi
+            ? $"/v1/orders/{providerId}/refund"
+            : $"/v1/payments/{providerId}/refunds";
+        HttpContent content = amount.HasValue
+            ? useOrderApi
+                ? JsonContent.Create(new
+                {
+                    transactions = new[]
+                    {
+                        new
+                        {
+                            id = mpPaymentId,
+                            amount = amount.Value.ToString("F2", CultureInfo.InvariantCulture)
+                        }
+                    }
+                })
+                : JsonContent.Create(new { amount = amount.Value })
+            : new StringContent(string.Empty, Encoding.UTF8, "application/json");
+        using HttpRequestMessage request = new(HttpMethod.Post, $"{_options.BaseUrl.TrimEnd('/')}{path}") { Content = content };
+
+        if (amount.HasValue && useOrderApi && string.IsNullOrWhiteSpace(mpPaymentId))
+            return ProviderError("O pagamento não possui identificador de transação para reembolso parcial.");
+
+        if (!TryApplyAuth(request, out PaymentResponseDto? authError))
+            return authError!;
+
+        request.Headers.Add("X-Idempotency-Key", idempotencyKey);
+
+        try
+        {
+            using HttpResponseMessage response = await httpClient.SendAsync(request, cancellationToken);
+            string requestId = ExtractRequestId(response);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                string raw = await response.Content.ReadAsStringAsync(cancellationToken);
+                MpError error = TryParseMpError(raw);
+                return new PaymentResponseDto
+                {
+                    Status = PaymentStatuses.Error,
+                    ErrorCode = MapMpError((int)response.StatusCode, error),
+                    Message = error?.Message ?? "Não foi possível reembolsar o pagamento.",
+                    MpRequestId = requestId
+                };
+            }
+
+            return new PaymentResponseDto
+            {
+                Status = PaymentStatuses.Refunded,
+                MpOrderId = mpOrderId,
+                MpPaymentId = mpPaymentId,
+                MpRequestId = requestId
+            };
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Falha de transporte ao reembolsar pagamento. ProviderId={ProviderId}.", providerId);
+            return ProviderError("Falha de comunicação ao reembolsar o pagamento.");
+        }
+    }
+
     private async Task<PaymentResponseDto> GetOrderStatusFromOrderAsync(
         string mpOrderId,
         CancellationToken cancellationToken)
     {
-        string baseUrl = configuration["MercadoPago:BaseUrl"];
+        string baseUrl = _options.BaseUrl.TrimEnd('/');
 
         using HttpRequestMessage httpRequest = new(HttpMethod.Get, $"{baseUrl}/v1/orders/{mpOrderId}");
 
@@ -123,8 +213,8 @@ public sealed class MercadoPagoService(
             string raw = await response.Content.ReadAsStringAsync(cancellationToken);
             MpError mpError = TryParseMpError(raw);
 
-            logger.LogError("Erro MP {Status} ao consultar order {MpOrderId}. x-request-id={RequestId} payload={Payload}",
-                (int)response.StatusCode, mpOrderId, requestId, raw);
+            logger.LogError("Erro MP {Status} ao consultar order {MpOrderId}. x-request-id={RequestId} code={ProviderCode}",
+                (int)response.StatusCode, mpOrderId, requestId, mpError?.Code ?? mpError?.Error);
 
             return new PaymentResponseDto
             {
@@ -146,7 +236,7 @@ public sealed class MercadoPagoService(
         string mpPaymentId,
         CancellationToken cancellationToken)
     {
-        string baseUrl = configuration["MercadoPago:BaseUrl"];
+        string baseUrl = _options.BaseUrl.TrimEnd('/');
 
         using HttpRequestMessage httpRequest = new(HttpMethod.Get, $"{baseUrl}/v1/payments/{mpPaymentId}");
 
@@ -175,8 +265,8 @@ public sealed class MercadoPagoService(
             string raw = await response.Content.ReadAsStringAsync(cancellationToken);
             MpError mpError = TryParseMpError(raw);
 
-            logger.LogError("Erro MP {Status} ao consultar payment {MpPaymentId}. x-request-id={RequestId} payload={Payload}",
-                (int)response.StatusCode, mpPaymentId, requestId, raw);
+            logger.LogError("Erro MP {Status} ao consultar payment {MpPaymentId}. x-request-id={RequestId} code={ProviderCode}",
+                (int)response.StatusCode, mpPaymentId, requestId, mpError?.Code ?? mpError?.Error);
 
             return new PaymentResponseDto
             {
@@ -198,7 +288,7 @@ public sealed class MercadoPagoService(
         MercadoPagoOrderRequest order,
         CancellationToken cancellationToken)
     {
-        string baseUrl = configuration["MercadoPago:BaseUrl"];
+        string baseUrl = _options.BaseUrl.TrimEnd('/');
 
         using HttpRequestMessage httpRequest = new(HttpMethod.Post, $"{baseUrl}/v1/orders")
         {
@@ -233,8 +323,8 @@ public sealed class MercadoPagoService(
             string raw = await response.Content.ReadAsStringAsync(cancellationToken);
             MpError mpError = TryParseMpError(raw);
 
-            logger.LogError("Erro MP {Status} ao criar order. x-request-id={RequestId} ExternalReference={Ref} payload={Payload}",
-                (int)response.StatusCode, requestId, order.ExternalReference, raw);
+            logger.LogError("Erro MP {Status} ao criar order. x-request-id={RequestId} ExternalReference={Ref} code={ProviderCode}",
+                (int)response.StatusCode, requestId, order.ExternalReference, mpError?.Code ?? mpError?.Error);
 
             return new PaymentResponseDto
             {
@@ -257,7 +347,7 @@ public sealed class MercadoPagoService(
         string? deviceId,
         CancellationToken cancellationToken)
     {
-        string baseUrl = configuration["MercadoPago:BaseUrl"];
+        string baseUrl = _options.BaseUrl.TrimEnd('/');
 
         using HttpRequestMessage httpRequest = new(HttpMethod.Post, $"{baseUrl}/v1/payments")
         {
@@ -294,8 +384,8 @@ public sealed class MercadoPagoService(
         {
             MpError mpError = TryParseMpError(raw);
 
-            logger.LogError("Erro MP {Status} ao criar payment. x-request-id={RequestId} ExternalReference={Ref} payload={Payload}",
-                (int)response.StatusCode, requestId, payment.ExternalReference, raw);
+            logger.LogError("Erro MP {Status} ao criar payment. x-request-id={RequestId} ExternalReference={Ref} code={ProviderCode}",
+                (int)response.StatusCode, requestId, payment.ExternalReference, mpError?.Code ?? mpError?.Error);
 
             return new PaymentResponseDto
             {
@@ -317,7 +407,7 @@ public sealed class MercadoPagoService(
 
     private bool TryApplyAuth(HttpRequestMessage request, out PaymentResponseDto? error)
     {
-        string accessToken = NormalizeAccessToken(configuration["MercadoPago:AccessToken"]);
+        string accessToken = NormalizeAccessToken(_options.AccessToken);
 
         if (string.IsNullOrWhiteSpace(accessToken))
         {
@@ -394,6 +484,9 @@ public sealed class MercadoPagoService(
         string paymentStatus = payment?.Status;
         string finalStatus = paymentStatus ?? orderStatus ?? "error";
         string statusDetail = payment?.StatusDetail ?? order?.StatusDetail;
+        decimal refundedAmount = order?.Transactions?.Refunds?
+            .Select(x => decimal.TryParse(x.Amount, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal amount) ? amount : 0)
+            .Sum() ?? 0;
 
         string errorCode = finalStatus switch
         {
@@ -411,6 +504,7 @@ public sealed class MercadoPagoService(
             ErrorCode = errorCode,
             MpOrderId = order?.Id,
             MpPaymentId = payment?.Id,
+            RefundedAmount = refundedAmount,
             QrCode = payment?.PaymentMethod?.QrCode,
             QrCodeBase64 = payment?.PaymentMethod?.QrCodeBase64
         };
@@ -436,8 +530,9 @@ public sealed class MercadoPagoService(
             Status = finalStatus,
             StatusDetail = statusDetail,
             ErrorCode = errorCode,
-            MpOrderId = id,
-            MpPaymentId = id
+            MpOrderId = null,
+            MpPaymentId = id,
+            RefundedAmount = payment?.TransactionAmountRefunded
         };
     }
 
@@ -491,6 +586,7 @@ public sealed class MercadoPagoService(
         [JsonPropertyName("id")] public JsonElement Id { get; set; }
         [JsonPropertyName("status")] public string? Status { get; set; }
         [JsonPropertyName("status_detail")] public string? StatusDetail { get; set; }
+        [JsonPropertyName("transaction_amount_refunded")] public decimal? TransactionAmountRefunded { get; set; }
 
         public string? IdAsString()
         {

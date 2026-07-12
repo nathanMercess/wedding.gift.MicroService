@@ -23,6 +23,6 @@ public sealed class ContributionCreateDto
     public DateTime PaidAt { get; set; }
 
     [Required(ErrorMessage = "O status é obrigatório.")]
-    [RegularExpression("^(Pending|Paid|Cancelled)$", ErrorMessage = "Status inválido. Valores permitidos: Pending, Paid, Cancelled.")]
+    [RegularExpression("^(Pending|Paid|Cancelled|Refunded|Chargeback)$", ErrorMessage = "Status inválido.")]
     public string Status { get; set; } = "Pending";
 }

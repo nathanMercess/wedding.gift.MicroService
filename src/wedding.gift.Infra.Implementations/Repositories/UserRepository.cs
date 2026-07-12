@@ -7,6 +7,12 @@ namespace wedding.gift.Infra.Implementations.Repositories;
 
 public sealed class UserRepository(AppDbContext context) : IUserRepository
 {
+    public IQueryable<User> Query()
+        => context.Users.AsNoTracking();
+
+    public async Task<User?> GetByIdAsync(Guid id, CancellationToken cancellationToken)
+        => await context.Users.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+
     public async Task<User?> GetByNormalizedEmailAsync(string normalizedEmail, bool tracking, CancellationToken cancellationToken)
     {
         IQueryable<User> query = context.Users;

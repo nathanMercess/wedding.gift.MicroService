@@ -1,10 +1,20 @@
-using Xunit;
 using wedding.gift.Services.Implementations;
+using wedding.gift.Services.Implementations.Exceptions;
+using Xunit;
 
 namespace wedding.gift.Tests;
 
 public class GiftEnrichServiceTests
 {
+    [Fact]
+    public async Task EnrichAsync_DeveBloquearEnderecoLocal()
+    {
+        GiftEnrichService service = new(null!);
+
+        await Assert.ThrowsAsync<BadRequestException>(() =>
+            service.EnrichAsync("http://127.0.0.1/internal", CancellationToken.None));
+    }
+
     [Fact]
     public void ParseHtml_ExtractsOpenGraphTags_PropertyBeforeContent()
     {

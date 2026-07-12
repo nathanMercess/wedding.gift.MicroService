@@ -7,6 +7,7 @@ public sealed class Payment
     }
 
     public Guid Id { get; private set; }
+    public Guid CoupleId { get; private set; }
     public Guid GiftId { get; private set; }
     public string GiftName { get; private set; } = string.Empty;
     public string ContributorName { get; private set; } = string.Empty;
@@ -20,6 +21,7 @@ public sealed class Payment
     public string OrderId { get; private set; } = string.Empty;
     public string Method { get; private set; } = string.Empty;
     public decimal Amount { get; private set; }
+    public decimal RefundedAmount { get; private set; }
     public int Installments { get; private set; }
     public string Status { get; private set; } = string.Empty;
     public string? StatusDetail { get; private set; }
@@ -31,6 +33,7 @@ public sealed class Payment
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
     public DateTime ExpiresAt { get; private set; }
+    public string? CorrelationId { get; private set; }
 
     public static Payment CreateCard(
         Guid giftId,
@@ -83,7 +86,9 @@ public sealed class Payment
         string? statusDetail,
         string? mpOrderId,
         string? mpPaymentId,
-        DateTime? expiresAt = null)
+        DateTime? expiresAt = null,
+        Guid? coupleId = null,
+        string? correlationId = null)
     {
         Payment payment = CreateBase(
             giftId,
@@ -101,7 +106,9 @@ public sealed class Payment
             statusDetail,
             mpOrderId,
             mpPaymentId,
-            expiresAt);
+            expiresAt,
+            coupleId,
+            correlationId);
 
         if (contributionId.HasValue)
             payment.MarkContributionCreated(contributionId.Value);
@@ -157,7 +164,9 @@ public sealed class Payment
         string? mpPaymentId,
         string pixQrCode,
         string? qrCodeBase64,
-        DateTime? expiresAt = null)
+        DateTime? expiresAt = null,
+        Guid? coupleId = null,
+        string? correlationId = null)
     {
         Payment payment = CreateBase(
             giftId,
@@ -175,7 +184,9 @@ public sealed class Payment
             statusDetail,
             mpOrderId,
             mpPaymentId,
-            expiresAt);
+            expiresAt,
+            coupleId,
+            correlationId);
 
         payment.PixQrCode = pixQrCode;
         payment.QrCodeBase64 = qrCodeBase64;
@@ -189,7 +200,8 @@ public sealed class Payment
         string? mpOrderId = null,
         string? mpPaymentId = null,
         string? pixQrCode = null,
-        string? qrCodeBase64 = null)
+        string? qrCodeBase64 = null,
+        decimal? refundedAmount = null)
     {
         Status = status;
         StatusDetail = statusDetail;
@@ -197,6 +209,8 @@ public sealed class Payment
         MpPaymentId = mpPaymentId ?? MpPaymentId;
         PixQrCode = pixQrCode ?? PixQrCode;
         QrCodeBase64 = qrCodeBase64 ?? QrCodeBase64;
+        if (refundedAmount.HasValue)
+            RefundedAmount = Math.Clamp(refundedAmount.Value, 0, Amount);
         Touch();
     }
 
@@ -232,13 +246,16 @@ public sealed class Payment
         string? statusDetail,
         string? mpOrderId,
         string? mpPaymentId,
-        DateTime? expiresAt = null)
+        DateTime? expiresAt = null,
+        Guid? coupleId = null,
+        string? correlationId = null)
     {
         DateTime now = DateTime.UtcNow;
 
         return new Payment
         {
             Id = Guid.NewGuid(),
+            CoupleId = coupleId ?? Couple.SingletonId,
             GiftId = giftId,
             GiftName = giftName.Trim(),
             ContributorName = contributorName.Trim(),
@@ -257,7 +274,8 @@ public sealed class Payment
             MpPaymentId = mpPaymentId,
             CreatedAt = now,
             UpdatedAt = now,
-            ExpiresAt = expiresAt ?? now.AddMinutes(15)
+            ExpiresAt = expiresAt ?? now.AddMinutes(15),
+            CorrelationId = string.IsNullOrWhiteSpace(correlationId) ? null : correlationId.Trim()
         };
     }
 

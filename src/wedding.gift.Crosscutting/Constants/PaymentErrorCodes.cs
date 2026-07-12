@@ -11,4 +11,6 @@ public static class PaymentErrorCodes
     public const string ProviderError = "PROVIDER_ERROR";
     public const string ValidationError = "VALIDATION_ERROR";
     public const string OrderNotFound = "PAYMENT_ORDER_NOT_FOUND";
+    public const string PaymentNotRefundable = "PAYMENT_NOT_REFUNDABLE";
+    public const string InvalidRefundAmount = "INVALID_REFUND_AMOUNT";
 }

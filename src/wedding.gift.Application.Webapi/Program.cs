@@ -1,11 +1,19 @@
-using System.Text;
-using System.Text.Json;
+using Google.Cloud.Storage.V1;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using Polly;
+using System.IdentityModel.Tokens.Jwt;
+using System.Net;
+using System.Security.Claims;
+using System.Text;
+using System.Text.Json;
+using System.Threading.RateLimiting;
 using wedding.gift.Application.Webapi.Infrastructure;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.Configurations;
@@ -21,8 +29,12 @@ using wedding.gift.Services.Implementations.Security;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
+string connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? string.Empty;
+if (string.IsNullOrWhiteSpace(connectionString))
+    throw new InvalidOperationException("ConnectionStrings:DefaultConnection é obrigatória.");
+
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure(5, TimeSpan.FromSeconds(10), null)));
 
 CorsOptions corsOptions = builder.Configuration.GetSection(CorsOptions.SectionName).Get<CorsOptions>() ?? new CorsOptions();
 
@@ -53,12 +65,39 @@ builder.Services
 builder.Services.Configure<ApiBehaviorOptions>(options => options.UseValidationApiResponse());
 
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
-builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection(SmtpOptions.SectionName));
-builder.Services.Configure<ApiOptions>(builder.Configuration.GetSection(ApiOptions.SectionName));
-builder.Services.Configure<GcsOptions>(builder.Configuration.GetSection(GcsOptions.SectionName));
+builder.Services.AddOptions<JwtOptions>()
+    .Bind(builder.Configuration.GetSection(JwtOptions.SectionName))
+    .Validate(x => !string.IsNullOrWhiteSpace(x.Issuer), "Jwt:Issuer é obrigatório.")
+    .Validate(x => !string.IsNullOrWhiteSpace(x.Audience), "Jwt:Audience é obrigatório.")
+    .Validate(x => x.SigningKey?.Length >= 32, "Jwt:SigningKey deve ter ao menos 32 caracteres.")
+    .Validate(x => x.AccessTokenExpirationMinutes is > 0 and <= 1440, "Expiração JWT inválida.")
+    .ValidateOnStart();
+OptionsBuilder<SmtpOptions> smtpOptionsBuilder = builder.Services.AddOptions<SmtpOptions>()
+    .Bind(builder.Configuration.GetSection(SmtpOptions.SectionName));
+
+if (builder.Environment.IsProduction())
+{
+    smtpOptionsBuilder
+        .Validate(x => !string.IsNullOrWhiteSpace(x.Host), "Smtp:Host é obrigatório em produção.")
+        .Validate(x => !string.IsNullOrWhiteSpace(x.FromEmail), "Smtp:FromEmail é obrigatório em produção.")
+        .ValidateOnStart();
+}
+builder.Services.AddOptions<ApiOptions>()
+    .Bind(builder.Configuration.GetSection(ApiOptions.SectionName))
+    .Validate(x => Uri.TryCreate(x.BaseUrl, UriKind.Absolute, out _), "Api:BaseUrl inválida.")
+    .ValidateOnStart();
+builder.Services.AddOptions<GcsOptions>()
+    .Bind(builder.Configuration.GetSection(GcsOptions.SectionName))
+    .Validate(x => !string.IsNullOrWhiteSpace(x.BucketName), "Gcs:BucketName é obrigatório.")
+    .ValidateOnStart();
+builder.Services.AddOptions<MercadoPagoOptions>()
+    .Bind(builder.Configuration.GetSection(MercadoPagoOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
 
 JwtOptions jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
+if (jwtOptions.SigningKey?.Length < 32)
+    throw new InvalidOperationException("Jwt:SigningKey deve ter ao menos 32 caracteres.");
 byte[] signingKey = Encoding.UTF8.GetBytes(jwtOptions.SigningKey);
 
 builder.Services
@@ -76,18 +115,58 @@ builder.Services
             IssuerSigningKey = new SymmetricSecurityKey(signingKey),
             ClockSkew = TimeSpan.Zero
         };
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async context =>
+            {
+                string? userIdValue = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier) ??
+                                      context.Principal?.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+                if (!Guid.TryParse(userIdValue, out Guid userId))
+                {
+                    context.Fail("Token inválido.");
+                    return;
+                }
+
+                IUserRepository repository = context.HttpContext.RequestServices.GetRequiredService<IUserRepository>();
+                User? user = await repository.GetByIdAsync(userId, context.HttpContext.RequestAborted);
+
+                if (user is null || !user.IsActive)
+                    context.Fail("Usuário inativo.");
+            }
+        };
     });
 
 builder.Services.AddAuthorization();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IRequestContext, HttpRequestContext>();
 builder.Services.AddMemoryCache();
+builder.Services.AddSingleton(_ => StorageClient.Create());
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("auth", context => CreateRateLimitPartition(context, 10, TimeSpan.FromMinutes(1)));
+    options.AddPolicy("payment", context => CreateRateLimitPartition(context, 30, TimeSpan.FromMinutes(5)));
+    options.AddPolicy("public-write", context => CreateRateLimitPartition(context, 20, TimeSpan.FromMinutes(5)));
+    options.AddPolicy("webhook", context => CreateRateLimitPartition(context, 120, TimeSpan.FromMinutes(1)));
+    options.AddPolicy("order-lookup", context => CreateRateLimitPartition(context, 10, TimeSpan.FromMinutes(15)));
+});
+builder.Services.AddHealthChecks()
+    .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"])
+    .AddDbContextCheck<AppDbContext>("database", tags: ["ready"]);
 
 builder.Services
     .AddHttpClient<IMercadoPagoService, MercadoPagoService>(client => client.Timeout = TimeSpan.FromSeconds(20))
     .AddTransientHttpErrorPolicy(policy => policy.WaitAndRetryAsync(
-        3, retryAttempt => TimeSpan.FromMilliseconds(300 * Math.Pow(2, retryAttempt))));
+        3, retryAttempt => TimeSpan.FromMilliseconds(300 * Math.Pow(2, retryAttempt))))
+    .AddPolicyHandler(Policy.HandleResult<HttpResponseMessage>(response => response.StatusCode == HttpStatusCode.TooManyRequests)
+        .WaitAndRetryAsync(3, retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt))));
 
 builder.Services.AddSingleton<wedding.gift.Services.Contracts.IBackgroundTaskQueue, wedding.gift.Application.Webapi.Infrastructure.BackgroundTaskQueue>();
 builder.Services.AddHostedService<wedding.gift.Application.Webapi.Infrastructure.QueuedHostedService>();
+builder.Services.AddHostedService<ApiRequestLogCleanupHostedService>();
+builder.Services.AddHostedService<PaymentReconciliationHostedService>();
+builder.Services.AddHostedService<EmailOutboxHostedService>();
 
 builder.Services.AddSwaggerGen(options =>
 {
@@ -112,15 +191,22 @@ WebApplication app = builder.Build();
 await ApplyMigrationsAsync(app.Services);
 await EnsureBootstrapAdminAsync(app.Services, builder.Configuration);
 
+app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseGlobalExceptionHandler();
 app.UseMiddleware<ApiResponseMiddleware>();
 app.UseMiddleware<CacheInvalidationMiddleware>();
-app.UseCors("AngularDev");
-app.UseSwagger();
-app.UseSwaggerUI();
+app.UseCors("AllowedOrigins");
+app.UseRateLimiter();
+if (!app.Environment.IsProduction())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 app.UseAuthentication();
 app.UseMiddleware<ApiRequestLoggingMiddleware>();
 app.UseAuthorization();
+app.MapHealthChecks("/health/live", new() { Predicate = registration => registration.Tags.Contains("live") });
+app.MapHealthChecks("/health/ready", new() { Predicate = registration => registration.Tags.Contains("ready") });
 app.MapControllers();
 
 app.Run();
@@ -129,7 +215,9 @@ static async Task ApplyMigrationsAsync(IServiceProvider services)
 {
     using IServiceScope scope = services.CreateScope();
     AppDbContext dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await dbContext.Database.MigrateAsync();
+
+    if (dbContext.Database.IsRelational())
+        await dbContext.Database.MigrateAsync();
 }
 
 static async Task EnsureBootstrapAdminAsync(IServiceProvider services, IConfiguration configuration)
@@ -180,4 +268,24 @@ static string GetBootstrapAdminRole(string role)
         return UserRoles.SuperAdmin;
 
     throw new BadRequestException(ErrorCodes.INVALID_BOOTSTRAP_ADMIN_ROLE);
+}
+
+static RateLimitPartition<string> CreateRateLimitPartition(
+    HttpContext context,
+    int permitLimit,
+    TimeSpan window)
+{
+    string partitionKey = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+    return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ => new FixedWindowRateLimiterOptions
+    {
+        AutoReplenishment = true,
+        PermitLimit = permitLimit,
+        QueueLimit = 0,
+        Window = window
+    });
+}
+
+public partial class Program
+{
 }

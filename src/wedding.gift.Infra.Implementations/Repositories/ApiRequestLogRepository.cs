@@ -20,4 +20,16 @@ public sealed class ApiRequestLogRepository(AppDbContext context) : IApiRequestL
 
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
         => await context.SaveChangesAsync(cancellationToken);
+
+    public async Task<int> DeleteOlderThanAsync(DateTime cutoffUtc, CancellationToken cancellationToken)
+    {
+        var query = context.ApiRequestLogs.Where(x => x.StartedAtUtc < cutoffUtc);
+        if (context.Database.IsRelational())
+            return await query.ExecuteDeleteAsync(cancellationToken);
+
+        var expiredLogs = await query.ToListAsync(cancellationToken);
+        context.ApiRequestLogs.RemoveRange(expiredLogs);
+        await context.SaveChangesAsync(cancellationToken);
+        return expiredLogs.Count;
+    }
 }

@@ -12,6 +12,7 @@ public sealed class PaymentMapping : IEntityTypeConfiguration<Payment>
 
         builder.HasKey(x => x.Id);
 
+        builder.Property(x => x.CoupleId).IsRequired();
         builder.Property(x => x.GiftId).IsRequired();
         builder.Property(x => x.GiftName).IsRequired().HasMaxLength(120);
         builder.Property(x => x.ContributorName).IsRequired().HasMaxLength(120);
@@ -23,6 +24,7 @@ public sealed class PaymentMapping : IEntityTypeConfiguration<Payment>
         builder.Property(x => x.OrderId).IsRequired().HasMaxLength(100);
         builder.Property(x => x.Method).IsRequired().HasMaxLength(50);
         builder.Property(x => x.Amount).HasColumnType("decimal(10,2)").IsRequired();
+        builder.Property(x => x.RefundedAmount).HasColumnType("decimal(10,2)").IsRequired();
         builder.Property(x => x.Installments).IsRequired();
         builder.Property(x => x.Status).IsRequired().HasMaxLength(50);
         builder.Property(x => x.StatusDetail).IsRequired(false).HasMaxLength(60);
@@ -34,6 +36,7 @@ public sealed class PaymentMapping : IEntityTypeConfiguration<Payment>
         builder.Property(x => x.CreatedAt).IsRequired();
         builder.Property(x => x.UpdatedAt).IsRequired();
         builder.Property(x => x.ExpiresAt).IsRequired();
+        builder.Property(x => x.CorrelationId).IsRequired(false).HasMaxLength(100);
 
         builder.HasOne(x => x.Contribution)
             .WithMany()
@@ -45,5 +48,8 @@ public sealed class PaymentMapping : IEntityTypeConfiguration<Payment>
         builder.HasIndex(x => x.Nsu);
         builder.HasIndex(x => x.MpOrderId).IsUnique().HasFilter("[MpOrderId] IS NOT NULL");
         builder.HasIndex(x => x.ContributionId).IsUnique().HasFilter("[ContributionId] IS NOT NULL");
+        builder.HasIndex(x => new { x.GiftId, x.Status, x.ExpiresAt });
+        builder.HasIndex(x => new { x.Status, x.UpdatedAt });
+        builder.HasIndex(x => new { x.CoupleId, x.Status, x.UpdatedAt });
     }
 }

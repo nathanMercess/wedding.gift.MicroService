@@ -30,4 +30,7 @@ public sealed class ApiRequestLogService(IApiRequestLogRepository apiRequestLogR
         await apiRequestLogRepository.AddAsync(requestLog, cancellationToken);
         await apiRequestLogRepository.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task<int> CleanupAsync(DateTime cutoffUtc, CancellationToken cancellationToken)
+        => await apiRequestLogRepository.DeleteOlderThanAsync(cutoffUtc, cancellationToken);
 }

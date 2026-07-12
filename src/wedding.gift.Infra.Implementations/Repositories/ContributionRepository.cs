@@ -25,7 +25,7 @@ public sealed class ContributionRepository(AppDbContext context) : IContribution
             .ToListAsync(cancellationToken);
 
     public async Task<Contribution?> GetByIdAsync(Guid id, CancellationToken cancellationToken)
-        => await context.Contributions.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        => await context.Contributions.Include(x => x.Gift).FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
 
     public async Task AddAsync(Contribution contribution, CancellationToken cancellationToken)
         => await context.Contributions.AddAsync(contribution, cancellationToken);
@@ -33,7 +33,7 @@ public sealed class ContributionRepository(AppDbContext context) : IContribution
     public async Task<decimal> SumPaidAmountAsync(CancellationToken cancellationToken)
         => await context.Contributions
             .Where(x => x.Status == ContributionStatus.Paid)
-            .SumAsync(x => x.Amount, cancellationToken);
+            .SumAsync(x => x.Amount - x.RefundedAmount, cancellationToken);
 
     public async Task<int> CountUniquePaidContributorsAsync(CancellationToken cancellationToken)
         => await context.Contributions

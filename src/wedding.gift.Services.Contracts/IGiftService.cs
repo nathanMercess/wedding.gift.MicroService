@@ -11,7 +11,6 @@ public interface IGiftService
     Task<GiftResponseDto> GetByIdAsync(Guid id, CancellationToken cancellationToken);
     Task<GiftResponseDto> CreateAsync(GiftCreateDto dto, CancellationToken cancellationToken);
     Task<GiftResponseDto> UpdateAsync(Guid id, GiftUpdateDto dto, CancellationToken cancellationToken);
-    Task<GiftResponseDto> UpdateAvailabilityAsync(Guid id, bool available, CancellationToken cancellationToken);
     Task DeleteAsync(Guid id, CancellationToken cancellationToken);
     Task<IReadOnlyList<ContributionResponseDto>> GetContributionsByGiftIdAsync(Guid giftId, CancellationToken cancellationToken);
     Task<ContributionResponseDto> ContributeAsync(Guid giftId, ContributeDto dto, CancellationToken cancellationToken);

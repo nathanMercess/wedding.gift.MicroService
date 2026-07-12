@@ -6,14 +6,21 @@ public sealed class CacheInvalidationMiddleware(RequestDelegate next)
 {
     public async Task InvokeAsync(HttpContext context, IApplicationCacheService cacheService)
     {
+        bool completed = false;
+
         try
         {
             await next(context);
+            completed = true;
         }
         finally
         {
-            if (!HttpMethods.IsGet(context.Request.Method))
+            if (completed &&
+                !HttpMethods.IsGet(context.Request.Method) &&
+                context.Response.StatusCode is >= 200 and < 400)
+            {
                 cacheService.Invalidate();
+            }
         }
     }
 }

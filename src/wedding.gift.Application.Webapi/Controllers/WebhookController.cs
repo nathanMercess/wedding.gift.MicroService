@@ -2,29 +2,34 @@
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using wedding.gift.Application.Webapi.Controllers.Base;
+using wedding.gift.Crosscutting.Models.Configurations;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Services.Contracts;
 
 namespace wedding.gift.Application.Webapi.Controllers;
 
 [AllowAnonymous]
+[EnableRateLimiting("webhook")]
 [Route("webhook")]
 [Route("~/webhook")]
 public sealed class WebhookController(
     IMercadoPagoService mercadoPago,
     IPaymentService payments,
-    IConfiguration config,
+    IOptions<MercadoPagoOptions> mercadoPagoOptions,
     IWebHostEnvironment env,
     ILogger<WebhookController> logger) : ApiControllerBase
 {
     [HttpPost("mercadopago")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
     public async Task<IActionResult> ReceiveMercadoPagoNotification(
         [FromQuery(Name = "data.id")] string? dataId,
         [FromQuery] string? id,
@@ -46,22 +51,22 @@ public sealed class WebhookController(
             await IsMercadoPagoPanelValidationRequestAsync(Request, cancellationToken))
         {
             logger.LogInformation("Webhook Mercado Pago: teste de URL do painel aceito.");
-            return NoContent();
+            return Ok();
         }
 
         if (!ValidateMercadoPagoSignature(Request, notificationId))
             return Unauthorized();
 
-        if (notificationType != "payment" && notificationType != "order")
+        if (notificationType is not ("payment" or "order" or "orders"))
         {
             logger.LogInformation("Webhook Mercado Pago ignorado por tipo nao suportado. Type={Type}, DataId={DataId}.", notificationType, notificationId);
-            return NoContent();
+            return Ok();
         }
 
         if (string.IsNullOrWhiteSpace(notificationId))
         {
             logger.LogWarning("Webhook Mercado Pago recebido sem identificador. Type={Type}.", notificationType);
-            return NoContent();
+            return Ok();
         }
 
         PaymentResponseDto status = await mercadoPago.GetOrderStatusAsync(notificationId, cancellationToken);
@@ -73,13 +78,19 @@ public sealed class WebhookController(
                 notificationId,
                 status.ErrorCode,
                 status.Message);
-            return NoContent();
+            return StatusCode(StatusCodes.Status502BadGateway);
         }
 
-        if (!string.IsNullOrWhiteSpace(status.MpOrderId))
-            await payments.ConfirmPaymentAsync(status.MpOrderId, status.Status, status.StatusDetail, status.MpPaymentId, cancellationToken);
+        string providerId = status.MpOrderId ?? status.MpPaymentId ?? notificationId;
+        await payments.ConfirmPaymentAsync(
+            providerId,
+            status.Status,
+            status.StatusDetail,
+            status.MpPaymentId,
+            status.RefundedAmount,
+            cancellationToken);
 
-        return NoContent();
+        return Ok();
     }
 
     private static bool HasMercadoPagoSignatureHeaders(HttpRequest request)
@@ -136,7 +147,7 @@ public sealed class WebhookController(
 
     private bool ValidateMercadoPagoSignature(HttpRequest request, string? dataId)
     {
-        string secret = config["MercadoPago:WebhookSecret"] ?? string.Empty;
+        string secret = mercadoPagoOptions.Value.WebhookSecret;
 
         if (string.IsNullOrWhiteSpace(secret) || secret == "SECRET_GERADO_NO_PAINEL_DE_WEBHOOKS")
         {
@@ -174,6 +185,12 @@ public sealed class WebhookController(
             return false;
         }
 
+        if (!IsRecentTimestamp(ts))
+        {
+            logger.LogWarning("Webhook Mercado Pago rejeitado: timestamp fora da janela permitida.");
+            return false;
+        }
+
         string manifest = BuildSignatureManifest(dataId, requestIdHeader.ToString(), ts);
 
         using HMACSHA256 hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
@@ -196,6 +213,25 @@ public sealed class WebhookController(
         if (!isValid) logger.LogWarning("Webhook Mercado Pago rejeitado: assinatura invalida. DataId={DataId}.", dataId);
 
         return isValid;
+    }
+
+    private static bool IsRecentTimestamp(string timestamp)
+    {
+        if (!long.TryParse(timestamp, out long value))
+            return false;
+
+        try
+        {
+            DateTimeOffset sentAt = value > 10_000_000_000
+                ? DateTimeOffset.FromUnixTimeMilliseconds(value)
+                : DateTimeOffset.FromUnixTimeSeconds(value);
+
+            return Math.Abs((DateTimeOffset.UtcNow - sentAt).TotalMinutes) <= 5;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return false;
+        }
     }
 
     private static string BuildSignatureManifest(string? dataId, string? requestId, string ts)

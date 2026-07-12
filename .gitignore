@@ -364,3 +364,9 @@ FodyWeavers.xsd
 
 instructions/
 *.md
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+appsettings.*.local.json
+secrets.json

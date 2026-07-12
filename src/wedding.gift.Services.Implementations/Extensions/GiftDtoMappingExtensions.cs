@@ -5,16 +5,16 @@ namespace wedding.gift.Services.Implementations.Extensions;
 
 public static class GiftDtoMappingExtensions
 {
-    public static Gift ToEntity(this GiftCreateDto dto)
+    public static Gift ToEntity(this GiftCreateDto dto, Guid? coupleId = null)
         => Gift.Create(
             dto.Name,
             dto.Description,
             dto.Price,
             dto.Total,
             dto.Image,
-            dto.Category ?? string.Empty,
-            dto.Available,
-            dto.AllowPartialContribution);
+            dto.Category,
+            dto.AllowPartialContribution,
+            coupleId);
 
     public static void ApplyUpdate(this Gift entity, GiftUpdateDto dto)
         => entity.Update(
@@ -23,11 +23,14 @@ public static class GiftDtoMappingExtensions
             dto.Price,
             dto.Total,
             dto.Image,
-            dto.Category ?? string.Empty,
-            dto.Available,
+            dto.Category,
             dto.AllowPartialContribution);
 
-    public static GiftResponseDto ToResponseDto(this Gift entity, decimal reservedAmount = 0, bool showCategory = true)
+    public static GiftResponseDto ToResponseDto(
+        this Gift entity,
+        decimal reservedAmount = 0,
+        bool showCategory = true,
+        bool allowsUnlimitedPurchases = false)
     {
         decimal remaining = Math.Max(entity.Total - entity.RaisedAmount - reservedAmount, 0);
 
@@ -42,8 +45,8 @@ public static class GiftDtoMappingExtensions
             Remaining = remaining,
             FullyFunded = entity.Total > 0 && remaining <= 0,
             Image = entity.Image,
-            Category = showCategory ? entity.Category : string.Empty,
-            Available = entity.Available,
+            Category = showCategory ? entity.Category ?? string.Empty : string.Empty,
+            Available = allowsUnlimitedPurchases || remaining > 0,
             AllowPartialContribution = entity.AllowPartialContribution
         };
     }

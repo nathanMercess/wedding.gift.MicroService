@@ -15,5 +15,6 @@ public sealed class RegisterRequestDto
 
     [Required(ErrorMessage = "A senha é obrigatória.")]
     [MinLength(8, ErrorMessage = "A senha deve ter no mínimo 8 caracteres.")]
+    [MaxLength(128, ErrorMessage = "A senha deve ter no máximo 128 caracteres.")]
     public string Password { get; set; } = string.Empty;
 }

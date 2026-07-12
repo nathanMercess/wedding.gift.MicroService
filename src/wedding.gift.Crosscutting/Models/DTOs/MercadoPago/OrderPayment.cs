@@ -9,4 +9,8 @@ public sealed class OrderPayment
 
     [JsonPropertyName("payment_method")]
     public OrderPaymentMethod PaymentMethod { get; set; } = new();
+
+    [JsonPropertyName("expiration_time")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ExpirationTime { get; set; }
 }

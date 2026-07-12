@@ -12,12 +12,14 @@ namespace wedding.gift.Application.Webapi.Controllers;
 public sealed class AdminGiftsController(IGiftService giftService, IGiftEnrichService giftEnrichService) : ApiControllerBase
 {
     [HttpGet]
+    [ProducesResponseType(typeof(ApiResponseDto<PagedResult<GiftResponseDto>>), StatusCodes.Status200OK)]
     public async Task<PagedResult<GiftResponseDto>> GetAll(
         [FromQuery] GiftQueryParams query,
         CancellationToken cancellationToken)
         => await giftService.GetAllAdminAsync(query, cancellationToken);
 
     [HttpPost]
+    [ProducesResponseType(typeof(ApiResponseDto<GiftResponseDto>), StatusCodes.Status201Created)]
     public async Task<GiftResponseDto> Create([FromBody] GiftCreateDto dto, CancellationToken cancellationToken)
     {
         GiftResponseDto created = await giftService.CreateAsync(dto, cancellationToken);
@@ -26,20 +28,20 @@ public sealed class AdminGiftsController(IGiftService giftService, IGiftEnrichSe
     }
 
     [HttpPut("{id:guid}")]
+    [ProducesResponseType(typeof(ApiResponseDto<GiftResponseDto>), StatusCodes.Status200OK)]
     public async Task<GiftResponseDto> Update(Guid id, [FromBody] GiftUpdateDto dto, CancellationToken cancellationToken)
         => await giftService.UpdateAsync(id, dto, cancellationToken);
 
-    [HttpPatch("{id:guid}/availability")]
-    public async Task<GiftResponseDto> UpdateAvailability(Guid id, [FromBody] GiftAvailabilityUpdateDto dto, CancellationToken cancellationToken)
-        => await giftService.UpdateAvailabilityAsync(id, dto.Available, cancellationToken);
-
     [HttpDelete("{id:guid}")]
-    public async Task Delete(Guid id, CancellationToken cancellationToken)
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
         await giftService.DeleteAsync(id, cancellationToken);
+        return NoContent();
     }
 
     [HttpPost("enrich")]
+    [ProducesResponseType(typeof(ApiResponseDto<GiftEnrichResponseDto>), StatusCodes.Status200OK)]
     public async Task<GiftEnrichResponseDto> Enrich([FromBody] GiftEnrichRequestDto dto, CancellationToken cancellationToken)
         => await giftEnrichService.EnrichAsync(dto.Url, cancellationToken);
 }

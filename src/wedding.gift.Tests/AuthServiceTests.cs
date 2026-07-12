@@ -1,10 +1,9 @@
 #nullable enable
 
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using Xunit;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.Configurations;
 using wedding.gift.Crosscutting.Models.DTOs.Auth;
@@ -15,6 +14,7 @@ using wedding.gift.Services.Contracts;
 using wedding.gift.Services.Implementations;
 using wedding.gift.Services.Implementations.Exceptions;
 using wedding.gift.Services.Implementations.Security;
+using Xunit;
 
 namespace wedding.gift.Tests;
 
@@ -205,6 +205,32 @@ public class AuthServiceTests
         Assert.Equal(ErrorCodes.INVALID_CONFIRMATION_TOKEN, ex.Code);
     }
 
+    [Fact]
+    public async Task RefreshAsync_DeveRotacionarRefreshTokenERevogarAnterior()
+    {
+        AppDbContext context = CreateContext();
+        context.Users.Add(CreateUser("Admin", "admin@weddinggift.com", UserRoles.Admin, true));
+        await context.SaveChangesAsync();
+        AuthService service = CreateService(context);
+        LoginResponseDto login = await service.LoginAsync(new LoginRequestDto
+        {
+            Email = "admin@weddinggift.com",
+            Password = "SenhaForte123!"
+        }, CancellationToken.None);
+
+        LoginResponseDto refreshed = await service.RefreshAsync(new RefreshTokenRequestDto
+        {
+            RefreshToken = login.RefreshToken
+        }, CancellationToken.None);
+
+        Assert.NotEmpty(refreshed.RefreshToken);
+        Assert.NotEqual(login.RefreshToken, refreshed.RefreshToken);
+        await Assert.ThrowsAsync<UnauthorizedException>(() => service.RefreshAsync(new RefreshTokenRequestDto
+        {
+            RefreshToken = login.RefreshToken
+        }, CancellationToken.None));
+    }
+
     private static AppDbContext CreateContext()
         => new(new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -220,7 +246,11 @@ public class AuthServiceTests
             AccessTokenExpirationMinutes = 60
         });
 
-        return new AuthService(new UserRepository(context), jwtOptions, emailService ?? new FakeEmailService());
+        return new AuthService(
+            new UserRepository(context),
+            jwtOptions,
+            emailService ?? new FakeEmailService(),
+            refreshTokenRepository: new RefreshTokenRepository(context));
     }
 
     private static User CreateUser(
@@ -261,6 +291,15 @@ public class AuthServiceTests
             => Task.CompletedTask;
 
         public Task SendContributionNotificationAsync(string contributorName, decimal amount, CancellationToken cancellationToken)
+            => Task.CompletedTask;
+
+        public Task SendGuestReceiptAsync(
+            string toEmail,
+            string contributorName,
+            string giftName,
+            string orderId,
+            decimal amount,
+            CancellationToken cancellationToken)
             => Task.CompletedTask;
 
         public Task SendPaymentAttemptNotificationAsync(string subject, string body, CancellationToken cancellationToken)

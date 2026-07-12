@@ -10,6 +10,7 @@ public sealed class CoupleController(ICoupleService coupleService) : ApiControll
 {
     [AllowAnonymous]
     [HttpGet]
+    [ProducesResponseType(typeof(ApiResponseDto<CoupleResponseDto>), StatusCodes.Status200OK)]
     public async Task<CoupleResponseDto> Get(CancellationToken cancellationToken)
         => await coupleService.GetAsync(cancellationToken);
 }

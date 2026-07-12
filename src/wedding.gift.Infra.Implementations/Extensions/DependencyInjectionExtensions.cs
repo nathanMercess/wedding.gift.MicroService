@@ -14,6 +14,8 @@ public static class DependencyInjectionExtensions
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IPaymentRepository, PaymentRepository>();
         services.AddScoped<IApiRequestLogRepository, ApiRequestLogRepository>();
+        services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+        services.AddScoped<IOperationalRepository, OperationalRepository>();
 
         return services;
     }

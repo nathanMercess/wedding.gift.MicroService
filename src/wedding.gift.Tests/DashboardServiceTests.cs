@@ -89,12 +89,12 @@ public class DashboardServiceTests
         Assert.Equal(1, dashboard.Monitoring.SlowRequests);
         Assert.Equal("critical", dashboard.ActionCenter.HealthStatus);
         Assert.Contains(dashboard.ActionCenter.Items, x => x.Category == "api" && x.Severity == "critical");
-        Assert.Contains(dashboard.ActionCenter.Items, x => x.Category == "gifts" && x.Severity == "critical");
+        Assert.DoesNotContain(dashboard.ActionCenter.Items, x => x.Category == "gifts" && x.Severity == "critical");
         Assert.Equal(150m, dashboard.Revenue.TotalRaised);
         Assert.Equal(250m, dashboard.Revenue.RemainingAmount);
         Assert.Equal(1, dashboard.PaymentHealth.FailedLast24Hours);
         Assert.Single(dashboard.PaymentHealth.TopFailureReasons);
-        Assert.Equal(1, dashboard.GiftInsights.FullyFundedButAvailable);
+        Assert.Equal(0, dashboard.GiftInsights.FullyFundedButAvailable);
         Assert.Equal(1, dashboard.ApiHealth.ServerErrors);
         Assert.Equal(1, dashboard.ApiHealth.SlowRequests);
         Assert.Contains(dashboard.ActivityFeed, x => x.Type == "api" && x.Severity == "critical" && x.CorrelationId == "req_500");
@@ -142,7 +142,7 @@ public class DashboardServiceTests
 
     private static Gift SeedGift(AppDbContext context, string name, string category, decimal total)
     {
-        Gift gift = Gift.Create(name, $"{name} description", total, total, $"{name}.jpg", category, true, true);
+        Gift gift = Gift.Create(name, $"{name} description", total, total, $"{name}.jpg", category, true);
 
         context.Gifts.Add(gift);
         context.SaveChanges();

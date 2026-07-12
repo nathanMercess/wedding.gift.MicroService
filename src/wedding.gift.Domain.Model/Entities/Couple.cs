@@ -4,6 +4,7 @@ namespace wedding.gift.Domain.Model.Entities;
 
 public sealed class Couple
 {
+    public static readonly Guid SingletonId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private Couple()
     {
     }
@@ -21,14 +22,15 @@ public sealed class Couple
     public string? SiteSettingsJson { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
+    public byte[] RowVersion { get; private set; } = [];
 
-    public static Couple Create()
+    public static Couple Create(Guid? id = null)
     {
         DateTime now = DateTime.UtcNow;
 
         return new Couple
         {
-            Id = Guid.NewGuid(),
+            Id = id ?? SingletonId,
             CreatedAt = now,
             UpdatedAt = now
         };

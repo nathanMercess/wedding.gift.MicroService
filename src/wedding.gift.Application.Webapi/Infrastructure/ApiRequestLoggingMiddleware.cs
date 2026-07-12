@@ -24,7 +24,7 @@ public sealed class ApiRequestLoggingMiddleware(RequestDelegate next, ILogger<Ap
         "token"
     };
 
-    public async Task InvokeAsync(HttpContext context, IApiRequestLogService apiRequestLogService)
+    public async Task InvokeAsync(HttpContext context, IBackgroundTaskQueue backgroundTaskQueue)
     {
         if (!ShouldLog(context))
         {
@@ -48,13 +48,13 @@ public sealed class ApiRequestLoggingMiddleware(RequestDelegate next, ILogger<Ap
         finally
         {
             stopwatch.Stop();
-            await SaveLogAsync(context, apiRequestLogService, startedAtUtc, stopwatch.ElapsedMilliseconds, capturedException);
+            await QueueLogAsync(context, backgroundTaskQueue, startedAtUtc, stopwatch.ElapsedMilliseconds, capturedException);
         }
     }
 
-    private async Task SaveLogAsync(
+    private async Task QueueLogAsync(
         HttpContext context,
-        IApiRequestLogService apiRequestLogService,
+        IBackgroundTaskQueue backgroundTaskQueue,
         DateTime startedAtUtc,
         long durationMilliseconds,
         Exception capturedException)
@@ -64,13 +64,13 @@ public sealed class ApiRequestLoggingMiddleware(RequestDelegate next, ILogger<Ap
             int statusCode = GetStatusCode(context, capturedException);
             ClaimsPrincipal user = context.User;
 
-            await apiRequestLogService.SaveAsync(new ApiRequestLogCreateDto
+            ApiRequestLogCreateDto dto = new()
             {
                 StartedAtUtc = startedAtUtc,
                 CompletedAtUtc = DateTime.UtcNow,
                 DurationMilliseconds = durationMilliseconds,
                 Method = context.Request.Method,
-                Path = context.Request.Path.Value ?? string.Empty,
+                Path = RequestPathSanitizer.Sanitize(context.Request.Path),
                 QueryString = BuildSanitizedQueryString(context.Request.Query),
                 EndpointName = context.GetEndpoint()?.DisplayName ?? string.Empty,
                 StatusCode = statusCode,
@@ -82,18 +82,25 @@ public sealed class ApiRequestLoggingMiddleware(RequestDelegate next, ILogger<Ap
                 CorrelationId = context.TraceIdentifier,
                 ExceptionType = capturedException?.GetType().Name ?? string.Empty,
                 ExceptionMessage = capturedException?.Message ?? string.Empty
+            };
+
+            await backgroundTaskQueue.EnqueueAsync(async (services, cancellationToken) =>
+            {
+                IApiRequestLogService service = services.GetRequiredService<IApiRequestLogService>();
+                await service.SaveAsync(dto, cancellationToken);
             }, CancellationToken.None);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Falha ao persistir log de request da API. Path={Path}, CorrelationId={CorrelationId}.",
-                context.Request.Path,
+                RequestPathSanitizer.Sanitize(context.Request.Path),
                 context.TraceIdentifier);
         }
     }
 
     private static bool ShouldLog(HttpContext context)
-        => context.Request.Path.StartsWithSegments("/api");
+        => context.Request.Path.StartsWithSegments("/api") ||
+           context.Request.Path.StartsWithSegments("/webhook");
 
     private static int GetStatusCode(HttpContext context, Exception capturedException)
     {

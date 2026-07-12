@@ -11,6 +11,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<Couple> Couples => Set<Couple>();
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<ApiRequestLog> ApiRequestLogs => Set<ApiRequestLog>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<PaymentOrderLookupToken> PaymentOrderLookupTokens => Set<PaymentOrderLookupToken>();
+    public DbSet<OrderLookupAttempt> OrderLookupAttempts => Set<OrderLookupAttempt>();
+    public DbSet<EmailOutboxMessage> EmailOutboxMessages => Set<EmailOutboxMessage>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

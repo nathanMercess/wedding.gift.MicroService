@@ -12,6 +12,7 @@ public sealed class UserMapping : IEntityTypeConfiguration<User>
         builder.HasKey(x => x.Id);
 
         builder.Property(x => x.Name).IsRequired().HasMaxLength(120);
+        builder.Property(x => x.CoupleId).IsRequired(false);
         builder.Property(x => x.Email).IsRequired().HasMaxLength(180);
         builder.Property(x => x.NormalizedEmail).IsRequired().HasMaxLength(180);
         builder.Property(x => x.PasswordHash).IsRequired().HasMaxLength(300);
@@ -21,9 +22,12 @@ public sealed class UserMapping : IEntityTypeConfiguration<User>
         builder.Property(x => x.IsEmailConfirmed).HasDefaultValue(false);
         builder.Property(x => x.EmailConfirmationToken).HasMaxLength(200);
         builder.Property(x => x.EmailConfirmationTokenExpiresAt);
+        builder.Property(x => x.PasswordResetToken).HasMaxLength(200);
+        builder.Property(x => x.PasswordResetTokenExpiresAt);
         builder.Property(x => x.CreatedAt).IsRequired();
         builder.Property(x => x.UpdatedAt).IsRequired();
 
         builder.HasIndex(x => x.NormalizedEmail).IsUnique();
+        builder.HasIndex(x => x.CoupleId);
     }
 }

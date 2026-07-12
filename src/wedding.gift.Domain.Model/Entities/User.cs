@@ -7,6 +7,7 @@ public sealed class User
     }
 
     public Guid Id { get; private set; }
+    public Guid? CoupleId { get; private set; }
     public string Name { get; private set; } = string.Empty;
     public string Email { get; private set; } = string.Empty;
     public string NormalizedEmail { get; private set; } = string.Empty;
@@ -17,6 +18,8 @@ public sealed class User
     public bool IsEmailConfirmed { get; private set; }
     public string? EmailConfirmationToken { get; private set; }
     public DateTime? EmailConfirmationTokenExpiresAt { get; private set; }
+    public string? PasswordResetToken { get; private set; }
+    public DateTime? PasswordResetTokenExpiresAt { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
 
@@ -29,13 +32,15 @@ public sealed class User
         string role,
         bool isEmailConfirmed,
         string? emailConfirmationToken,
-        DateTime? emailConfirmationTokenExpiresAt)
+        DateTime? emailConfirmationTokenExpiresAt,
+        Guid? coupleId = null)
     {
         DateTime now = DateTime.UtcNow;
 
         return new User
         {
             Id = Guid.NewGuid(),
+            CoupleId = coupleId ?? (role == "SuperAdmin" ? null : Couple.SingletonId),
             Name = name.Trim(),
             Email = email.Trim(),
             NormalizedEmail = normalizedEmail.Trim(),
@@ -59,9 +64,44 @@ public sealed class User
         Touch();
     }
 
+    public void SetEmailConfirmationToken(string tokenHash, DateTime expiresAtUtc)
+    {
+        EmailConfirmationToken = tokenHash;
+        EmailConfirmationTokenExpiresAt = expiresAtUtc;
+        Touch();
+    }
+
+    public void SetPasswordResetToken(string tokenHash, DateTime expiresAtUtc)
+    {
+        PasswordResetToken = tokenHash;
+        PasswordResetTokenExpiresAt = expiresAtUtc;
+        Touch();
+    }
+
+    public void ResetPassword(string passwordHash, string passwordSalt)
+    {
+        PasswordHash = passwordHash;
+        PasswordSalt = passwordSalt;
+        PasswordResetToken = null;
+        PasswordResetTokenExpiresAt = null;
+        Touch();
+    }
+
     public void Deactivate()
     {
         IsActive = false;
+        Touch();
+    }
+
+    public void Activate()
+    {
+        IsActive = true;
+        Touch();
+    }
+
+    public void SetRole(string role)
+    {
+        Role = role;
         Touch();
     }
 

@@ -1,4 +1,7 @@
 using System.Globalization;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using wedding.gift.Crosscutting.Constants;
@@ -10,6 +13,7 @@ namespace wedding.gift.Services.Implementations;
 
 public sealed partial class GiftEnrichService(IHttpClientFactory httpClientFactory) : IGiftEnrichService
 {
+    private const int MaxHtmlCharacters = 2 * 1024 * 1024;
     private static readonly string[] PriceMetaKeys =
     [
         "product:price:amount",
@@ -24,12 +28,37 @@ public sealed partial class GiftEnrichService(IHttpClientFactory httpClientFacto
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
             throw new BadRequestException(ErrorCodes.INVALID_PRODUCT_URL);
 
+        await ValidateTargetAsync(uri, cancellationToken);
+
         HttpClient client = httpClientFactory.CreateClient("enrich");
 
         string html;
         try
         {
-            html = await client.GetStringAsync(uri, cancellationToken);
+            using HttpResponseMessage response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            if (response.Content.Headers.ContentLength > MaxHtmlCharacters)
+                throw new BadRequestException(ErrorCodes.PRODUCT_RESPONSE_TOO_LARGE);
+
+            await using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using StreamReader reader = new(stream, Encoding.UTF8, true);
+            char[] buffer = new char[8192];
+            StringBuilder content = new();
+
+            while (true)
+            {
+                int read = await reader.ReadAsync(buffer.AsMemory(), cancellationToken);
+                if (read == 0)
+                    break;
+
+                if (content.Length + read > MaxHtmlCharacters)
+                    throw new BadRequestException(ErrorCodes.PRODUCT_RESPONSE_TOO_LARGE);
+
+                content.Append(buffer, 0, read);
+            }
+
+            html = content.ToString();
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
@@ -37,6 +66,49 @@ public sealed partial class GiftEnrichService(IHttpClientFactory httpClientFacto
         }
 
         return ParseHtml(html);
+    }
+
+    private static async Task ValidateTargetAsync(Uri uri, CancellationToken cancellationToken)
+    {
+        if (uri.IsLoopback)
+            throw new BadRequestException(ErrorCodes.INVALID_PRODUCT_URL);
+
+        IPAddress[] addresses;
+
+        try
+        {
+            addresses = await Dns.GetHostAddressesAsync(uri.DnsSafeHost, cancellationToken);
+        }
+        catch (SocketException)
+        {
+            throw new BadRequestException(ErrorCodes.PRODUCT_URL_UNREACHABLE);
+        }
+
+        if (addresses.Length == 0 || addresses.Any(IsBlockedAddress))
+            throw new BadRequestException(ErrorCodes.INVALID_PRODUCT_URL);
+    }
+
+    private static bool IsBlockedAddress(IPAddress address)
+    {
+        if (IPAddress.IsLoopback(address) || address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any))
+            return true;
+
+        if (address.IsIPv4MappedToIPv6)
+            address = address.MapToIPv4();
+
+        if (address.AddressFamily == AddressFamily.InterNetworkV6)
+        {
+            byte first = address.GetAddressBytes()[0];
+            return address.IsIPv6LinkLocal || address.IsIPv6SiteLocal || (first & 0xFE) == 0xFC;
+        }
+
+        byte[] bytes = address.GetAddressBytes();
+        return bytes[0] is 0 or 10 or 127 ||
+               bytes[0] == 169 && bytes[1] == 254 ||
+               bytes[0] == 172 && bytes[1] is >= 16 and <= 31 ||
+               bytes[0] == 192 && bytes[1] == 168 ||
+               bytes[0] == 100 && bytes[1] is >= 64 and <= 127 ||
+               bytes[0] >= 224;
     }
 
     public static GiftEnrichResponseDto ParseHtml(string html)

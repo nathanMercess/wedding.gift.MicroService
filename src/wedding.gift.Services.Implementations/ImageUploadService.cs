@@ -31,6 +31,17 @@ public sealed class ImageUploadService(StorageClient storageClient, IOptions<Gcs
             throw new BadRequestException(ErrorCodes.INVALID_IMAGE_CONTENT_TYPE);
         }
 
+        if (!content.CanSeek)
+            throw new BadRequestException(ErrorCodes.INVALID_IMAGE_FILE);
+
+        long originalPosition = content.Position;
+        byte[] header = new byte[12];
+        int bytesRead = await content.ReadAsync(header.AsMemory(), cancellationToken);
+        content.Position = originalPosition;
+
+        if (!HasValidSignature(extension, header.AsSpan(0, bytesRead)))
+            throw new BadRequestException(ErrorCodes.INVALID_IMAGE_FILE);
+
         string bucketName = gcsOptions.Value.BucketName;
         string objectName = $"gifts/{Guid.NewGuid()}{extension}";
 
@@ -42,5 +53,36 @@ public sealed class ImageUploadService(StorageClient storageClient, IOptions<Gcs
             cancellationToken: cancellationToken);
 
         return $"https://storage.googleapis.com/{bucketName}/{uploaded.Name}";
+    }
+
+    public async Task DeleteImageAsync(string url, CancellationToken cancellationToken)
+    {
+        string bucketName = gcsOptions.Value.BucketName;
+        string expectedPrefix = $"https://storage.googleapis.com/{bucketName}/gifts/";
+
+        if (!url.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase))
+            throw new BadRequestException(ErrorCodes.INVALID_IMAGE_FILE);
+
+        string objectName = Uri.UnescapeDataString(url[$"https://storage.googleapis.com/{bucketName}/".Length..]);
+
+        if (string.IsNullOrWhiteSpace(objectName) || objectName.Contains("..", StringComparison.Ordinal))
+            throw new BadRequestException(ErrorCodes.INVALID_IMAGE_FILE);
+
+        await storageClient.DeleteObjectAsync(bucketName, objectName, cancellationToken: cancellationToken);
+    }
+
+    private static bool HasValidSignature(string extension, ReadOnlySpan<byte> header)
+    {
+        return extension switch
+        {
+            ".jpg" or ".jpeg" => header.Length >= 3 &&
+                                   header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF,
+            ".png" => header.Length >= 8 &&
+                      header[..8].SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }),
+            ".webp" => header.Length >= 12 &&
+                       header[..4].SequenceEqual("RIFF"u8) &&
+                       header[8..12].SequenceEqual("WEBP"u8),
+            _ => false
+        };
     }
 }
