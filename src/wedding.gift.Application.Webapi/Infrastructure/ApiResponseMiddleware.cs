@@ -164,12 +164,13 @@ public sealed class ApiResponseMiddleware(RequestDelegate next)
 
     private static object ExtractErrorDetails(JsonElement root)
     {
-        Dictionary<string, string> details = [];
+        Dictionary<string, object> details = [];
 
         AddStringDetail(root, details, "message");
         AddStringDetail(root, details, "detail");
         AddStringDetail(root, details, "statusDetail");
         AddStringDetail(root, details, "mpRequestId");
+        AddNumberDetail(root, details, "remainingAmount");
 
         if (root.ValueKind == JsonValueKind.Object &&
             root.TryGetProperty("error", out JsonElement error))
@@ -178,14 +179,28 @@ public sealed class ApiResponseMiddleware(RequestDelegate next)
             AddStringDetail(error, details, "detail");
             AddStringDetail(error, details, "statusDetail");
             AddStringDetail(error, details, "mpRequestId");
+            AddNumberDetail(error, details, "remainingAmount");
         }
 
         return details.Count == 0 ? null : details;
     }
 
-    private static void AddStringDetail(JsonElement root, IDictionary<string, string> details, string propertyName)
+    private static void AddStringDetail(JsonElement root, IDictionary<string, object> details, string propertyName)
     {
         if (TryGetStringProperty(root, propertyName, out string value))
+            details[propertyName] = value;
+    }
+
+    private static void AddNumberDetail(JsonElement root, IDictionary<string, object> details, string propertyName)
+    {
+        if (root.ValueKind != JsonValueKind.Object ||
+            !root.TryGetProperty(propertyName, out JsonElement property) ||
+            property.ValueKind != JsonValueKind.Number)
+        {
+            return;
+        }
+
+        if (property.TryGetDecimal(out decimal value))
             details[propertyName] = value;
     }
 

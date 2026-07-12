@@ -10,4 +10,5 @@ public static class PaymentErrorCodes
     public const string InvalidCardToken = "INVALID_CARD_TOKEN";
     public const string ProviderError = "PROVIDER_ERROR";
     public const string ValidationError = "VALIDATION_ERROR";
+    public const string OrderNotFound = "PAYMENT_ORDER_NOT_FOUND";
 }

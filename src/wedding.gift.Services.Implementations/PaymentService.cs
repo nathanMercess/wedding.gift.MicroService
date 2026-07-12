@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
@@ -14,12 +15,12 @@ public sealed class PaymentService(
     IGiftRepository giftRepository,
     IContributionRepository contributionRepository,
     ICoupleRepository coupleRepository,
-    IContributionService contributionService,
     IEmailService emailService,
     IApplicationCacheService cacheService,
     ILogger<PaymentService> logger) : IPaymentService
 {
     private const int CreditCardMaxInstallments = 12;
+    private static readonly TimeSpan ReservationDuration = TimeSpan.FromMinutes(15);
 
     public async Task<PaymentResponseDto> ProcessCardPaymentAsync(
         CardPaymentRequestDto request,
@@ -34,6 +35,13 @@ public sealed class PaymentService(
             request.PayerEmail,
             cancellationToken);
 
+        if (string.IsNullOrWhiteSpace(request.OrderId))
+            return await BuildErrorResponseAsync("card", "validation", "OrderId is required.", PaymentErrorCodes.ValidationError, cancellationToken);
+
+        PaymentResponseDto? existing = await GetExistingOrderResponseAsync(request.OrderId, cancellationToken);
+        if (existing is not null)
+            return existing;
+
         if (request.GiftId == Guid.Empty)
             return await BuildErrorResponseAsync("card", "validation", "GiftId is required.", PaymentErrorCodes.ValidationError, cancellationToken);
 
@@ -42,9 +50,6 @@ public sealed class PaymentService(
 
         if (string.IsNullOrWhiteSpace(request.CardToken))
             return await BuildErrorResponseAsync("card", "validation", "CardToken is required.", PaymentErrorCodes.ValidationError, cancellationToken);
-
-        if (string.IsNullOrWhiteSpace(request.OrderId))
-            return await BuildErrorResponseAsync("card", "validation", "OrderId is required.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         if (request.Amount <= 0)
             return await BuildErrorResponseAsync("card", "validation", "Invalid amount.", PaymentErrorCodes.ValidationError, cancellationToken);
@@ -67,67 +72,24 @@ public sealed class PaymentService(
         if (string.IsNullOrWhiteSpace(request.PayerDocNumber))
             return await BuildErrorResponseAsync("card", "validation", "PayerDocNumber is required.", PaymentErrorCodes.ValidationError, cancellationToken);
 
-        Gift gift = await giftRepository.GetByIdWithContributionsAsync(request.GiftId, cancellationToken);
-
-        if (gift is null)
-            return await BuildErrorResponseAsync("card", "validation", "Gift not found.", PaymentErrorCodes.ValidationError, cancellationToken);
-
-        if (!await CanGiftReceivePaymentAsync(gift, cancellationToken))
-            return await BuildErrorResponseAsync("card", "validation", "Gift is not available.", PaymentErrorCodes.ValidationError, cancellationToken);
-
-        PaymentResponseDto result = await mercadoPagoService.CreateCardOrderAsync(request, cancellationToken);
-
-        if (result.Status == "error")
-            return await BuildErrorResponseAsync("card", "mercado_pago", result, cancellationToken);
-
-        Guid? contributionId = null;
-
-        if (result.Status == "approved")
-        {
-            ContributionResponseDto contribution = await contributionService.CreateAsync(new ContributionCreateDto
-            {
-                GiftId = request.GiftId,
-                ContributorName = request.ContributorName,
-                Message = request.Message?.Trim() ?? string.Empty,
-                Amount = request.Amount,
-                PaymentMethod = request.Method,
-                Status = ContributionStatus.Paid,
-                PaidAt = DateTime.UtcNow
-            }, cancellationToken);
-
-            contributionId = contribution.Id;
-
-            try
-            {
-                await emailService.SendContributionNotificationAsync(request.ContributorName, request.Amount, cancellationToken);
-            }
-            catch (EmailDeliveryException ex)
-            {
-                logger.LogError(ex, "Contribution {ContributionId} confirmed, but email notification failed.", contributionId);
-            }
-        }
-
-        Payment payment = Payment.CreateCard(
+        PaymentIntentRequest intentRequest = new(
             request.GiftId,
             request.ContributorName,
             request.Message ?? string.Empty,
             request.PayerEmail,
             request.PayerDocType,
             request.PayerDocNumber,
-            contributionId,
             request.OrderId,
             request.Method,
             request.Amount,
-            request.Installments,
-            result.Status,
-            result.StatusDetail,
-            result.MpOrderId,
-            result.MpPaymentId);
+            request.Installments);
 
-        await paymentRepository.SaveAsync(payment, cancellationToken);
-        cacheService.Invalidate();
+        (Payment? payment, PaymentResponseDto? error) = await ReservePaymentIntentAsync(intentRequest, "card", cancellationToken);
+        if (error is not null)
+            return error;
 
-        return result;
+        PaymentResponseDto providerResult = await mercadoPagoService.CreateCardOrderAsync(request, cancellationToken);
+        return await ApplyProviderResultAsync(payment!, providerResult, "card", cancellationToken);
     }
 
     public async Task<PaymentResponseDto> ProcessPixPaymentAsync(
@@ -143,14 +105,18 @@ public sealed class PaymentService(
             request.PayerEmail,
             cancellationToken);
 
+        if (string.IsNullOrWhiteSpace(request.OrderId))
+            return await BuildErrorResponseAsync("pix", "validation", "OrderId is required.", PaymentErrorCodes.ValidationError, cancellationToken);
+
+        PaymentResponseDto? existing = await GetExistingOrderResponseAsync(request.OrderId, cancellationToken);
+        if (existing is not null)
+            return existing;
+
         if (request.GiftId == Guid.Empty)
             return await BuildErrorResponseAsync("pix", "validation", "GiftId is required.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         if (string.IsNullOrWhiteSpace(request.ContributorName))
             return await BuildErrorResponseAsync("pix", "validation", "ContributorName is required.", PaymentErrorCodes.ValidationError, cancellationToken);
-
-        if (string.IsNullOrWhiteSpace(request.OrderId))
-            return await BuildErrorResponseAsync("pix", "validation", "OrderId is required.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         if (request.Amount <= 0)
             return await BuildErrorResponseAsync("pix", "validation", "Invalid amount.", PaymentErrorCodes.ValidationError, cancellationToken);
@@ -161,20 +127,7 @@ public sealed class PaymentService(
         if (string.IsNullOrWhiteSpace(request.PayerDocNumber))
             return await BuildErrorResponseAsync("pix", "validation", "PayerDocNumber (CPF) is required for Pix.", PaymentErrorCodes.ValidationError, cancellationToken);
 
-        Gift gift = await giftRepository.GetByIdAsync(request.GiftId, cancellationToken);
-
-        if (gift is null)
-            return await BuildErrorResponseAsync("pix", "validation", "Gift not found.", PaymentErrorCodes.ValidationError, cancellationToken);
-
-        if (!await CanGiftReceivePaymentAsync(gift, cancellationToken))
-            return await BuildErrorResponseAsync("pix", "validation", "Gift is not available.", PaymentErrorCodes.ValidationError, cancellationToken);
-
-        PaymentResponseDto result = await mercadoPagoService.CreatePixOrderAsync(request, cancellationToken);
-
-        if (result.Status == "error")
-            return await BuildErrorResponseAsync("pix", "mercado_pago", result, cancellationToken);
-
-        Payment payment = Payment.CreatePix(
+        PaymentIntentRequest intentRequest = new(
             request.GiftId,
             request.ContributorName,
             request.Message ?? string.Empty,
@@ -182,21 +135,29 @@ public sealed class PaymentService(
             request.PayerDocType,
             request.PayerDocNumber,
             request.OrderId,
+            "pix",
             request.Amount,
-            result.Status,
-            result.StatusDetail,
-            result.MpOrderId,
-            result.MpPaymentId,
-            result.QrCode,
-            result.QrCodeBase64);
+            0);
 
-        await paymentRepository.SaveAsync(payment, cancellationToken);
-        cacheService.Invalidate();
+        (Payment? payment, PaymentResponseDto? error) = await ReservePaymentIntentAsync(intentRequest, "pix", cancellationToken);
+        if (error is not null)
+            return error;
 
-        if (result.Status == "approved" && !string.IsNullOrWhiteSpace(result.MpOrderId))
-            await ProcessApprovedPixPaymentAsync(result.MpOrderId, cancellationToken);
+        PaymentResponseDto providerResult = await mercadoPagoService.CreatePixOrderAsync(request, cancellationToken);
+        return await ApplyProviderResultAsync(payment!, providerResult, "pix", cancellationToken);
+    }
 
-        return result;
+    public async Task<PaymentResponseDto> GetPaymentOrderAsync(string orderId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(orderId))
+            return await BuildErrorResponseAsync("order", "validation", "OrderId is required.", PaymentErrorCodes.ValidationError, cancellationToken);
+
+        Payment payment = await paymentRepository.GetByOrderIdAsync(orderId.Trim(), cancellationToken);
+
+        if (payment is null)
+            return await BuildErrorResponseAsync("order", "lookup", "Payment order not found.", PaymentErrorCodes.OrderNotFound, cancellationToken);
+
+        return await RefreshAndBuildResponseAsync(payment, cancellationToken);
     }
 
     public async Task<PaymentResponseDto> GetPaymentStatusAsync(
@@ -206,44 +167,35 @@ public sealed class PaymentService(
         if (string.IsNullOrWhiteSpace(mpOrderId))
             return await BuildErrorResponseAsync("status", "validation", "MpOrderId is required.", PaymentErrorCodes.ValidationError, cancellationToken);
 
-        Payment payment = await paymentRepository.GetByMpOrderIdAsync(mpOrderId, cancellationToken);
+        Payment? payment = await paymentRepository.GetByProviderIdAsync(mpOrderId.Trim(), cancellationToken);
 
-        if (payment?.Status == "approved")
+        if (payment is not null && PaymentStatuses.IsSettled(payment.Status))
         {
             if (!payment.ContributionCreated)
-                await ProcessApprovedPixPaymentAsync(mpOrderId, cancellationToken);
+                await TryCreateContributionForSettledPaymentAsync(payment.MpOrderId, cancellationToken);
 
-            payment = await paymentRepository.GetByMpOrderIdAsync(mpOrderId, cancellationToken);
-
-            return new PaymentResponseDto
-            {
-                Status = "approved",
-                MpOrderId = mpOrderId,
-                StatusDetail = payment?.StatusDetail,
-                ContributionCreated = payment?.ContributionCreated
-            };
+            Payment refreshedPayment = await paymentRepository.GetByProviderIdAsync(mpOrderId.Trim(), cancellationToken);
+            return ToResponseDto(refreshedPayment ?? payment);
         }
 
-        PaymentResponseDto result = await mercadoPagoService.GetOrderStatusAsync(mpOrderId, cancellationToken);
+        PaymentResponseDto providerResult = await mercadoPagoService.GetOrderStatusAsync(mpOrderId.Trim(), cancellationToken);
 
-        if (result.Status == "error")
-            return await BuildErrorResponseAsync("status", "mercado_pago", result, cancellationToken);
+        if (providerResult.Status == PaymentStatuses.Error)
+            return await BuildErrorResponseAsync("status", "mercado_pago", providerResult, cancellationToken);
 
-        if (payment != null && payment.Status != result.Status)
+        if (payment is null)
+            return providerResult;
+
+        Payment updatedPayment = await UpdatePaymentFromProviderAsync(payment, providerResult, cancellationToken);
+
+        if (PaymentStatuses.IsSettled(updatedPayment.Status))
         {
-            await paymentRepository.UpdateStatusAsync(payment.OrderId, result.Status, result.StatusDetail, cancellationToken);
-            cacheService.Invalidate();
+            await TryCreateContributionForSettledPaymentAsync(updatedPayment.MpOrderId, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(updatedPayment.MpOrderId))
+                updatedPayment = await paymentRepository.GetByProviderIdAsync(updatedPayment.MpOrderId, cancellationToken) ?? updatedPayment;
         }
 
-        if (result.Status == "approved")
-        {
-            await ProcessApprovedPixPaymentAsync(mpOrderId, cancellationToken);
-
-            Payment processedPayment = await paymentRepository.GetByMpOrderIdAsync(mpOrderId, cancellationToken);
-            result.ContributionCreated = processedPayment?.ContributionCreated;
-        }
-
-        return result;
+        return ToResponseDto(updatedPayment);
     }
 
     public async Task<PaymentReconciliationResponseDto> ReconcileApprovedPaymentsAsync(CancellationToken cancellationToken)
@@ -275,7 +227,7 @@ public sealed class PaymentService(
 
             try
             {
-                bool created = await TryCreateContributionForApprovedPaymentAsync(payment.MpOrderId, cancellationToken);
+                bool created = await TryCreateContributionForSettledPaymentAsync(payment.MpOrderId, cancellationToken);
                 Payment? updatedPayment = await paymentRepository.GetByMpOrderIdAsync(payment.MpOrderId, cancellationToken);
 
                 item.ContributionCreated = updatedPayment?.ContributionCreated ?? false;
@@ -307,65 +259,348 @@ public sealed class PaymentService(
     public async Task ProcessApprovedPixPaymentAsync(
         string mpOrderId,
         CancellationToken cancellationToken)
-        => await TryCreateContributionForApprovedPaymentAsync(mpOrderId, cancellationToken);
+        => await TryCreateContributionForSettledPaymentAsync(mpOrderId, cancellationToken);
 
-    private async Task<bool> TryCreateContributionForApprovedPaymentAsync(
+    public async Task ConfirmPaymentAsync(
         string mpOrderId,
+        string status,
+        CancellationToken cancellationToken)
+        => await ConfirmPaymentAsync(mpOrderId, status, null, null, cancellationToken);
+
+    public async Task ConfirmPaymentAsync(
+        string mpOrderId,
+        string status,
+        string? statusDetail,
+        string? mpPaymentId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(mpOrderId))
+            return;
+
+        Payment? payment = await paymentRepository.GetByProviderIdForUpdateAsync(mpOrderId.Trim(), cancellationToken);
+
+        if (payment is null)
+        {
+            logger.LogWarning("Webhook: pagamento com MpOrderId={MpOrderId} nao encontrado para confirmar.", mpOrderId);
+            return;
+        }
+
+        string normalizedStatus = PaymentStatuses.Normalize(status);
+
+        if (!string.Equals(payment.Status, normalizedStatus, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(payment.StatusDetail, statusDetail, StringComparison.Ordinal))
+        {
+            payment.UpdateProviderStatus(normalizedStatus, statusDetail, mpOrderId, mpPaymentId);
+            await paymentRepository.SaveChangesAsync(cancellationToken);
+            cacheService.Invalidate();
+        }
+
+        if (PaymentStatuses.IsSettled(normalizedStatus))
+            await TryCreateContributionForSettledPaymentAsync(mpOrderId, cancellationToken);
+    }
+
+    private async Task<PaymentResponseDto?> GetExistingOrderResponseAsync(
+        string orderId,
+        CancellationToken cancellationToken)
+    {
+        Payment? existingPayment = await paymentRepository.GetByOrderIdAsync(orderId.Trim(), cancellationToken);
+
+        return existingPayment is null
+            ? null
+            : await RefreshAndBuildResponseAsync(existingPayment, cancellationToken);
+    }
+
+    private async Task<(Payment? Payment, PaymentResponseDto? Error)> ReservePaymentIntentAsync(
+        PaymentIntentRequest request,
+        string paymentMethod,
+        CancellationToken cancellationToken)
+    {
+        await using IRepositoryTransaction? transaction = await paymentRepository.BeginSerializableTransactionAsync(cancellationToken);
+
+        Payment? existingPayment = await paymentRepository.GetByOrderIdForUpdateAsync(request.OrderId.Trim(), cancellationToken);
+        if (existingPayment is not null)
+            return (null, ToResponseDto(existingPayment));
+
+        Gift gift = await giftRepository.GetByIdWithContributionsAsync(request.GiftId, cancellationToken);
+
+        if (gift is null)
+            return (null, await BuildErrorResponseAsync(paymentMethod, "validation", "Gift not found.", PaymentErrorCodes.ValidationError, cancellationToken));
+
+        PaymentResponseDto? validationError = await ValidateGiftForPaymentAsync(gift, request.Amount, paymentMethod, cancellationToken);
+        if (validationError is not null)
+            return (null, validationError);
+
+        Payment payment = request.Method == "pix"
+            ? Payment.CreatePix(
+                request.GiftId,
+                gift.Name,
+                request.ContributorName,
+                request.Message,
+                request.PayerEmail,
+                request.PayerDocType,
+                request.PayerDocNumber,
+                request.OrderId,
+                request.Amount,
+                PaymentStatuses.Pending,
+                null,
+                null,
+                null,
+                string.Empty,
+                null,
+                DateTime.UtcNow.Add(ReservationDuration))
+            : Payment.CreateCard(
+                request.GiftId,
+                gift.Name,
+                request.ContributorName,
+                request.Message,
+                request.PayerEmail,
+                request.PayerDocType,
+                request.PayerDocNumber,
+                null,
+                request.OrderId,
+                request.Method,
+                request.Amount,
+                request.Installments,
+                PaymentStatuses.Pending,
+                null,
+                null,
+                null,
+                DateTime.UtcNow.Add(ReservationDuration));
+
+        await paymentRepository.AddAsync(payment, cancellationToken);
+        await paymentRepository.SaveChangesAsync(cancellationToken);
+
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
+
+        cacheService.Invalidate();
+
+        return (payment, null);
+    }
+
+    private async Task<PaymentResponseDto> ApplyProviderResultAsync(
+        Payment reservedPayment,
+        PaymentResponseDto providerResult,
+        string paymentMethod,
+        CancellationToken cancellationToken)
+    {
+        if (providerResult.Status == PaymentStatuses.Error)
+            await BuildErrorResponseAsync(paymentMethod, "mercado_pago", providerResult, cancellationToken);
+
+        Payment payment = await paymentRepository.GetByOrderIdForUpdateAsync(reservedPayment.OrderId, cancellationToken)
+                          ?? reservedPayment;
+
+        string normalizedStatus = PaymentStatuses.Normalize(providerResult.Status);
+        payment.UpdateProviderStatus(
+            normalizedStatus,
+            providerResult.StatusDetail,
+            providerResult.MpOrderId,
+            providerResult.MpPaymentId,
+            providerResult.QrCode,
+            providerResult.QrCodeBase64);
+
+        await paymentRepository.SaveChangesAsync(cancellationToken);
+        cacheService.Invalidate();
+
+        if (PaymentStatuses.IsSettled(normalizedStatus))
+        {
+            await TryCreateContributionForSettledPaymentAsync(payment.MpOrderId, cancellationToken);
+
+            Payment? refreshedPayment = !string.IsNullOrWhiteSpace(payment.MpOrderId)
+                ? await paymentRepository.GetByMpOrderIdAsync(payment.MpOrderId, cancellationToken)
+                : await paymentRepository.GetByOrderIdAsync(payment.OrderId, cancellationToken);
+
+            payment = refreshedPayment ?? payment;
+        }
+
+        PaymentResponseDto response = ToResponseDto(payment);
+        response.ErrorCode = providerResult.ErrorCode;
+        response.MpRequestId = providerResult.MpRequestId;
+
+        if (providerResult.Status == PaymentStatuses.Error)
+            response.Message = providerResult.Message;
+
+        return response;
+    }
+
+    private async Task<PaymentResponseDto> RefreshAndBuildResponseAsync(
+        Payment payment,
+        CancellationToken cancellationToken)
+    {
+        Payment refreshedPayment = payment;
+
+        if (!string.IsNullOrWhiteSpace(refreshedPayment.MpOrderId) &&
+            (PaymentStatuses.IsReserving(refreshedPayment.Status) ||
+             refreshedPayment.Status == PaymentStatuses.Expired ||
+             refreshedPayment.Status == PaymentStatuses.Processed))
+        {
+            PaymentResponseDto providerResult = await mercadoPagoService.GetOrderStatusAsync(refreshedPayment.MpOrderId, cancellationToken);
+
+            if (providerResult.Status != PaymentStatuses.Error)
+            {
+                refreshedPayment = await UpdatePaymentFromProviderAsync(refreshedPayment, providerResult, cancellationToken);
+
+                if (PaymentStatuses.IsSettled(refreshedPayment.Status))
+                {
+                    await TryCreateContributionForSettledPaymentAsync(refreshedPayment.MpOrderId, cancellationToken);
+                    refreshedPayment = await paymentRepository.GetByOrderIdAsync(refreshedPayment.OrderId, cancellationToken) ?? refreshedPayment;
+                }
+            }
+        }
+
+        refreshedPayment = await ExpirePaymentIfNeededAsync(refreshedPayment, cancellationToken);
+
+        if (PaymentStatuses.IsSettled(refreshedPayment.Status) && !refreshedPayment.ContributionCreated)
+        {
+            await TryCreateContributionForSettledPaymentAsync(refreshedPayment.MpOrderId, cancellationToken);
+            refreshedPayment = await paymentRepository.GetByOrderIdAsync(refreshedPayment.OrderId, cancellationToken) ?? refreshedPayment;
+        }
+
+        return ToResponseDto(refreshedPayment);
+    }
+
+    private async Task<Payment> ExpirePaymentIfNeededAsync(Payment payment, CancellationToken cancellationToken)
+    {
+        if (!PaymentStatuses.IsReserving(payment.Status) || payment.ExpiresAt > DateTime.UtcNow)
+            return payment;
+
+        Payment? paymentToUpdate = await paymentRepository.GetByOrderIdForUpdateAsync(payment.OrderId, cancellationToken);
+
+        if (paymentToUpdate is null)
+            return payment;
+
+        if (PaymentStatuses.IsReserving(paymentToUpdate.Status) && paymentToUpdate.ExpiresAt <= DateTime.UtcNow)
+        {
+            paymentToUpdate.Expire();
+            await paymentRepository.SaveChangesAsync(cancellationToken);
+            cacheService.Invalidate();
+        }
+
+        return await paymentRepository.GetByOrderIdAsync(payment.OrderId, cancellationToken) ?? paymentToUpdate;
+    }
+
+    private async Task<Payment> UpdatePaymentFromProviderAsync(
+        Payment payment,
+        PaymentResponseDto providerResult,
+        CancellationToken cancellationToken)
+    {
+        Payment paymentToUpdate = await paymentRepository.GetByOrderIdForUpdateAsync(payment.OrderId, cancellationToken)
+                                  ?? payment;
+
+        paymentToUpdate.UpdateProviderStatus(
+            PaymentStatuses.Normalize(providerResult.Status),
+            providerResult.StatusDetail,
+            providerResult.MpOrderId,
+            providerResult.MpPaymentId,
+            providerResult.QrCode,
+            providerResult.QrCodeBase64);
+
+        await paymentRepository.SaveChangesAsync(cancellationToken);
+        cacheService.Invalidate();
+        return await paymentRepository.GetByOrderIdAsync(paymentToUpdate.OrderId, cancellationToken) ?? paymentToUpdate;
+    }
+
+    private async Task<PaymentResponseDto?> ValidateGiftForPaymentAsync(
+        Gift gift,
+        decimal amount,
+        string paymentMethod,
+        CancellationToken cancellationToken)
+    {
+        bool allowsUnlimitedPurchases = await CoupleAllowsUnlimitedPurchasesAsync(cancellationToken);
+
+        if (!gift.Available && !allowsUnlimitedPurchases)
+            return await BuildErrorResponseAsync(paymentMethod, "validation", "Gift is not available.", PaymentErrorCodes.ValidationError, cancellationToken);
+
+        if (allowsUnlimitedPurchases)
+            return null;
+
+        decimal remainingAmount = await GetRemainingAmountAsync(gift, cancellationToken);
+
+        if (!gift.AllowPartialContribution && amount < remainingAmount)
+            return await BuildErrorResponseAsync(paymentMethod, "validation", "Gift does not allow partial contribution.", PaymentErrorCodes.ValidationError, cancellationToken);
+
+        if (amount > remainingAmount)
+            return await BuildInsufficientAmountResponseAsync(paymentMethod, remainingAmount, cancellationToken);
+
+        return null;
+    }
+
+    private async Task<decimal> GetRemainingAmountAsync(Gift gift, CancellationToken cancellationToken)
+    {
+        DateTime now = DateTime.UtcNow;
+        decimal reservedAmount = await paymentRepository.Query()
+            .Where(x => x.GiftId == gift.Id &&
+                        !x.ContributionCreated &&
+                        x.ExpiresAt > now &&
+                        PaymentStatuses.Reserving.Contains(x.Status))
+            .SumAsync(x => x.Amount, cancellationToken);
+
+        return Math.Max(gift.Total - gift.RaisedAmount - reservedAmount, 0);
+    }
+
+    private async Task<bool> TryCreateContributionForSettledPaymentAsync(
+        string? mpOrderId,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(mpOrderId))
             return false;
 
-        Payment existingPayment = await paymentRepository.GetByMpOrderIdAsync(mpOrderId, cancellationToken);
+        Payment existingPayment = await paymentRepository.GetByProviderIdAsync(mpOrderId, cancellationToken);
 
         if (existingPayment is null)
         {
-            logger.LogError("Pagamento aprovado com MpOrderId={MpOrderId}, mas a intencao de pagamento nao foi encontrada.", mpOrderId);
+            logger.LogError("Pagamento liquidado com MpOrderId={MpOrderId}, mas a intencao de pagamento nao foi encontrada.", mpOrderId);
             return false;
         }
 
-        if (!string.Equals(existingPayment.Status, "approved", StringComparison.OrdinalIgnoreCase))
+        if (!PaymentStatuses.IsSettled(existingPayment.Status))
         {
             PaymentResponseDto providerStatus = await mercadoPagoService.GetOrderStatusAsync(mpOrderId, cancellationToken);
 
-            if (providerStatus.Status == "error")
+            if (providerStatus.Status == PaymentStatuses.Error)
                 return false;
 
-            Payment paymentToUpdate = await paymentRepository.GetByMpOrderIdForUpdateAsync(mpOrderId, cancellationToken);
+            Payment paymentToUpdate = await paymentRepository.GetByProviderIdForUpdateAsync(mpOrderId, cancellationToken);
 
             if (paymentToUpdate is null)
             {
-                logger.LogError("Pagamento aprovado com MpOrderId={MpOrderId}, mas a intencao de pagamento nao foi encontrada ao atualizar status.", mpOrderId);
+                logger.LogError("Pagamento liquidado com MpOrderId={MpOrderId}, mas a intencao de pagamento nao foi encontrada ao atualizar status.", mpOrderId);
                 return false;
             }
 
-            paymentToUpdate.UpdateProviderStatus(providerStatus.Status, providerStatus.StatusDetail, providerStatus.MpPaymentId);
+            paymentToUpdate.UpdateProviderStatus(
+                PaymentStatuses.Normalize(providerStatus.Status),
+                providerStatus.StatusDetail,
+                providerStatus.MpOrderId,
+                providerStatus.MpPaymentId,
+                providerStatus.QrCode,
+                providerStatus.QrCodeBase64);
+
             await paymentRepository.SaveChangesAsync(cancellationToken);
             cacheService.Invalidate();
-
-            existingPayment = await paymentRepository.GetByMpOrderIdAsync(mpOrderId, cancellationToken);
+            existingPayment = await paymentRepository.GetByProviderIdAsync(mpOrderId, cancellationToken);
         }
 
         if (existingPayment?.ContributionCreated == true)
             return false;
 
-        if (!string.Equals(existingPayment?.Status, "approved", StringComparison.OrdinalIgnoreCase))
+        if (!PaymentStatuses.IsSettled(existingPayment?.Status))
             return false;
 
-        await using IRepositoryTransaction transaction = await paymentRepository.BeginSerializableTransactionAsync(cancellationToken);
+        await using IRepositoryTransaction? transaction = await paymentRepository.BeginSerializableTransactionAsync(cancellationToken);
 
-        Payment payment = await paymentRepository.GetByMpOrderIdForUpdateAsync(mpOrderId, cancellationToken);
+        Payment payment = await paymentRepository.GetByProviderIdForUpdateAsync(mpOrderId, cancellationToken);
 
         if (payment is null)
         {
-            logger.LogError("Pagamento aprovado com MpOrderId={MpOrderId}, mas a intencao de pagamento nao foi encontrada dentro da transacao.", mpOrderId);
+            logger.LogError("Pagamento liquidado com MpOrderId={MpOrderId}, mas a intencao de pagamento nao foi encontrada dentro da transacao.", mpOrderId);
             return false;
         }
 
         if (payment.ContributionCreated)
             return false;
 
-        if (!string.Equals(payment.Status, "approved", StringComparison.OrdinalIgnoreCase))
+        if (!PaymentStatuses.IsSettled(payment.Status))
             return false;
 
         bool giftExists = await giftRepository.ExistsAsync(payment.GiftId, cancellationToken);
@@ -373,7 +608,7 @@ public sealed class PaymentService(
         if (!giftExists)
         {
             logger.LogError(
-                "Pagamento aprovado com MpOrderId={MpOrderId}, OrderId={OrderId}, GiftId={GiftId}, mas o presente nao foi encontrado.",
+                "Pagamento liquidado com MpOrderId={MpOrderId}, OrderId={OrderId}, GiftId={GiftId}, mas o presente nao foi encontrado.",
                 payment.MpOrderId,
                 payment.OrderId,
                 payment.GiftId);
@@ -383,7 +618,7 @@ public sealed class PaymentService(
         Contribution contribution = Contribution.Create(
             payment.GiftId,
             payment.ContributorName,
-            payment.Message,
+            payment.Message ?? string.Empty,
             payment.Amount,
             payment.Method,
             DateTime.UtcNow,
@@ -405,7 +640,7 @@ public sealed class PaymentService(
         {
             logger.LogError(
                 ex,
-                "Erro ao registrar contribuicao Pix aprovada. MpOrderId={MpOrderId}, OrderId={OrderId}, GiftId={GiftId}.",
+                "Erro ao registrar contribuicao aprovada. MpOrderId={MpOrderId}, OrderId={OrderId}, GiftId={GiftId}.",
                 payment.MpOrderId,
                 payment.OrderId,
                 payment.GiftId);
@@ -422,33 +657,6 @@ public sealed class PaymentService(
         }
 
         return true;
-    }
-
-    public async Task ConfirmPaymentAsync(
-        string mpOrderId,
-        string status,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(mpOrderId))
-            return;
-
-        Payment payment = await paymentRepository.GetByMpOrderIdForUpdateAsync(mpOrderId, cancellationToken);
-
-        if (payment is null)
-        {
-            logger.LogWarning("Webhook: pagamento com MpOrderId={MpOrderId} nao encontrado para confirmar.", mpOrderId);
-            return;
-        }
-
-        if (!string.Equals(payment.Status, status, StringComparison.OrdinalIgnoreCase))
-        {
-            payment.UpdateProviderStatus(status, payment.StatusDetail);
-            await paymentRepository.SaveChangesAsync(cancellationToken);
-            cacheService.Invalidate();
-        }
-
-        if (status == "approved")
-            await ProcessApprovedPixPaymentAsync(mpOrderId, cancellationToken);
     }
 
     private async Task QueuePaymentAttemptNotificationAsync(
@@ -522,9 +730,26 @@ public sealed class PaymentService(
 
         return new PaymentResponseDto
         {
-            Status = "error",
+            Status = PaymentStatuses.Error,
             ErrorCode = errorCode,
             Message = message
+        };
+    }
+
+    private async Task<PaymentResponseDto> BuildInsufficientAmountResponseAsync(
+        string paymentMethod,
+        decimal remainingAmount,
+        CancellationToken cancellationToken)
+    {
+        string message = $"Valor solicitado indisponivel. Saldo restante: {remainingAmount:0.00}.";
+        await QueuePaymentErrorNotificationAsync(paymentMethod, "validation", message, PaymentErrorCodes.InsufficientAmount, cancellationToken);
+
+        return new PaymentResponseDto
+        {
+            Status = PaymentStatuses.Error,
+            ErrorCode = PaymentErrorCodes.InsufficientAmount,
+            Message = message,
+            RemainingAmount = remainingAmount
         };
     }
 
@@ -544,15 +769,51 @@ public sealed class PaymentService(
         return result;
     }
 
+    private PaymentResponseDto ToResponseDto(Payment payment)
+    {
+        bool settled = PaymentStatuses.IsSettled(payment.Status);
+
+        return new PaymentResponseDto
+        {
+            OrderId = payment.OrderId,
+            GiftId = payment.GiftId,
+            GiftName = payment.GiftName,
+            Amount = payment.Amount,
+            ContributorName = payment.ContributorName,
+            Method = payment.Method,
+            Status = payment.Status,
+            StatusDetail = payment.StatusDetail,
+            Message = payment.Message ?? string.Empty,
+            MpOrderId = payment.MpOrderId,
+            MpPaymentId = payment.MpPaymentId,
+            ContributionCreated = payment.ContributionCreated,
+            PaidAt = settled ? payment.Contribution?.PaidAt ?? payment.UpdatedAt : null,
+            CreatedAt = payment.CreatedAt,
+            UpdatedAt = payment.UpdatedAt,
+            ExpiresAt = payment.ExpiresAt,
+            QrCode = payment.PixQrCode ?? string.Empty,
+            QrCodeBase64 = payment.QrCodeBase64
+        };
+    }
+
     private static string NormalizeValue(string? value)
         => string.IsNullOrWhiteSpace(value) ? "-" : value.Trim();
 
-    private async Task<bool> CanGiftReceivePaymentAsync(Gift gift, CancellationToken cancellationToken)
+    private async Task<bool> CoupleAllowsUnlimitedPurchasesAsync(CancellationToken cancellationToken)
     {
-        if (gift.Available)
-            return true;
-
         Couple? couple = await coupleRepository.GetAsync(false, cancellationToken);
         return GiftDisplayModes.AllowsUnlimitedPurchases(couple?.GiftDisplayMode);
     }
+
+    private sealed record PaymentIntentRequest(
+        Guid GiftId,
+        string ContributorName,
+        string Message,
+        string PayerEmail,
+        string PayerDocType,
+        string PayerDocNumber,
+        string OrderId,
+        string Method,
+        decimal Amount,
+        int Installments);
 }

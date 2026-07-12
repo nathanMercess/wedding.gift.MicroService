@@ -77,11 +77,7 @@ public sealed class WebhookController(
         }
 
         if (!string.IsNullOrWhiteSpace(status.MpOrderId))
-        {
-            await payments.ConfirmPaymentAsync(status.MpOrderId, status.Status, cancellationToken);
-
-            if (status.Status == "approved") await payments.ProcessApprovedPixPaymentAsync(status.MpOrderId, cancellationToken);
-        }
+            await payments.ConfirmPaymentAsync(status.MpOrderId, status.Status, status.StatusDetail, status.MpPaymentId, cancellationToken);
 
         return NoContent();
     }

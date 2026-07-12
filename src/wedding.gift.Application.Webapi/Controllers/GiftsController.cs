@@ -11,7 +11,7 @@ public sealed class GiftsController(IGiftService giftService) : ApiControllerBas
     [AllowAnonymous]
     [HttpGet]
     public async Task<PagedResult<GiftResponseDto>> GetAll([FromQuery] GiftQueryParams query, CancellationToken cancellationToken)
-        => await giftService.GetAllAsync(query, cancellationToken);
+        => await giftService.GetPublicAsync(query, cancellationToken);
 
     [AllowAnonymous]
     [HttpGet("stats")]

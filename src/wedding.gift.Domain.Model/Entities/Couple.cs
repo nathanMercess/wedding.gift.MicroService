@@ -44,7 +44,7 @@ public sealed class Couple
         string? secondaryColor,
         string? giftDisplayMode,
         string? carouselPhotosJson,
-        string? siteSettingsJson)
+        string? siteSettingsJson = null)
     {
         Names = names.Trim();
         WeddingDate = weddingDate;

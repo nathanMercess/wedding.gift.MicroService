@@ -103,7 +103,7 @@ public class PaymentServiceTests
     }
 
     [Fact]
-    public async Task ProcessCardPaymentAsync_DeveAceitarAmountMaiorQueRestante()
+    public async Task ProcessCardPaymentAsync_DeveRetornarSaldoInsuficiente_QuandoAmountMaiorQueRestante()
     {
         var context = CreateContext();
         var gift = SeedGift(context, total: 500m);
@@ -114,12 +114,12 @@ public class PaymentServiceTests
 
         var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 401m), CancellationToken.None);
 
-        Assert.Equal("approved", result.Status);
-        Assert.Equal(401m, mp.LastCardRequest.Amount);
-        Assert.Equal(2, context.Contributions.Count());
-        Assert.Contains(context.Contributions, x => x.Amount == 401m && x.Status == ContributionStatus.Paid);
-        Assert.Single(context.Payments);
-        Assert.Equal(401m, context.Payments.Single().Amount);
+        Assert.Equal("error", result.Status);
+        Assert.Equal(PaymentErrorCodes.InsufficientAmount, result.ErrorCode);
+        Assert.Equal(400m, result.RemainingAmount);
+        Assert.Null(mp.LastCardRequest);
+        Assert.Single(context.Contributions);
+        Assert.Empty(context.Payments);
     }
 
     [Fact]
@@ -168,6 +168,31 @@ public class PaymentServiceTests
     }
 
     [Fact]
+    public async Task ProcessCardPaymentAsync_NaoDeveCriarContribuicao_QuandoEmAnalise()
+    {
+        var context = CreateContext();
+        var gift = SeedGift(context);
+        var mp = new FakeMercadoPago
+        {
+            CardResult = new PaymentResponseDto
+            {
+                Status = "in_process",
+                StatusDetail = "pending_contingency",
+                MpOrderId = "mp_review"
+            }
+        };
+        var service = CreateService(context, mp);
+
+        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 100m), CancellationToken.None);
+
+        Assert.Equal("in_process", result.Status);
+        Assert.Equal("pending_contingency", result.StatusDetail);
+        Assert.False(result.ContributionCreated);
+        Assert.Empty(context.Contributions);
+        Assert.Equal("in_process", context.Payments.Single().Status);
+    }
+
+    [Fact]
     public async Task ProcessCardPaymentAsync_DeveRetornarValidationError_QuandoCampoObrigatorioFaltando()
     {
         var context = CreateContext();
@@ -208,6 +233,95 @@ public class PaymentServiceTests
         Assert.Null(payment.ContributionId);
         Assert.True(context.Gifts.Single().Available);
         Assert.Equal(1, email.AttemptCount);
+    }
+
+    [Fact]
+    public async Task ProcessPixPaymentAsync_DeveRetornarIntencaoExistente_QuandoOrderIdReenviado()
+    {
+        var context = CreateContext();
+        var gift = SeedGift(context);
+        var request = Pix(gift.Id);
+        var mp = new FakeMercadoPago
+        {
+            PixResult = new PaymentResponseDto
+            {
+                Status = "pending",
+                MpOrderId = "mp_pix",
+                QrCode = "qr",
+                QrCodeBase64 = "qr=="
+            },
+            StatusResult = new PaymentResponseDto
+            {
+                Status = "pending",
+                MpOrderId = "mp_pix",
+                QrCode = "qr",
+                QrCodeBase64 = "qr=="
+            }
+        };
+        var service = CreateService(context, mp);
+
+        var first = await service.ProcessPixPaymentAsync(request, CancellationToken.None);
+        var second = await service.ProcessPixPaymentAsync(request, CancellationToken.None);
+
+        Assert.Equal("pending", first.Status);
+        Assert.Equal("pending", second.Status);
+        Assert.Equal(request.OrderId, second.OrderId);
+        Assert.Equal("qr==", second.QrCodeBase64);
+        Assert.Equal(1, mp.PixCreateCount);
+        Assert.Single(context.Payments);
+        Assert.Empty(context.Contributions);
+    }
+
+    [Fact]
+    public async Task GetPaymentOrderAsync_DeveRetornarRecibo_QuandoPagamentoAprovado()
+    {
+        var context = CreateContext();
+        var gift = SeedGift(context, total: 500m);
+        var request = Card(gift.Id, amount: 500m);
+        var mp = new FakeMercadoPago { CardResult = new PaymentResponseDto { Status = "approved", MpOrderId = "mp_receipt" } };
+        var service = CreateService(context, mp);
+
+        await service.ProcessCardPaymentAsync(request, CancellationToken.None);
+
+        var receipt = await service.GetPaymentOrderAsync(request.OrderId, CancellationToken.None);
+
+        Assert.Equal(request.OrderId, receipt.OrderId);
+        Assert.Equal(gift.Name, receipt.GiftName);
+        Assert.Equal(500m, receipt.Amount);
+        Assert.Equal("approved", receipt.Status);
+        Assert.True(receipt.ContributionCreated);
+        Assert.NotNull(receipt.PaidAt);
+        Assert.Equal(request.ContributorName, receipt.ContributorName);
+    }
+
+    [Fact]
+    public async Task GetPaymentStatusAsync_DeveAtualizarIntencaoECriarContribuicao_QuandoProviderAprova()
+    {
+        var context = CreateContext();
+        var gift = SeedGift(context, total: 200m);
+        var payment = Payment.CreatePix(gift.Id, gift.Name, "Ana", "Pix", "ana@test.com", "CPF", "12345678909", "ord_status", 200m, "pending", null, "mp_status", null, string.Empty, null);
+        context.Payments.Add(payment);
+        await context.SaveChangesAsync(CancellationToken.None);
+        var mp = new FakeMercadoPago
+        {
+            StatusResult = new PaymentResponseDto
+            {
+                Status = "approved",
+                MpOrderId = "mp_status",
+                StatusDetail = "accredited"
+            }
+        };
+        var service = CreateService(context, mp);
+
+        var result = await service.GetPaymentStatusAsync("mp_status", CancellationToken.None);
+
+        Assert.Equal("ord_status", result.OrderId);
+        Assert.Equal("mp_status", result.MpOrderId);
+        Assert.Equal("approved", result.Status);
+        Assert.Equal("accredited", result.StatusDetail);
+        Assert.True(result.ContributionCreated);
+        Assert.Equal("Pix", result.Message);
+        Assert.Equal(ContributionStatus.Paid, context.Contributions.Single().Status);
     }
 
     [Fact]
@@ -302,6 +416,27 @@ public class PaymentServiceTests
     }
 
     [Fact]
+    public async Task ConfirmPaymentAsync_DeveEncontrarPagamentoPorMpPaymentId_QuandoWebhookUsaPaymentId()
+    {
+        var context = CreateContext();
+        var gift = SeedGift(context, total: 200m);
+        var payment = Payment.CreatePix(gift.Id, gift.Name, "Ana", string.Empty, "ana@test.com", "CPF", "12345678909", "ord_3", 200m, "pending", null, "mp_order_3", "mp_payment_3", string.Empty, null);
+        context.Payments.Add(payment);
+        await context.SaveChangesAsync(CancellationToken.None);
+        var email = new FakeEmail();
+        var service = CreateService(context, new FakeMercadoPago(), email);
+
+        await service.ConfirmPaymentAsync("mp_payment_3", "approved", "accredited", "mp_payment_3", CancellationToken.None);
+
+        Payment savedPayment = context.Payments.Single();
+        Assert.Equal("approved", savedPayment.Status);
+        Assert.Equal("accredited", savedPayment.StatusDetail);
+        Assert.True(savedPayment.ContributionCreated);
+        Assert.Equal(ContributionStatus.Paid, context.Contributions.Single().Status);
+        Assert.Equal(1, email.NotificationCount);
+    }
+
+    [Fact]
     public async Task ConfirmPaymentAsync_DeveSerNoOp_QuandoPagamentoNaoEncontrado()
     {
         var context = CreateContext();
@@ -325,7 +460,6 @@ public class PaymentServiceTests
         var paymentRepository = new PaymentRepository(context);
         IMemoryCache cache = new MemoryCache(new MemoryCacheOptions());
         var cacheService = new ApplicationCacheService(cache);
-        var contributionService = new ContributionService(contributionRepository, giftRepository, coupleRepository, cacheService);
 
         return new(
             mp,
@@ -333,7 +467,6 @@ public class PaymentServiceTests
             giftRepository,
             contributionRepository,
             coupleRepository,
-            contributionService,
             email ?? new FakeEmail(),
             cacheService,
             NullLogger<PaymentService>.Instance);
@@ -400,18 +533,28 @@ public class PaymentServiceTests
         public PaymentResponseDto PixResult = new() { Status = "pending", MpOrderId = "mp" };
         public PaymentResponseDto StatusResult = new() { Status = "approved", MpOrderId = "mp" };
         public CardPaymentRequestDto LastCardRequest = null!;
+        public int CardCreateCount;
+        public int PixCreateCount;
+        public int StatusRequestCount;
 
         public Task<PaymentResponseDto> CreateCardOrderAsync(CardPaymentRequestDto request, CancellationToken cancellationToken)
         {
+            CardCreateCount++;
             LastCardRequest = request;
             return Task.FromResult(CardResult);
         }
 
         public Task<PaymentResponseDto> CreatePixOrderAsync(PixPaymentRequestDto request, CancellationToken cancellationToken)
-            => Task.FromResult(PixResult);
+        {
+            PixCreateCount++;
+            return Task.FromResult(PixResult);
+        }
 
         public Task<PaymentResponseDto> GetOrderStatusAsync(string mpOrderId, CancellationToken cancellationToken)
-            => Task.FromResult(StatusResult);
+        {
+            StatusRequestCount++;
+            return Task.FromResult(StatusResult);
+        }
     }
 
     private sealed class FakeEmail : IEmailService

@@ -8,6 +8,7 @@ public sealed class Payment
 
     public Guid Id { get; private set; }
     public Guid GiftId { get; private set; }
+    public string GiftName { get; private set; } = string.Empty;
     public string ContributorName { get; private set; } = string.Empty;
     public string? Message { get; private set; }
     public string PayerEmail { get; private set; } = string.Empty;
@@ -29,6 +30,7 @@ public sealed class Payment
     public string? QrCodeBase64 { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
+    public DateTime ExpiresAt { get; private set; }
 
     public static Payment CreateCard(
         Guid giftId,
@@ -46,9 +48,46 @@ public sealed class Payment
         string? statusDetail,
         string? mpOrderId,
         string? mpPaymentId)
+        => CreateCard(
+            giftId,
+            string.Empty,
+            contributorName,
+            message,
+            payerEmail,
+            payerDocType,
+            payerDocNumber,
+            contributionId,
+            orderId,
+            method,
+            amount,
+            installments,
+            status,
+            statusDetail,
+            mpOrderId,
+            mpPaymentId);
+
+    public static Payment CreateCard(
+        Guid giftId,
+        string giftName,
+        string contributorName,
+        string message,
+        string payerEmail,
+        string payerDocType,
+        string payerDocNumber,
+        Guid? contributionId,
+        string orderId,
+        string method,
+        decimal amount,
+        int installments,
+        string status,
+        string? statusDetail,
+        string? mpOrderId,
+        string? mpPaymentId,
+        DateTime? expiresAt = null)
     {
         Payment payment = CreateBase(
             giftId,
+            giftName,
             contributorName,
             message,
             payerEmail,
@@ -61,7 +100,8 @@ public sealed class Payment
             status,
             statusDetail,
             mpOrderId,
-            mpPaymentId);
+            mpPaymentId,
+            expiresAt);
 
         if (contributionId.HasValue)
             payment.MarkContributionCreated(contributionId.Value);
@@ -84,9 +124,44 @@ public sealed class Payment
         string? mpPaymentId,
         string pixQrCode,
         string? qrCodeBase64)
+        => CreatePix(
+            giftId,
+            string.Empty,
+            contributorName,
+            message,
+            payerEmail,
+            payerDocType,
+            payerDocNumber,
+            orderId,
+            amount,
+            status,
+            statusDetail,
+            mpOrderId,
+            mpPaymentId,
+            pixQrCode,
+            qrCodeBase64);
+
+    public static Payment CreatePix(
+        Guid giftId,
+        string giftName,
+        string contributorName,
+        string message,
+        string payerEmail,
+        string payerDocType,
+        string payerDocNumber,
+        string orderId,
+        decimal amount,
+        string status,
+        string? statusDetail,
+        string? mpOrderId,
+        string? mpPaymentId,
+        string pixQrCode,
+        string? qrCodeBase64,
+        DateTime? expiresAt = null)
     {
         Payment payment = CreateBase(
             giftId,
+            giftName,
             contributorName,
             message,
             payerEmail,
@@ -99,7 +174,8 @@ public sealed class Payment
             status,
             statusDetail,
             mpOrderId,
-            mpPaymentId);
+            mpPaymentId,
+            expiresAt);
 
         payment.PixQrCode = pixQrCode;
         payment.QrCodeBase64 = qrCodeBase64;
@@ -107,11 +183,20 @@ public sealed class Payment
         return payment;
     }
 
-    public void UpdateProviderStatus(string status, string? statusDetail, string? mpPaymentId = null)
+    public void UpdateProviderStatus(
+        string status,
+        string? statusDetail,
+        string? mpOrderId = null,
+        string? mpPaymentId = null,
+        string? pixQrCode = null,
+        string? qrCodeBase64 = null)
     {
         Status = status;
         StatusDetail = statusDetail;
+        MpOrderId = string.IsNullOrWhiteSpace(mpOrderId) ? MpOrderId : mpOrderId.Trim();
         MpPaymentId = mpPaymentId ?? MpPaymentId;
+        PixQrCode = pixQrCode ?? PixQrCode;
+        QrCodeBase64 = qrCodeBase64 ?? QrCodeBase64;
         Touch();
     }
 
@@ -119,12 +204,21 @@ public sealed class Payment
     {
         ContributionId = contributionId;
         ContributionCreated = true;
-        Status = "approved";
+        if (string.IsNullOrWhiteSpace(Status))
+            Status = "approved";
+
+        Touch();
+    }
+
+    public void Expire()
+    {
+        Status = "expired";
         Touch();
     }
 
     private static Payment CreateBase(
         Guid giftId,
+        string giftName,
         string contributorName,
         string message,
         string payerEmail,
@@ -137,7 +231,8 @@ public sealed class Payment
         string status,
         string? statusDetail,
         string? mpOrderId,
-        string? mpPaymentId)
+        string? mpPaymentId,
+        DateTime? expiresAt = null)
     {
         DateTime now = DateTime.UtcNow;
 
@@ -145,6 +240,7 @@ public sealed class Payment
         {
             Id = Guid.NewGuid(),
             GiftId = giftId,
+            GiftName = giftName.Trim(),
             ContributorName = contributorName.Trim(),
             Message = message?.Trim() ?? string.Empty,
             PayerEmail = payerEmail.Trim(),
@@ -160,7 +256,8 @@ public sealed class Payment
             MpOrderId = mpOrderId,
             MpPaymentId = mpPaymentId,
             CreatedAt = now,
-            UpdatedAt = now
+            UpdatedAt = now,
+            ExpiresAt = expiresAt ?? now.AddMinutes(15)
         };
     }
 

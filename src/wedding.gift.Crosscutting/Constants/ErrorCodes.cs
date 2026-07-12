@@ -27,6 +27,7 @@ public static class ErrorCodes
     public const string GIFT_UNAVAILABLE = "GIFT_UNAVAILABLE";
     public const string INVALID_GIFT_PAGE = "INVALID_GIFT_PAGE";
     public const string INVALID_GIFT_PAGE_SIZE = "INVALID_GIFT_PAGE_SIZE";
+    public const string INVALID_GIFT_CATEGORY = "INVALID_GIFT_CATEGORY";
 
     public const string INVALID_DASHBOARD_DAYS = "INVALID_DASHBOARD_DAYS";
     public const string INVALID_DASHBOARD_RECENT_ITEMS = "INVALID_DASHBOARD_RECENT_ITEMS";

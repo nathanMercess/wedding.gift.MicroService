@@ -25,14 +25,14 @@ public sealed class CoupleService(ICoupleRepository coupleRepository, IApplicati
         }
 
         entity.Update(
-            dto.Names,
-            dto.WeddingDate,
-            dto.PhotoUrl,
-            dto.Message,
-            dto.EventLocation,
-            dto.PrimaryColor,
-            dto.SecondaryColor,
-            dto.GiftDisplayMode,
+            string.IsNullOrWhiteSpace(dto.Names) ? entity.Names : dto.Names,
+            dto.WeddingDate == default ? entity.WeddingDate : dto.WeddingDate,
+            string.IsNullOrWhiteSpace(dto.PhotoUrl) ? entity.PhotoUrl : dto.PhotoUrl,
+            string.IsNullOrWhiteSpace(dto.Message) ? entity.Message : dto.Message,
+            string.IsNullOrWhiteSpace(dto.EventLocation) ? entity.EventLocation : dto.EventLocation,
+            string.IsNullOrWhiteSpace(dto.PrimaryColor) ? entity.PrimaryColor : dto.PrimaryColor,
+            string.IsNullOrWhiteSpace(dto.SecondaryColor) ? entity.SecondaryColor : dto.SecondaryColor,
+            string.IsNullOrWhiteSpace(dto.GiftDisplayMode) ? entity.GiftDisplayMode : dto.GiftDisplayMode,
             dto.ToCarouselPhotosJson(),
             SiteSettingsExtensions.Merge(entity.SiteSettingsJson, dto.SiteSettings).ToSiteSettingsJson());
 

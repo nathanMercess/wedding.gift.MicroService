@@ -390,8 +390,8 @@ public sealed class MercadoPagoService(
     {
         OrderResponsePayment payment = order?.Transactions?.Payments?.FirstOrDefault();
 
-        string orderStatus = order?.Status == "processed" ? "approved" : order?.Status;
-        string paymentStatus = payment?.Status == "processed" ? "approved" : payment?.Status;
+        string orderStatus = order?.Status;
+        string paymentStatus = payment?.Status;
         string finalStatus = paymentStatus ?? orderStatus ?? "error";
         string statusDetail = payment?.StatusDetail ?? order?.StatusDetail;
 
@@ -418,7 +418,7 @@ public sealed class MercadoPagoService(
 
     private static PaymentResponseDto MapPaymentResponse(MercadoPagoPaymentResponse? payment)
     {
-        string finalStatus = payment?.Status == "processed" ? "approved" : payment?.Status ?? "error";
+        string finalStatus = payment?.Status ?? "error";
         string? statusDetail = payment?.StatusDetail;
         string? id = payment?.IdAsString();
 

@@ -13,6 +13,7 @@ public sealed class PaymentMapping : IEntityTypeConfiguration<Payment>
         builder.HasKey(x => x.Id);
 
         builder.Property(x => x.GiftId).IsRequired();
+        builder.Property(x => x.GiftName).IsRequired().HasMaxLength(120);
         builder.Property(x => x.ContributorName).IsRequired().HasMaxLength(120);
         builder.Property(x => x.Message).IsRequired(false).HasMaxLength(500);
         builder.Property(x => x.PayerEmail).IsRequired().HasMaxLength(180);
@@ -32,6 +33,7 @@ public sealed class PaymentMapping : IEntityTypeConfiguration<Payment>
         builder.Property(x => x.QrCodeBase64).IsRequired(false);
         builder.Property(x => x.CreatedAt).IsRequired();
         builder.Property(x => x.UpdatedAt).IsRequired();
+        builder.Property(x => x.ExpiresAt).IsRequired();
 
         builder.HasOne(x => x.Contribution)
             .WithMany()

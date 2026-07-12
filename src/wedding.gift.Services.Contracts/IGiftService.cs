@@ -4,6 +4,7 @@ namespace wedding.gift.Services.Contracts;
 
 public interface IGiftService
 {
+    Task<PagedResult<GiftResponseDto>> GetPublicAsync(GiftQueryParams query, CancellationToken cancellationToken);
     Task<PagedResult<GiftResponseDto>> GetAllAsync(GiftQueryParams query, CancellationToken cancellationToken);
     Task<PagedResult<GiftResponseDto>> GetAllAdminAsync(GiftQueryParams query, CancellationToken cancellationToken);
     Task<GiftStatsDto> GetStatsAsync(CancellationToken cancellationToken);

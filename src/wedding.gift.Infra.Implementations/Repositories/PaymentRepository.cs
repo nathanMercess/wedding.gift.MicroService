@@ -17,7 +17,7 @@ public sealed class PaymentRepository(AppDbContext context) : IPaymentRepository
     public async Task<IReadOnlyList<Payment>> GetApprovedWithoutContributionAsync(CancellationToken cancellationToken)
         => await context.Payments
             .AsNoTracking()
-            .Where(payment => payment.Status == "approved" && !payment.ContributionCreated)
+            .Where(payment => (payment.Status == "approved" || payment.Status == "processed") && !payment.ContributionCreated)
             .OrderBy(payment => payment.CreatedAt)
             .ToListAsync(cancellationToken);
 
@@ -26,6 +26,9 @@ public sealed class PaymentRepository(AppDbContext context) : IPaymentRepository
         await context.Payments.AddAsync(payment, cancellationToken);
         await context.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task AddAsync(Payment payment, CancellationToken cancellationToken)
+        => await context.Payments.AddAsync(payment, cancellationToken);
 
     public async Task<Payment?> GetByNsuAsync(string nsu, CancellationToken cancellationToken)
         => await context.Payments
@@ -40,10 +43,21 @@ public sealed class PaymentRepository(AppDbContext context) : IPaymentRepository
     public async Task<Payment?> GetByMpOrderIdForUpdateAsync(string mpOrderId, CancellationToken cancellationToken)
         => await context.Payments.FirstOrDefaultAsync(p => p.MpOrderId == mpOrderId, cancellationToken);
 
+    public async Task<Payment?> GetByProviderIdAsync(string providerId, CancellationToken cancellationToken)
+        => await context.Payments
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.MpOrderId == providerId || p.MpPaymentId == providerId, cancellationToken);
+
+    public async Task<Payment?> GetByProviderIdForUpdateAsync(string providerId, CancellationToken cancellationToken)
+        => await context.Payments.FirstOrDefaultAsync(p => p.MpOrderId == providerId || p.MpPaymentId == providerId, cancellationToken);
+
     public async Task<Payment?> GetByOrderIdAsync(string orderId, CancellationToken cancellationToken)
         => await context.Payments
             .AsNoTracking()
             .FirstOrDefaultAsync(p => p.OrderId == orderId, cancellationToken);
+
+    public async Task<Payment?> GetByOrderIdForUpdateAsync(string orderId, CancellationToken cancellationToken)
+        => await context.Payments.FirstOrDefaultAsync(p => p.OrderId == orderId, cancellationToken);
 
     public async Task UpdateStatusAsync(string orderId, string status, string? statusDetail, CancellationToken cancellationToken)
     {

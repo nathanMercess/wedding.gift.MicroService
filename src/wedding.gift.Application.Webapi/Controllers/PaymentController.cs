@@ -27,6 +27,14 @@ public sealed class PaymentController(IPaymentService paymentService) : ApiContr
         return result;
     }
 
+    [HttpGet("order/{orderId}")]
+    public async Task<PaymentResponseDto> GetPaymentOrder(string orderId, CancellationToken cancellationToken)
+    {
+        PaymentResponseDto result = await paymentService.GetPaymentOrderAsync(orderId, cancellationToken);
+        SetPaymentStatusCode(result);
+        return result;
+    }
+
     [HttpGet("status/{mpOrderId}")]
     public async Task<PaymentResponseDto> GetPaymentStatus(string mpOrderId, CancellationToken cancellationToken)
     {
@@ -39,8 +47,12 @@ public sealed class PaymentController(IPaymentService paymentService) : ApiContr
     {
         if (result.Status != "error") return;
 
-        Response.StatusCode = result.ErrorCode == PaymentErrorCodes.ValidationError
-            ? StatusCodes.Status400BadRequest
-            : StatusCodes.Status502BadGateway;
+        Response.StatusCode = result.ErrorCode switch
+        {
+            PaymentErrorCodes.ValidationError => StatusCodes.Status400BadRequest,
+            PaymentErrorCodes.InsufficientAmount => StatusCodes.Status409Conflict,
+            PaymentErrorCodes.OrderNotFound => StatusCodes.Status404NotFound,
+            _ => StatusCodes.Status502BadGateway
+        };
     }
 }

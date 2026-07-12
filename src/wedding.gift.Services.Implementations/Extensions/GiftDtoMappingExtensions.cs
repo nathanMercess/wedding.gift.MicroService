@@ -27,8 +27,11 @@ public static class GiftDtoMappingExtensions
             dto.Available,
             dto.AllowPartialContribution);
 
-    public static GiftResponseDto ToResponseDto(this Gift entity, bool hideCategory = false)
-        => new()
+    public static GiftResponseDto ToResponseDto(this Gift entity, decimal reservedAmount = 0, bool showCategory = true)
+    {
+        decimal remaining = Math.Max(entity.Total - entity.RaisedAmount - reservedAmount, 0);
+
+        return new GiftResponseDto
         {
             Id = entity.Id,
             Name = entity.Name,
@@ -36,10 +39,12 @@ public static class GiftDtoMappingExtensions
             Price = entity.Price,
             Total = entity.Total,
             Raised = entity.RaisedAmount,
-            FullyFunded = entity.FullyFunded,
+            Remaining = remaining,
+            FullyFunded = entity.Total > 0 && remaining <= 0,
             Image = entity.Image,
-            Category = hideCategory ? string.Empty : entity.Category,
+            Category = showCategory ? entity.Category : string.Empty,
             Available = entity.Available,
             AllowPartialContribution = entity.AllowPartialContribution
         };
+    }
 }

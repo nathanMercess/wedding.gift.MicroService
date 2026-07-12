@@ -4,6 +4,8 @@ public sealed class GiftQueryParams
 {
     public string? Search { get; set; }
     public string? Category { get; set; }
+    public decimal? MinTotal { get; set; }
+    public decimal? MaxTotal { get; set; }
 
     public GiftSortField OrderBy { get; set; } = GiftSortField.Name;
     public SortDirection OrderDir { get; set; } = SortDirection.Asc;

@@ -2,6 +2,7 @@
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using System.Text.Json;
 using Xunit;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
@@ -89,6 +90,113 @@ public class GiftServiceTests
         }, CancellationToken.None);
 
         Assert.Equal([2m, 10m, 100.50m], result.Items.Select(x => x.Raised));
+    }
+
+    [Fact]
+    public async Task GetAllAsync_DeveFiltrarPorCategoriaTotalEPaginar()
+    {
+        AppDbContext context = CreateContext();
+        SeedGift(context, "Panela", price: 100m, category: GiftCategories.Cozinha);
+        SeedGift(context, "Pratos", price: 200m, category: GiftCategories.Mesa);
+        SeedGift(context, "Jogo americano", price: 300m, category: GiftCategories.Mesa);
+        GiftService service = CreateService(context);
+
+        PagedResult<GiftResponseDto> result = await service.GetAllAsync(new GiftQueryParams
+        {
+            Category = GiftCategories.Mesa,
+            MinTotal = 150m,
+            MaxTotal = 350m,
+            OrderBy = GiftSortField.Total,
+            OrderDir = SortDirection.Asc,
+            Page = 2,
+            PageSize = 1
+        }, CancellationToken.None);
+
+        GiftResponseDto item = Assert.Single(result.Items);
+        Assert.Equal("Jogo americano", item.Name);
+        Assert.Equal(2, result.TotalCount);
+        Assert.Equal(2, result.TotalPages);
+        Assert.Equal(GiftCategories.Mesa, item.Category);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_DeveCalcularRemainingComReservasAtivas()
+    {
+        AppDbContext context = CreateContext();
+        Gift gift = SeedGift(context, "Reservado", price: 500m);
+        SeedContribution(context, gift.Id, 100m);
+        context.Payments.Add(Payment.CreatePix(gift.Id, gift.Name, "Ana", string.Empty, "ana@test.com", "CPF", "12345678909", "ord_active", 75m, "pending", null, "mp_active", null, string.Empty, null, DateTime.UtcNow.AddMinutes(10)));
+        context.Payments.Add(Payment.CreatePix(gift.Id, gift.Name, "Bruno", string.Empty, "bruno@test.com", "CPF", "12345678909", "ord_expired", 50m, "pending", null, "mp_expired", null, string.Empty, null, DateTime.UtcNow.AddMinutes(-1)));
+        await context.SaveChangesAsync(CancellationToken.None);
+        GiftService service = CreateService(context);
+
+        PagedResult<GiftResponseDto> result = await service.GetAllAsync(new GiftQueryParams(), CancellationToken.None);
+
+        GiftResponseDto item = Assert.Single(result.Items);
+        Assert.Equal(100m, item.Raised);
+        Assert.Equal(325m, item.Remaining);
+        Assert.False(item.FullyFunded);
+    }
+
+    [Fact]
+    public async Task GetPublicAsync_DeveOcultarCategoriasDesabilitadas()
+    {
+        AppDbContext context = CreateContext();
+        SeedGift(context, "Panela", price: 100m, category: GiftCategories.Cozinha);
+        SeedGift(context, "Pratos", price: 200m, category: GiftCategories.Mesa);
+        SeedCoupleWithSiteSettings(context, new SiteSettingsDto
+        {
+            ShowGiftCategories = true,
+            EnabledCategories = [GiftCategories.Mesa]
+        });
+        GiftService service = CreateService(context);
+
+        PagedResult<GiftResponseDto> publicResult = await service.GetPublicAsync(new GiftQueryParams(), CancellationToken.None);
+        PagedResult<GiftResponseDto> adminResult = await service.GetAllAdminAsync(new GiftQueryParams(), CancellationToken.None);
+
+        GiftResponseDto item = Assert.Single(publicResult.Items);
+        Assert.Equal("Pratos", item.Name);
+        Assert.Equal(2, adminResult.TotalCount);
+    }
+
+    [Fact]
+    public async Task GetPublicAsync_DeveRetornarVazio_QuandoCategoriaSolicitadaNaoEstaHabilitada()
+    {
+        AppDbContext context = CreateContext();
+        SeedGift(context, "Panela", price: 100m, category: GiftCategories.Cozinha);
+        SeedGift(context, "Pratos", price: 200m, category: GiftCategories.Mesa);
+        SeedCoupleWithSiteSettings(context, new SiteSettingsDto
+        {
+            ShowGiftCategories = true,
+            EnabledCategories = [GiftCategories.Mesa]
+        });
+        GiftService service = CreateService(context);
+
+        PagedResult<GiftResponseDto> result = await service.GetPublicAsync(new GiftQueryParams
+        {
+            Category = GiftCategories.Cozinha
+        }, CancellationToken.None);
+
+        Assert.Empty(result.Items);
+        Assert.Equal(0, result.TotalCount);
+    }
+
+    [Fact]
+    public async Task GetPublicAsync_DeveOcultarCategoriaNoDto_QuandoShowGiftCategoriesForFalse()
+    {
+        AppDbContext context = CreateContext();
+        SeedGift(context, "Panela", price: 100m, category: GiftCategories.Cozinha);
+        SeedCoupleWithSiteSettings(context, new SiteSettingsDto
+        {
+            ShowGiftCategories = false,
+            EnabledCategories = []
+        });
+        GiftService service = CreateService(context);
+
+        PagedResult<GiftResponseDto> result = await service.GetPublicAsync(new GiftQueryParams(), CancellationToken.None);
+
+        GiftResponseDto item = Assert.Single(result.Items);
+        Assert.Equal(string.Empty, item.Category);
     }
 
     [Fact]
@@ -215,10 +323,22 @@ public class GiftServiceTests
     private static GiftService CreateService(AppDbContext context)
     {
         IMemoryCache cache = new MemoryCache(new MemoryCacheOptions());
-        return new(new GiftRepository(context), new ContributionRepository(context), new CoupleRepository(context), cache, new ApplicationCacheService(cache));
+        return new(
+            new GiftRepository(context),
+            new ContributionRepository(context),
+            new PaymentRepository(context),
+            new CoupleRepository(context),
+            cache,
+            new ApplicationCacheService(cache));
     }
 
-    private static Gift SeedGift(AppDbContext context, string name, decimal price, decimal? total = null, bool available = true, string category = "Casa")
+    private static Gift SeedGift(
+        AppDbContext context,
+        string name,
+        decimal price,
+        decimal? total = null,
+        bool available = true,
+        string category = GiftCategories.Casa)
     {
         Gift gift = Gift.Create(name, $"{name} description", price, total ?? price, $"{name}.jpg", category, available, true);
 
@@ -252,6 +372,25 @@ public class GiftServiceTests
             giftDisplayMode,
             null,
             siteSettings?.ToSiteSettingsJson());
+
+        context.Couples.Add(couple);
+        context.SaveChanges();
+    }
+
+    private static void SeedCoupleWithSiteSettings(AppDbContext context, SiteSettingsDto settings)
+    {
+        Couple couple = Couple.Create();
+        couple.Update(
+            "Ana & Bruno",
+            DateTime.UtcNow,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            "#C79A6D",
+            "#F7F0EA",
+            GiftDisplayModes.Traditional,
+            null,
+            JsonSerializer.Serialize(settings));
 
         context.Couples.Add(couple);
         context.SaveChanges();
