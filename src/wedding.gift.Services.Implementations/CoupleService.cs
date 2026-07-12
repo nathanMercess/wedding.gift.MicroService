@@ -6,7 +6,7 @@ using wedding.gift.Services.Implementations.Extensions;
 
 namespace wedding.gift.Services.Implementations;
 
-public sealed class CoupleService(ICoupleRepository coupleRepository) : ICoupleService
+public sealed class CoupleService(ICoupleRepository coupleRepository, IApplicationCacheService cacheService) : ICoupleService
 {
     public async Task<CoupleResponseDto> GetAsync(CancellationToken cancellationToken)
     {
@@ -36,6 +36,7 @@ public sealed class CoupleService(ICoupleRepository coupleRepository) : ICoupleS
             dto.ToCarouselPhotosJson());
 
         await coupleRepository.SaveChangesAsync(cancellationToken);
+        cacheService.Invalidate();
 
         Couple persisted = await coupleRepository.GetAsync(false, cancellationToken) ?? entity;
         return persisted.ToResponseDto();

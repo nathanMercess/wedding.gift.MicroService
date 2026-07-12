@@ -9,6 +9,7 @@ public static class DependencyInjectionExtensions
 {
     public static IServiceCollection AddServices(this IServiceCollection services)
     {
+        services.AddSingleton<IApplicationCacheService, ApplicationCacheService>();
         services.AddScoped<IApiRequestLogService, ApiRequestLogService>();
         services.AddScoped<IGiftService, GiftService>();
         services.AddScoped<IContributionService, ContributionService>();

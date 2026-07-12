@@ -1,6 +1,7 @@
 #nullable enable
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 using wedding.gift.Crosscutting.Constants;
@@ -322,7 +323,9 @@ public class PaymentServiceTests
         var contributionRepository = new ContributionRepository(context);
         var coupleRepository = new CoupleRepository(context);
         var paymentRepository = new PaymentRepository(context);
-        var contributionService = new ContributionService(contributionRepository, giftRepository, coupleRepository);
+        IMemoryCache cache = new MemoryCache(new MemoryCacheOptions());
+        var cacheService = new ApplicationCacheService(cache);
+        var contributionService = new ContributionService(contributionRepository, giftRepository, coupleRepository, cacheService);
 
         return new(
             mp,
@@ -332,6 +335,7 @@ public class PaymentServiceTests
             coupleRepository,
             contributionService,
             email ?? new FakeEmail(),
+            cacheService,
             NullLogger<PaymentService>.Instance);
     }
 

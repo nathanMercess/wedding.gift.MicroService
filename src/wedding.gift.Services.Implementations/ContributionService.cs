@@ -11,7 +11,8 @@ namespace wedding.gift.Services.Implementations;
 public sealed class ContributionService(
     IContributionRepository contributionRepository,
     IGiftRepository giftRepository,
-    ICoupleRepository coupleRepository) : IContributionService
+    ICoupleRepository coupleRepository,
+    IApplicationCacheService cacheService) : IContributionService
 {
     public async Task<IReadOnlyList<ContributionResponseDto>> GetAllAsync(CancellationToken cancellationToken)
     {
@@ -45,6 +46,7 @@ public sealed class ContributionService(
 
         await contributionRepository.AddAsync(entity, cancellationToken);
         await contributionRepository.SaveChangesAsync(cancellationToken);
+        cacheService.Invalidate();
 
         return entity.ToResponseDto();
     }
@@ -59,6 +61,7 @@ public sealed class ContributionService(
 
         entity.UpdateStatus(status, paidAt);
         await contributionRepository.SaveChangesAsync(cancellationToken);
+        cacheService.Invalidate();
     }
 
     private async Task<bool> CoupleAllowsUnlimitedPurchasesAsync(CancellationToken cancellationToken)

@@ -128,13 +128,17 @@ public class DashboardServiceTests
             .Options);
 
     private static DashboardService CreateService(AppDbContext context)
-        => new(
+    {
+        IMemoryCache cache = new MemoryCache(new MemoryCacheOptions());
+        return new(
             new GiftRepository(context),
             new ContributionRepository(context),
             new PaymentRepository(context),
             new ApiRequestLogRepository(context),
-            new MemoryCache(new MemoryCacheOptions()),
+            cache,
+            new ApplicationCacheService(cache),
             NullLogger<DashboardService>.Instance);
+    }
 
     private static Gift SeedGift(AppDbContext context, string name, string category, decimal total)
     {

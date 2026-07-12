@@ -16,6 +16,7 @@ public sealed class PaymentService(
     ICoupleRepository coupleRepository,
     IContributionService contributionService,
     IEmailService emailService,
+    IApplicationCacheService cacheService,
     ILogger<PaymentService> logger) : IPaymentService
 {
     private const int CreditCardMaxInstallments = 12;
@@ -124,6 +125,7 @@ public sealed class PaymentService(
             result.MpPaymentId);
 
         await paymentRepository.SaveAsync(payment, cancellationToken);
+        cacheService.Invalidate();
 
         return result;
     }
@@ -189,6 +191,7 @@ public sealed class PaymentService(
             result.QrCodeBase64);
 
         await paymentRepository.SaveAsync(payment, cancellationToken);
+        cacheService.Invalidate();
 
         if (result.Status == "approved" && !string.IsNullOrWhiteSpace(result.MpOrderId))
             await ProcessApprovedPixPaymentAsync(result.MpOrderId, cancellationToken);
@@ -227,7 +230,10 @@ public sealed class PaymentService(
             return await BuildErrorResponseAsync("status", "mercado_pago", result, cancellationToken);
 
         if (payment != null && payment.Status != result.Status)
+        {
             await paymentRepository.UpdateStatusAsync(payment.OrderId, result.Status, result.StatusDetail, cancellationToken);
+            cacheService.Invalidate();
+        }
 
         if (result.Status == "approved")
         {
@@ -335,6 +341,7 @@ public sealed class PaymentService(
 
             paymentToUpdate.UpdateProviderStatus(providerStatus.Status, providerStatus.StatusDetail, providerStatus.MpPaymentId);
             await paymentRepository.SaveChangesAsync(cancellationToken);
+            cacheService.Invalidate();
 
             existingPayment = await paymentRepository.GetByMpOrderIdAsync(mpOrderId, cancellationToken);
         }
@@ -391,6 +398,8 @@ public sealed class PaymentService(
 
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
+
+            cacheService.Invalidate();
         }
         catch (Exception ex)
         {
@@ -435,6 +444,7 @@ public sealed class PaymentService(
         {
             payment.UpdateProviderStatus(status, payment.StatusDetail);
             await paymentRepository.SaveChangesAsync(cancellationToken);
+            cacheService.Invalidate();
         }
 
         if (status == "approved")

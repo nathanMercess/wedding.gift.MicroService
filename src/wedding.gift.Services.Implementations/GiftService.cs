@@ -14,9 +14,9 @@ public sealed class GiftService(
     IGiftRepository giftRepository,
     IContributionRepository contributionRepository,
     ICoupleRepository coupleRepository,
-    IMemoryCache cache) : IGiftService
+    IMemoryCache cache,
+    IApplicationCacheService cacheService) : IGiftService
 {
-    private const string CacheVersionKey = "gifts:version";
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(30);
 
     public async Task<PagedResult<GiftResponseDto>> GetAllAsync(GiftQueryParams queryParams, CancellationToken cancellationToken)
@@ -27,7 +27,7 @@ public sealed class GiftService(
         if (queryParams.PageSize < 1 || queryParams.PageSize > 100)
             throw new BadRequestException(ErrorCodes.INVALID_GIFT_PAGE_SIZE);
 
-        string cacheKey = $"gifts:all:{GetCacheVersion()}:{queryParams.Page}:{queryParams.PageSize}:{queryParams.Category}:{queryParams.Search}:{queryParams.OnlyAvailable}:{queryParams.OrderBy}:{queryParams.OrderDir}";
+        string cacheKey = $"gifts:all:{cacheService.CurrentVersion}:{queryParams.Page}:{queryParams.PageSize}:{queryParams.Category}:{queryParams.Search}:{queryParams.OnlyAvailable}:{queryParams.OrderBy}:{queryParams.OrderDir}";
         PagedResult<GiftResponseDto>? cached = await cache.GetOrCreateAsync(cacheKey, async entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = CacheDuration;
@@ -89,7 +89,7 @@ public sealed class GiftService(
 
     public async Task<GiftStatsDto> GetStatsAsync(CancellationToken cancellationToken)
     {
-        string cacheKey = $"gifts:stats:{GetCacheVersion()}";
+        string cacheKey = $"gifts:stats:{cacheService.CurrentVersion}";
         GiftStatsDto? cached = await cache.GetOrCreateAsync(cacheKey, async entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = CacheDuration;
@@ -114,7 +114,7 @@ public sealed class GiftService(
 
     public async Task<GiftResponseDto> GetByIdAsync(Guid id, CancellationToken cancellationToken)
     {
-        string cacheKey = $"gifts:by-id:{GetCacheVersion()}:{id}";
+        string cacheKey = $"gifts:by-id:{cacheService.CurrentVersion}:{id}";
         GiftResponseDto? cached = await cache.GetOrCreateAsync(cacheKey, async entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = CacheDuration;
@@ -132,7 +132,7 @@ public sealed class GiftService(
         Gift entity = dto.ToEntity();
         await giftRepository.AddAsync(entity, cancellationToken);
         await giftRepository.SaveChangesAsync(cancellationToken);
-        InvalidateGiftCache();
+        cacheService.Invalidate();
         return entity.ToResponseDto();
     }
 
@@ -143,7 +143,7 @@ public sealed class GiftService(
 
         entity.ApplyUpdate(dto);
         await giftRepository.SaveChangesAsync(cancellationToken);
-        InvalidateGiftCache();
+        cacheService.Invalidate();
 
         return entity.ToResponseDto();
     }
@@ -155,7 +155,7 @@ public sealed class GiftService(
 
         entity.SetAvailability(available);
         await giftRepository.SaveChangesAsync(cancellationToken);
-        InvalidateGiftCache();
+        cacheService.Invalidate();
 
         return entity.ToResponseDto();
     }
@@ -167,7 +167,7 @@ public sealed class GiftService(
 
         giftRepository.Delete(entity);
         await giftRepository.SaveChangesAsync(cancellationToken);
-        InvalidateGiftCache();
+        cacheService.Invalidate();
     }
 
     public async Task<IReadOnlyList<ContributionResponseDto>> GetContributionsByGiftIdAsync(Guid giftId, CancellationToken cancellationToken)
@@ -200,22 +200,10 @@ public sealed class GiftService(
 
         await contributionRepository.AddAsync(entity, cancellationToken);
         await contributionRepository.SaveChangesAsync(cancellationToken);
+        cacheService.Invalidate();
 
         return entity.ToResponseDto();
     }
-
-    private string GetCacheVersion()
-        => cache.GetOrCreate(CacheVersionKey, entry =>
-        {
-            entry.Priority = CacheItemPriority.NeverRemove;
-            return Guid.NewGuid().ToString("N");
-        })!;
-
-    private void InvalidateGiftCache()
-        => cache.Set(CacheVersionKey, Guid.NewGuid().ToString("N"), new MemoryCacheEntryOptions
-        {
-            Priority = CacheItemPriority.NeverRemove
-        });
 
     private async Task<bool> CoupleAllowsUnlimitedPurchasesAsync(CancellationToken cancellationToken)
     {
