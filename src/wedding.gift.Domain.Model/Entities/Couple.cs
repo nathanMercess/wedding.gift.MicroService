@@ -18,6 +18,7 @@ public sealed class Couple
     public string SecondaryColor { get; private set; } = "#F7F0EA";
     public string GiftDisplayMode { get; private set; } = GiftDisplayModes.Traditional;
     public string? CarouselPhotosJson { get; private set; }
+    public string? SiteSettingsJson { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
 
@@ -42,7 +43,8 @@ public sealed class Couple
         string? primaryColor,
         string? secondaryColor,
         string? giftDisplayMode,
-        string? carouselPhotosJson)
+        string? carouselPhotosJson,
+        string? siteSettingsJson)
     {
         Names = names.Trim();
         WeddingDate = weddingDate;
@@ -53,6 +55,7 @@ public sealed class Couple
         SecondaryColor = string.IsNullOrWhiteSpace(secondaryColor) ? "#F7F0EA" : secondaryColor.Trim();
         GiftDisplayMode = GiftDisplayModes.Normalize(giftDisplayMode);
         CarouselPhotosJson = carouselPhotosJson;
+        SiteSettingsJson = siteSettingsJson;
         Touch();
     }
 

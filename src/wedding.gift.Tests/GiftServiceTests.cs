@@ -9,6 +9,7 @@ using wedding.gift.Domain.Model.Entities;
 using wedding.gift.Infra.Implementations.DataContext;
 using wedding.gift.Infra.Implementations.Repositories;
 using wedding.gift.Services.Implementations;
+using wedding.gift.Services.Implementations.Extensions;
 
 namespace wedding.gift.Tests;
 
@@ -162,6 +163,50 @@ public class GiftServiceTests
         Assert.Equal(500m, contribution.Amount);
     }
 
+
+    [Fact]
+    public async Task GetAllAsync_DeveFiltrarCategoriasDesabilitadasNaVitrinePublica()
+    {
+        AppDbContext context = CreateContext();
+        SeedGift(context, "Casa", 100m, category: "Casa");
+        SeedGift(context, "Cozinha", 100m, category: "Cozinha");
+        SeedGift(context, "Sem categoria", 100m, category: string.Empty);
+        SeedCouple(context, GiftDisplayModes.Traditional, new SiteSettingsDto { EnabledCategories = ["Casa"], GiftSectionTitle = "Escolha seu presente", SearchPlaceholder = "Buscar presente...", PresentButtonLabel = "Presentear", EmptyStateTitle = "Nenhum presente encontrado", EmptyStateMessage = "Tente ajustar os filtros ou buscar por outro termo" });
+        GiftService service = CreateService(context);
+
+        PagedResult<GiftResponseDto> result = await service.GetAllAsync(new GiftQueryParams(), CancellationToken.None);
+
+        Assert.Equal(["Casa", string.Empty], result.Items.Select(x => x.Category));
+    }
+
+    [Fact]
+    public async Task GetAllAdminAsync_NaoDeveFiltrarCategoriasDesabilitadas()
+    {
+        AppDbContext context = CreateContext();
+        SeedGift(context, "Casa", 100m, category: "Casa");
+        SeedGift(context, "Cozinha", 100m, category: "Cozinha");
+        SeedCouple(context, GiftDisplayModes.Traditional, new SiteSettingsDto { EnabledCategories = ["Casa"], GiftSectionTitle = "Escolha seu presente", SearchPlaceholder = "Buscar presente...", PresentButtonLabel = "Presentear", EmptyStateTitle = "Nenhum presente encontrado", EmptyStateMessage = "Tente ajustar os filtros ou buscar por outro termo" });
+        GiftService service = CreateService(context);
+
+        PagedResult<GiftResponseDto> result = await service.GetAllAdminAsync(new GiftQueryParams(), CancellationToken.None);
+
+        Assert.Equal(["Casa", "Cozinha"], result.Items.Select(x => x.Category));
+    }
+
+    [Fact]
+    public async Task GetAllAsync_DeveRetornarVazio_QuandoFiltroCategoriaPublicaNaoHabilitada()
+    {
+        AppDbContext context = CreateContext();
+        SeedGift(context, "Cozinha", 100m, category: "Cozinha");
+        SeedCouple(context, GiftDisplayModes.Traditional, new SiteSettingsDto { EnabledCategories = ["Casa"], GiftSectionTitle = "Escolha seu presente", SearchPlaceholder = "Buscar presente...", PresentButtonLabel = "Presentear", EmptyStateTitle = "Nenhum presente encontrado", EmptyStateMessage = "Tente ajustar os filtros ou buscar por outro termo" });
+        GiftService service = CreateService(context);
+
+        PagedResult<GiftResponseDto> result = await service.GetAllAsync(new GiftQueryParams { Category = "Cozinha" }, CancellationToken.None);
+
+        Assert.Empty(result.Items);
+        Assert.Equal(0, result.TotalCount);
+    }
+
     private static AppDbContext CreateContext()
         => new(new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -173,9 +218,9 @@ public class GiftServiceTests
         return new(new GiftRepository(context), new ContributionRepository(context), new CoupleRepository(context), cache, new ApplicationCacheService(cache));
     }
 
-    private static Gift SeedGift(AppDbContext context, string name, decimal price, decimal? total = null, bool available = true)
+    private static Gift SeedGift(AppDbContext context, string name, decimal price, decimal? total = null, bool available = true, string category = "Casa")
     {
-        Gift gift = Gift.Create(name, $"{name} description", price, total ?? price, $"{name}.jpg", "Casa", available, true);
+        Gift gift = Gift.Create(name, $"{name} description", price, total ?? price, $"{name}.jpg", category, available, true);
 
         context.Gifts.Add(gift);
         context.SaveChanges();
@@ -193,7 +238,7 @@ public class GiftServiceTests
         context.SaveChanges();
     }
 
-    private static void SeedCouple(AppDbContext context, string giftDisplayMode)
+    private static void SeedCouple(AppDbContext context, string giftDisplayMode, SiteSettingsDto? siteSettings = null)
     {
         Couple couple = Couple.Create();
         couple.Update(
@@ -205,7 +250,8 @@ public class GiftServiceTests
             "#C79A6D",
             "#F7F0EA",
             giftDisplayMode,
-            null);
+            null,
+            siteSettings?.ToSiteSettingsJson());
 
         context.Couples.Add(couple);
         context.SaveChanges();

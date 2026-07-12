@@ -15,7 +15,7 @@ public sealed class AdminGiftsController(IGiftService giftService, IGiftEnrichSe
     public async Task<PagedResult<GiftResponseDto>> GetAll(
         [FromQuery] GiftQueryParams query,
         CancellationToken cancellationToken)
-        => await giftService.GetAllAsync(query, cancellationToken);
+        => await giftService.GetAllAdminAsync(query, cancellationToken);
 
     [HttpPost]
     public async Task<GiftResponseDto> Create([FromBody] GiftCreateDto dto, CancellationToken cancellationToken)

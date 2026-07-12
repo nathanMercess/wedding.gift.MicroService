@@ -27,7 +27,7 @@ public static class GiftDtoMappingExtensions
             dto.Available,
             dto.AllowPartialContribution);
 
-    public static GiftResponseDto ToResponseDto(this Gift entity)
+    public static GiftResponseDto ToResponseDto(this Gift entity, bool hideCategory = false)
         => new()
         {
             Id = entity.Id,
@@ -38,7 +38,7 @@ public static class GiftDtoMappingExtensions
             Raised = entity.RaisedAmount,
             FullyFunded = entity.FullyFunded,
             Image = entity.Image,
-            Category = entity.Category,
+            Category = hideCategory ? string.Empty : entity.Category,
             Available = entity.Available,
             AllowPartialContribution = entity.AllowPartialContribution
         };

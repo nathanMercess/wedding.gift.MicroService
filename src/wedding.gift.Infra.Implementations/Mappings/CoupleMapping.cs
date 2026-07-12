@@ -21,5 +21,6 @@ public sealed class CoupleMapping : IEntityTypeConfiguration<Couple>
         builder.Property(x => x.CreatedAt).IsRequired();
         builder.Property(x => x.UpdatedAt).IsRequired();
         builder.Property(x => x.GiftDisplayMode).HasMaxLength(40).HasDefaultValue(GiftDisplayModes.Traditional);
+        builder.Property(x => x.SiteSettingsJson);
     }
 }

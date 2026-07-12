@@ -359,6 +359,7 @@ public class PaymentServiceTests
             "#C79A6D",
             "#F7F0EA",
             giftDisplayMode,
+            null,
             null);
 
         context.Couples.Add(couple);
