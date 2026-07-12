@@ -109,6 +109,7 @@ builder.Services.AddServices();
 
 WebApplication app = builder.Build();
 
+await ApplyMigrationsAsync(app.Services);
 await EnsureBootstrapAdminAsync(app.Services, builder.Configuration);
 
 app.UseGlobalExceptionHandler();
@@ -122,6 +123,13 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+static async Task ApplyMigrationsAsync(IServiceProvider services)
+{
+    using IServiceScope scope = services.CreateScope();
+    AppDbContext dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await dbContext.Database.MigrateAsync();
+}
 
 static async Task EnsureBootstrapAdminAsync(IServiceProvider services, IConfiguration configuration)
 {
