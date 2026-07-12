@@ -11,9 +11,9 @@ public sealed class ContributionMapping : IEntityTypeConfiguration<Contribution>
         builder.HasKey(x => x.Id);
 
         builder.Property(x => x.ContributorName).IsRequired().HasMaxLength(120);
-        builder.Property(x => x.Message).HasMaxLength(500);
+        builder.Property(x => x.Message).IsRequired(false).HasMaxLength(500);
         builder.Property(x => x.Amount).HasColumnType("decimal(10,2)").IsRequired();
-        builder.Property(x => x.PaymentMethod).HasMaxLength(50);
+        builder.Property(x => x.PaymentMethod).IsRequired(false).HasMaxLength(50);
         builder.Property(x => x.PaidAt).IsRequired();
         builder.Property(x => x.Status).IsRequired().HasMaxLength(20);
 

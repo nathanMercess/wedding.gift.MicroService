@@ -13,9 +13,11 @@ public sealed class CoupleMapping : IEntityTypeConfiguration<Couple>
 
         builder.Property(x => x.Names).IsRequired().HasMaxLength(200);
         builder.Property(x => x.WeddingDate).IsRequired();
-        builder.Property(x => x.PhotoUrl).HasMaxLength(500);
-        builder.Property(x => x.Message).HasMaxLength(1000);
+        builder.Property(x => x.PhotoUrl).IsRequired(false).HasMaxLength(500);
+        builder.Property(x => x.Message).IsRequired(false).HasMaxLength(1000);
         builder.Property(x => x.EventLocation).HasMaxLength(500).HasDefaultValue(string.Empty);
+        builder.Property(x => x.PrimaryColor).IsRequired(false);
+        builder.Property(x => x.SecondaryColor).IsRequired(false);
         builder.Property(x => x.CreatedAt).IsRequired();
         builder.Property(x => x.UpdatedAt).IsRequired();
         builder.Property(x => x.GiftDisplayMode).HasMaxLength(40).HasDefaultValue(GiftDisplayModes.Traditional);
