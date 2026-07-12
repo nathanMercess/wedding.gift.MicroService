@@ -168,7 +168,10 @@ public class GiftServiceTests
             .Options);
 
     private static GiftService CreateService(AppDbContext context)
-        => new(new GiftRepository(context), new ContributionRepository(context), new CoupleRepository(context), new MemoryCache(new MemoryCacheOptions()));
+    {
+        IMemoryCache cache = new MemoryCache(new MemoryCacheOptions());
+        return new(new GiftRepository(context), new ContributionRepository(context), new CoupleRepository(context), cache, new ApplicationCacheService(cache));
+    }
 
     private static Gift SeedGift(AppDbContext context, string name, decimal price, decimal? total = null, bool available = true)
     {

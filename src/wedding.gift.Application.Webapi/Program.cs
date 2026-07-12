@@ -114,6 +114,7 @@ await EnsureBootstrapAdminAsync(app.Services, builder.Configuration);
 
 app.UseGlobalExceptionHandler();
 app.UseMiddleware<ApiResponseMiddleware>();
+app.UseMiddleware<CacheInvalidationMiddleware>();
 app.UseCors("AngularDev");
 app.UseSwagger();
 app.UseSwaggerUI();

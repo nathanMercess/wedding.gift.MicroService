@@ -15,6 +15,7 @@ public sealed class DashboardService(
     IPaymentRepository paymentRepository,
     IApiRequestLogRepository apiRequestLogRepository,
     IMemoryCache cache,
+    IApplicationCacheService cacheService,
     ILogger<DashboardService> logger) : IDashboardService
 {
     private const int SlowRequestThresholdMilliseconds = 1000;
@@ -93,7 +94,7 @@ public sealed class DashboardService(
         if (query.RecentItems < 1 || query.RecentItems > 50)
             throw new BadRequestException(ErrorCodes.INVALID_DASHBOARD_RECENT_ITEMS);
 
-        string cacheKey = $"dashboard:data:{query.Days}:{query.RecentItems}";
+        string cacheKey = $"dashboard:data:{cacheService.CurrentVersion}:{query.Days}:{query.RecentItems}";
         DashboardData? cached = await cache.GetOrCreateAsync(cacheKey, async entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = DashboardCacheDuration;
