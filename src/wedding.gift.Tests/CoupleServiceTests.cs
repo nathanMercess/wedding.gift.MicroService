@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Domain.Model.Entities;
@@ -152,5 +153,8 @@ public class CoupleServiceTests
             .Options);
 
     private static CoupleService CreateService(AppDbContext context)
-        => new(new CoupleRepository(context));
+    {
+        IMemoryCache cache = new MemoryCache(new MemoryCacheOptions());
+        return new(new CoupleRepository(context), new ApplicationCacheService(cache));
+    }
 }
