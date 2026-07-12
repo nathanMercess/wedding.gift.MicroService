@@ -10,7 +10,8 @@ namespace wedding.gift.Services.Implementations;
 
 public sealed class ContributionService(
     IContributionRepository contributionRepository,
-    IGiftRepository giftRepository) : IContributionService
+    IGiftRepository giftRepository,
+    ICoupleRepository coupleRepository) : IContributionService
 {
     public async Task<IReadOnlyList<ContributionResponseDto>> GetAllAsync(CancellationToken cancellationToken)
     {
@@ -34,7 +35,7 @@ public sealed class ContributionService(
         Gift gift = await giftRepository.GetByIdAsync(dto.GiftId, cancellationToken)
                     ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
 
-        if (!gift.Available)
+        if (!gift.Available && !await CoupleAllowsUnlimitedPurchasesAsync(cancellationToken))
             throw new ConflictException(ErrorCodes.GIFT_UNAVAILABLE);
 
         Contribution entity = dto.ToEntity();
@@ -58,5 +59,11 @@ public sealed class ContributionService(
 
         entity.UpdateStatus(status, paidAt);
         await contributionRepository.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<bool> CoupleAllowsUnlimitedPurchasesAsync(CancellationToken cancellationToken)
+    {
+        Couple? couple = await coupleRepository.GetAsync(false, cancellationToken);
+        return GiftDisplayModes.AllowsUnlimitedPurchases(couple?.GiftDisplayMode);
     }
 }

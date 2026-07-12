@@ -13,6 +13,7 @@ namespace wedding.gift.Services.Implementations;
 public sealed class GiftService(
     IGiftRepository giftRepository,
     IContributionRepository contributionRepository,
+    ICoupleRepository coupleRepository,
     IMemoryCache cache) : IGiftService
 {
     private const string CacheVersionKey = "gifts:version";
@@ -185,7 +186,7 @@ public sealed class GiftService(
         Gift gift = await giftRepository.GetByIdAsync(giftId, cancellationToken)
                     ?? throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
 
-        if (!gift.Available)
+        if (!gift.Available && !await CoupleAllowsUnlimitedPurchasesAsync(cancellationToken))
             throw new ConflictException(ErrorCodes.GIFT_UNAVAILABLE);
 
         Contribution entity = Contribution.Create(
@@ -215,4 +216,10 @@ public sealed class GiftService(
         {
             Priority = CacheItemPriority.NeverRemove
         });
+
+    private async Task<bool> CoupleAllowsUnlimitedPurchasesAsync(CancellationToken cancellationToken)
+    {
+        Couple? couple = await coupleRepository.GetAsync(false, cancellationToken);
+        return GiftDisplayModes.AllowsUnlimitedPurchases(couple?.GiftDisplayMode);
+    }
 }

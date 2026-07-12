@@ -144,13 +144,31 @@ public class GiftServiceTests
         Assert.Equal(0, stats.Completed);
     }
 
+    [Fact]
+    public async Task ContributeAsync_DeveAceitarPresenteIndisponivel_QuandoModoPrivadoIlimitado()
+    {
+        AppDbContext context = CreateContext();
+        Gift gift = SeedGift(context, "Indisponivel", price: 500m, available: false);
+        SeedCouple(context, GiftDisplayModes.PrivateUnlimited);
+        GiftService service = CreateService(context);
+
+        ContributionResponseDto contribution = await service.ContributeAsync(gift.Id, new ContributeDto
+        {
+            GuestName = "Ana",
+            Amount = 500m
+        }, CancellationToken.None);
+
+        Assert.Equal(gift.Id, contribution.GiftId);
+        Assert.Equal(500m, contribution.Amount);
+    }
+
     private static AppDbContext CreateContext()
         => new(new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options);
 
     private static GiftService CreateService(AppDbContext context)
-        => new(new GiftRepository(context), new ContributionRepository(context), new MemoryCache(new MemoryCacheOptions()));
+        => new(new GiftRepository(context), new ContributionRepository(context), new CoupleRepository(context), new MemoryCache(new MemoryCacheOptions()));
 
     private static Gift SeedGift(AppDbContext context, string name, decimal price, decimal? total = null, bool available = true)
     {
@@ -169,6 +187,24 @@ public class GiftServiceTests
         string status = ContributionStatus.Paid)
     {
         context.Contributions.Add(Contribution.Create(giftId, contributorName, string.Empty, amount, "pix", DateTime.UtcNow, status));
+        context.SaveChanges();
+    }
+
+    private static void SeedCouple(AppDbContext context, string giftDisplayMode)
+    {
+        Couple couple = Couple.Create();
+        couple.Update(
+            "Ana & Bruno",
+            DateTime.UtcNow,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            "#C79A6D",
+            "#F7F0EA",
+            giftDisplayMode,
+            null);
+
+        context.Couples.Add(couple);
         context.SaveChanges();
     }
 }

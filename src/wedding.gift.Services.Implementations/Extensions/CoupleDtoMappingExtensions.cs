@@ -14,8 +14,10 @@ public static class CoupleDtoMappingExtensions
             WeddingDate = entity.WeddingDate,
             PhotoUrl = entity.PhotoUrl,
             Message = entity.Message,
+            EventLocation = entity.EventLocation,
             PrimaryColor = entity.PrimaryColor,
             SecondaryColor = entity.SecondaryColor,
+            GiftDisplayMode = entity.GiftDisplayMode,
             CarouselPhotos = DeserializeCarouselPhotos(entity.CarouselPhotosJson)
         };
 

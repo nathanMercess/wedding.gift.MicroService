@@ -38,8 +38,10 @@ public sealed class CoupleService(ICoupleRepository coupleRepository, IMemoryCac
             dto.WeddingDate,
             dto.PhotoUrl,
             dto.Message,
+            dto.EventLocation,
             dto.PrimaryColor,
             dto.SecondaryColor,
+            dto.GiftDisplayMode,
             dto.ToCarouselPhotosJson());
 
         await coupleRepository.SaveChangesAsync(cancellationToken);

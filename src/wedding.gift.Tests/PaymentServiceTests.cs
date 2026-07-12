@@ -122,6 +122,22 @@ public class PaymentServiceTests
     }
 
     [Fact]
+    public async Task ProcessCardPaymentAsync_DeveAceitarPresenteIndisponivel_QuandoModoPrivadoIlimitado()
+    {
+        var context = CreateContext();
+        var gift = SeedGift(context, total: 500m, available: false);
+        SeedCouple(context, GiftDisplayModes.PrivateUnlimited);
+        var mp = new FakeMercadoPago { CardResult = new PaymentResponseDto { Status = "approved", MpOrderId = "mp_1" } };
+        var service = CreateService(context, mp);
+
+        var result = await service.ProcessCardPaymentAsync(Card(gift.Id, amount: 500m), CancellationToken.None);
+
+        Assert.Equal("approved", result.Status);
+        Assert.Equal(500m, mp.LastCardRequest.Amount);
+        Assert.Equal(500m, context.Contributions.Single().Amount);
+    }
+
+    [Fact]
     public async Task ProcessCardPaymentAsync_NaoDeveCriarContribuicao_QuandoRecusado()
     {
         var context = CreateContext();
@@ -304,25 +320,45 @@ public class PaymentServiceTests
     {
         var giftRepository = new GiftRepository(context);
         var contributionRepository = new ContributionRepository(context);
+        var coupleRepository = new CoupleRepository(context);
         var paymentRepository = new PaymentRepository(context);
-        var contributionService = new ContributionService(contributionRepository, giftRepository);
+        var contributionService = new ContributionService(contributionRepository, giftRepository, coupleRepository);
 
         return new(
             mp,
             paymentRepository,
             giftRepository,
             contributionRepository,
+            coupleRepository,
             contributionService,
             email ?? new FakeEmail(),
             NullLogger<PaymentService>.Instance);
     }
 
-    private static Gift SeedGift(AppDbContext context, decimal total = 500m)
+    private static Gift SeedGift(AppDbContext context, decimal total = 500m, bool available = true)
     {
-        var gift = Gift.Create("Jogo de panelas", string.Empty, total, total, string.Empty, string.Empty, true, true);
+        var gift = Gift.Create("Jogo de panelas", string.Empty, total, total, string.Empty, string.Empty, available, true);
         context.Gifts.Add(gift);
         context.SaveChanges();
         return gift;
+    }
+
+    private static void SeedCouple(AppDbContext context, string giftDisplayMode)
+    {
+        Couple couple = Couple.Create();
+        couple.Update(
+            "Ana & Bruno",
+            DateTime.UtcNow,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            "#C79A6D",
+            "#F7F0EA",
+            giftDisplayMode,
+            null);
+
+        context.Couples.Add(couple);
+        context.SaveChanges();
     }
 
     private static CardPaymentRequestDto Card(

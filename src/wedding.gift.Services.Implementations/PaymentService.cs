@@ -13,6 +13,7 @@ public sealed class PaymentService(
     IPaymentRepository paymentRepository,
     IGiftRepository giftRepository,
     IContributionRepository contributionRepository,
+    ICoupleRepository coupleRepository,
     IContributionService contributionService,
     IEmailService emailService,
     ILogger<PaymentService> logger) : IPaymentService
@@ -70,7 +71,7 @@ public sealed class PaymentService(
         if (gift is null)
             return await BuildErrorResponseAsync("card", "validation", "Gift not found.", PaymentErrorCodes.ValidationError, cancellationToken);
 
-        if (!gift.Available)
+        if (!await CanGiftReceivePaymentAsync(gift, cancellationToken))
             return await BuildErrorResponseAsync("card", "validation", "Gift is not available.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         PaymentResponseDto result = await mercadoPagoService.CreateCardOrderAsync(request, cancellationToken);
@@ -157,6 +158,14 @@ public sealed class PaymentService(
 
         if (string.IsNullOrWhiteSpace(request.PayerDocNumber))
             return await BuildErrorResponseAsync("pix", "validation", "PayerDocNumber (CPF) is required for Pix.", PaymentErrorCodes.ValidationError, cancellationToken);
+
+        Gift gift = await giftRepository.GetByIdAsync(request.GiftId, cancellationToken);
+
+        if (gift is null)
+            return await BuildErrorResponseAsync("pix", "validation", "Gift not found.", PaymentErrorCodes.ValidationError, cancellationToken);
+
+        if (!await CanGiftReceivePaymentAsync(gift, cancellationToken))
+            return await BuildErrorResponseAsync("pix", "validation", "Gift is not available.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         PaymentResponseDto result = await mercadoPagoService.CreatePixOrderAsync(request, cancellationToken);
 
@@ -528,4 +537,12 @@ public sealed class PaymentService(
     private static string NormalizeValue(string? value)
         => string.IsNullOrWhiteSpace(value) ? "-" : value.Trim();
 
+    private async Task<bool> CanGiftReceivePaymentAsync(Gift gift, CancellationToken cancellationToken)
+    {
+        if (gift.Available)
+            return true;
+
+        Couple? couple = await coupleRepository.GetAsync(false, cancellationToken);
+        return GiftDisplayModes.AllowsUnlimitedPurchases(couple?.GiftDisplayMode);
+    }
 }
