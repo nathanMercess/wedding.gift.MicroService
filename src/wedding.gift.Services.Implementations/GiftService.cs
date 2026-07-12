@@ -21,17 +21,37 @@ public sealed class GiftService(
 
     public async Task<PagedResult<GiftResponseDto>> GetAllAsync(GiftQueryParams queryParams, CancellationToken cancellationToken)
     {
+        Couple? couple = await coupleRepository.GetAsync(false, cancellationToken);
+        SiteSettingsDto siteSettings = SiteSettingsExtensions.Normalize(couple?.SiteSettingsJson);
+        return await GetAllCoreAsync(queryParams, siteSettings, hideCategory: !siteSettings.ShowGiftCategories, cancellationToken);
+    }
+
+    public async Task<PagedResult<GiftResponseDto>> GetAllAdminAsync(GiftQueryParams queryParams, CancellationToken cancellationToken)
+        => await GetAllCoreAsync(queryParams, siteSettings: null, hideCategory: false, cancellationToken);
+
+    private async Task<PagedResult<GiftResponseDto>> GetAllCoreAsync(GiftQueryParams queryParams, SiteSettingsDto? siteSettings, bool hideCategory, CancellationToken cancellationToken)
+    {
         if (queryParams.Page < 1)
             throw new BadRequestException(ErrorCodes.INVALID_GIFT_PAGE);
 
         if (queryParams.PageSize < 1 || queryParams.PageSize > 100)
             throw new BadRequestException(ErrorCodes.INVALID_GIFT_PAGE_SIZE);
 
-        string cacheKey = $"gifts:all:{cacheService.CurrentVersion}:{queryParams.Page}:{queryParams.PageSize}:{queryParams.Category}:{queryParams.Search}:{queryParams.OnlyAvailable}:{queryParams.OrderBy}:{queryParams.OrderDir}";
+        List<string> enabledCategories = siteSettings?.EnabledCategories ?? [];
+        string enabledCategoriesKey = siteSettings is null ? "admin" : string.Join("|", enabledCategories);
+        string cacheKey = $"gifts:all:{cacheService.CurrentVersion}:{queryParams.Page}:{queryParams.PageSize}:{queryParams.Category}:{queryParams.Search}:{queryParams.OnlyAvailable}:{queryParams.OrderBy}:{queryParams.OrderDir}:{siteSettings?.ShowGiftCategories}:{enabledCategoriesKey}:{hideCategory}";
         PagedResult<GiftResponseDto>? cached = await cache.GetOrCreateAsync(cacheKey, async entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = CacheDuration;
             IQueryable<Gift> query = giftRepository.QueryWithContributions();
+
+            if (siteSettings?.ShowGiftCategories == true)
+            {
+                query = query.Where(x => string.IsNullOrEmpty(x.Category) || enabledCategories.Contains(x.Category));
+
+                if (!string.IsNullOrWhiteSpace(queryParams.Category) && !enabledCategories.Contains(queryParams.Category))
+                    query = query.Where(x => false);
+            }
 
             if (!string.IsNullOrWhiteSpace(queryParams.Category))
                 query = query.Where(x => x.Category == queryParams.Category);
@@ -77,7 +97,7 @@ public sealed class GiftService(
 
             return new PagedResult<GiftResponseDto>
             {
-                Items = items.Select(g => g.ToResponseDto()).ToList(),
+                Items = items.Select(g => g.ToResponseDto(hideCategory)).ToList(),
                 TotalCount = totalCount,
                 Page = queryParams.Page,
                 PageSize = queryParams.PageSize

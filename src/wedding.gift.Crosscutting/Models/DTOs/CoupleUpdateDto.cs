@@ -30,4 +30,6 @@ public sealed class CoupleUpdateDto
     public string GiftDisplayMode { get; set; } = GiftDisplayModes.Traditional;
 
     public List<CarouselPhotoDto>? CarouselPhotos { get; set; }
+
+    public SiteSettingsUpdateDto? SiteSettings { get; set; }
 }
