@@ -1235,6 +1235,7 @@ public sealed class PaymentService(
     private PaymentResponseDto ToResponseDto(Payment payment)
     {
         bool settled = PaymentStatuses.IsSettled(payment.Status);
+        DateTime paidAt = payment.Contribution?.PaidAt ?? payment.UpdatedAt;
 
         return new PaymentResponseDto
         {
@@ -1251,10 +1252,10 @@ public sealed class PaymentService(
             MpOrderId = payment.MpOrderId,
             MpPaymentId = payment.MpPaymentId,
             ContributionCreated = payment.ContributionCreated,
-            PaidAt = settled ? payment.Contribution?.PaidAt ?? payment.UpdatedAt : null,
-            CreatedAt = payment.CreatedAt,
-            UpdatedAt = payment.UpdatedAt,
-            ExpiresAt = payment.ExpiresAt,
+            PaidAt = settled ? DateTime.SpecifyKind(paidAt, DateTimeKind.Utc) : null,
+            CreatedAt = DateTime.SpecifyKind(payment.CreatedAt, DateTimeKind.Utc),
+            UpdatedAt = DateTime.SpecifyKind(payment.UpdatedAt, DateTimeKind.Utc),
+            ExpiresAt = DateTime.SpecifyKind(payment.ExpiresAt, DateTimeKind.Utc),
             QrCode = payment.PixQrCode ?? string.Empty,
             QrCodeBase64 = payment.QrCodeBase64
         };
@@ -1277,8 +1278,8 @@ public sealed class PaymentService(
             ProviderId = payment.MpPaymentId ?? payment.MpOrderId ?? string.Empty,
             CorrelationId = PaymentStatuses.IsSettled(payment.Status) ? string.Empty : payment.CorrelationId ?? string.Empty,
             ContributionCreated = payment.ContributionCreated,
-            CreatedAtUtc = payment.CreatedAt,
-            UpdatedAtUtc = payment.UpdatedAt
+            CreatedAtUtc = DateTime.SpecifyKind(payment.CreatedAt, DateTimeKind.Utc),
+            UpdatedAtUtc = DateTime.SpecifyKind(payment.UpdatedAt, DateTimeKind.Utc)
         };
 
     private static string MaskEmail(string email)

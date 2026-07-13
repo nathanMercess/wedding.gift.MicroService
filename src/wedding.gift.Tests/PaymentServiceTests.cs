@@ -431,6 +431,40 @@ public class PaymentServiceTests
     }
 
     [Fact]
+    public async Task GetPaymentOrderAsync_DeveNormalizarExpiracaoComoUtc()
+    {
+        AppDbContext context = CreateContext();
+        Gift gift = SeedGift(context);
+        DateTime expiresAt = DateTime.SpecifyKind(DateTime.UtcNow.AddMinutes(30), DateTimeKind.Unspecified);
+        Payment payment = Payment.CreatePix(
+            gift.Id,
+            gift.Name,
+            "Ana",
+            "Pix",
+            "ana@test.com",
+            "CPF",
+            "12345678909",
+            Guid.NewGuid().ToString(),
+            100m,
+            PaymentStatuses.Pending,
+            "pending_waiting_transfer",
+            null,
+            null,
+            "pix-code",
+            "qr==",
+            expiresAt);
+        context.Payments.Add(payment);
+        await context.SaveChangesAsync(CancellationToken.None);
+        PaymentService service = CreateService(context, new FakeMercadoPago());
+
+        PaymentResponseDto result = await service.GetPaymentOrderAsync(payment.OrderId, CancellationToken.None);
+
+        Assert.NotNull(result.ExpiresAt);
+        Assert.Equal(DateTimeKind.Utc, result.ExpiresAt.Value.Kind);
+        Assert.Equal(expiresAt, result.ExpiresAt.Value);
+    }
+
+    [Fact]
     public async Task GetPaymentStatusAsync_DeveAtualizarIntencaoECriarContribuicao_QuandoProviderAprova()
     {
         var context = CreateContext();
