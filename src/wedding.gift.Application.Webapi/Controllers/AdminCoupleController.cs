@@ -7,11 +7,12 @@ using wedding.gift.Services.Contracts;
 
 namespace wedding.gift.Application.Webapi.Controllers;
 
-[Authorize(Roles = UserRoles.AdminOrSuperAdmin)]
+[Authorize(Roles = UserRoles.AdminMemberOrSuperAdmin)]
 [Route("admin/couple")]
 public sealed class AdminCoupleController(ICoupleService coupleService) : ApiControllerBase
 {
     [HttpPatch]
+    [HttpPut]
     [ProducesResponseType(typeof(ApiResponseDto<CoupleResponseDto>), StatusCodes.Status200OK)]
     public async Task<CoupleResponseDto> Update([FromBody] CoupleUpdateDto dto, CancellationToken cancellationToken)
         => await coupleService.UpdateAsync(dto, cancellationToken);
