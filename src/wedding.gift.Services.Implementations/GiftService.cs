@@ -241,6 +241,35 @@ public sealed class GiftService(
         return entity.ToResponseDto();
     }
 
+    public async Task<GiftCategoryBatchUpdateResponseDto> UpdateCategoriesAsync(GiftCategoryBatchUpdateDto dto, CancellationToken cancellationToken)
+    {
+        ValidateCategory(dto.Category, allowEmpty: true);
+        Guid[] giftIds = dto.GiftIds.Distinct().ToArray();
+
+        if (giftIds.Length == 0)
+            throw new BadRequestException(ErrorCodes.BAD_REQUEST);
+
+        IReadOnlyList<Gift> gifts = await giftRepository.GetByIdsAsync(giftIds, GetAdministrativeCoupleId(), cancellationToken);
+
+        if (gifts.Count != giftIds.Length)
+            throw new NotFoundException(ErrorCodes.GIFT_NOT_FOUND);
+
+        foreach (Gift gift in gifts)
+        {
+            gift.UpdateCategory(dto.Category);
+            await AddAuditAsync("GiftCategoryUpdated", gift, cancellationToken);
+        }
+
+        await SaveGiftChangesAsync(cancellationToken);
+        cacheService.Invalidate();
+
+        return new GiftCategoryBatchUpdateResponseDto
+        {
+            GiftIds = [.. giftIds],
+            Category = string.IsNullOrWhiteSpace(dto.Category) ? null : dto.Category.Trim()
+        };
+    }
+
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken)
     {
         Gift entity = await giftRepository.GetByIdAsync(id, cancellationToken)

@@ -9,7 +9,7 @@ public static class GiftDtoMappingExtensions
         => Gift.Create(
             dto.Name,
             dto.Description,
-            dto.Price,
+            dto.Price > 0 ? dto.Price : dto.Total,
             dto.Total,
             dto.Image,
             dto.Category,
@@ -20,7 +20,7 @@ public static class GiftDtoMappingExtensions
         => entity.Update(
             dto.Name,
             dto.Description,
-            dto.Price,
+            dto.Price > 0 ? dto.Price : dto.Total,
             dto.Total,
             dto.Image,
             dto.Category,

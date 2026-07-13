@@ -32,6 +32,11 @@ public sealed class AdminGiftsController(IGiftService giftService, IGiftEnrichSe
     public async Task<GiftResponseDto> Update(Guid id, [FromBody] GiftUpdateDto dto, CancellationToken cancellationToken)
         => await giftService.UpdateAsync(id, dto, cancellationToken);
 
+    [HttpPatch("category")]
+    [ProducesResponseType(typeof(ApiResponseDto<GiftCategoryBatchUpdateResponseDto>), StatusCodes.Status200OK)]
+    public async Task<GiftCategoryBatchUpdateResponseDto> UpdateCategories([FromBody] GiftCategoryBatchUpdateDto dto, CancellationToken cancellationToken)
+        => await giftService.UpdateCategoriesAsync(dto, cancellationToken);
+
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)

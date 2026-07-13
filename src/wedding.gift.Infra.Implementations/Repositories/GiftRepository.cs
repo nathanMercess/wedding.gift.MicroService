@@ -17,6 +17,16 @@ public sealed class GiftRepository(AppDbContext context) : IGiftRepository
             .AsNoTracking()
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<Gift>> GetByIdsAsync(IReadOnlyCollection<Guid> ids, Guid? coupleId, CancellationToken cancellationToken)
+    {
+        IQueryable<Gift> query = context.Gifts.Where(x => ids.Contains(x.Id));
+
+        if (coupleId.HasValue)
+            query = query.Where(x => x.CoupleId == coupleId.Value);
+
+        return await query.ToListAsync(cancellationToken);
+    }
+
     public async Task<Gift?> GetByIdAsync(Guid id, CancellationToken cancellationToken)
         => await context.Gifts.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
 

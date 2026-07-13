@@ -36,6 +36,60 @@ public class GiftServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ShouldUseTotalAsPriceWhenPriceIsOmitted()
+    {
+        AppDbContext context = CreateContext();
+        GiftService service = CreateService(context);
+
+        GiftResponseDto created = await service.CreateAsync(new GiftCreateDto
+        {
+            Name = "Presente",
+            Total = 250m
+        }, CancellationToken.None);
+
+        Assert.Equal(250m, created.Price);
+        Assert.Equal(250m, created.Total);
+    }
+
+    [Fact]
+    public async Task UpdateCategoriesAsync_ShouldUpdateOnlySelectedGifts()
+    {
+        AppDbContext context = CreateContext();
+        Gift first = SeedGift(context, "Primeiro", 100m, category: GiftCategories.Casa);
+        Gift second = SeedGift(context, "Segundo", 200m, category: GiftCategories.Casa);
+        Gift unchanged = SeedGift(context, "Terceiro", 300m, category: GiftCategories.Mesa);
+        GiftService service = CreateService(context);
+
+        await service.UpdateCategoriesAsync(new GiftCategoryBatchUpdateDto
+        {
+            GiftIds = [first.Id, second.Id],
+            Category = GiftCategories.Cozinha
+        }, CancellationToken.None);
+
+        Assert.Equal(GiftCategories.Cozinha, context.Gifts.Single(x => x.Id == first.Id).Category);
+        Assert.Equal(GiftCategories.Cozinha, context.Gifts.Single(x => x.Id == second.Id).Category);
+        Assert.Equal(GiftCategories.Mesa, context.Gifts.Single(x => x.Id == unchanged.Id).Category);
+        Assert.Equal(100m, context.Gifts.Single(x => x.Id == first.Id).Price);
+        Assert.Equal(100m, context.Gifts.Single(x => x.Id == first.Id).Total);
+    }
+
+    [Fact]
+    public async Task UpdateCategoriesAsync_ShouldRemoveCategoryWhenCategoryIsNull()
+    {
+        AppDbContext context = CreateContext();
+        Gift gift = SeedGift(context, "Presente", 100m, category: GiftCategories.Casa);
+        GiftService service = CreateService(context);
+
+        await service.UpdateCategoriesAsync(new GiftCategoryBatchUpdateDto
+        {
+            GiftIds = [gift.Id],
+            Category = null
+        }, CancellationToken.None);
+
+        Assert.Equal(string.Empty, context.Gifts.Single(x => x.Id == gift.Id).Category);
+    }
+
+    [Fact]
     public async Task GetAllAsync_DeveOrdenarPorPrecoComoDecimal()
     {
         AppDbContext context = CreateContext();

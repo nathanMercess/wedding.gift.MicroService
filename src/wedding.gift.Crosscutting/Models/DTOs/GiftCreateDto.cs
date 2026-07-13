@@ -12,7 +12,7 @@ public sealed class GiftCreateDto : IValidatableObject
     [MaxLength(500, ErrorMessage = "A descrição deve ter no máximo 500 caracteres.")]
     public string Description { get; set; } = string.Empty;
 
-    [Range(typeof(decimal), "0.01", "99999999.99", ErrorMessage = "O preço deve ser maior que zero.", ParseLimitsInInvariantCulture = true)]
+    [Range(typeof(decimal), "0", "99999999.99", ErrorMessage = "O preço não pode ser negativo.", ParseLimitsInInvariantCulture = true)]
     public decimal Price { get; set; }
 
     [Range(typeof(decimal), "0.01", "99999999.99", ErrorMessage = "O total deve ser maior que zero.", ParseLimitsInInvariantCulture = true)]

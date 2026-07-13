@@ -97,6 +97,12 @@ public sealed class Gift
         Touch();
     }
 
+    public void UpdateCategory(string? category)
+    {
+        Category = string.IsNullOrWhiteSpace(category) ? string.Empty : category.Trim();
+        Touch();
+    }
+
     public bool CanReceiveContribution(decimal amount)
         => (AllowPartialContribution || amount >= RemainingAmount) && amount <= RemainingAmount;
 
