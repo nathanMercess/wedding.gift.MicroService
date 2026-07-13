@@ -9,6 +9,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using wedding.gift.Application.Webapi.Controllers.Base;
+using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.Configurations;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Services.Contracts;
@@ -37,8 +38,9 @@ public sealed class WebhookController(
         [FromQuery] string? topic,
         CancellationToken cancellationToken)
     {
-        string? notificationId = string.IsNullOrWhiteSpace(dataId) ? id : dataId;
-        string? notificationType = string.IsNullOrWhiteSpace(type) ? topic : type;
+        (string? bodyId, string? bodyType) = await ReadNotificationMetadataAsync(Request, cancellationToken);
+        string? notificationId = FirstNotEmpty(dataId, id, bodyId);
+        string? notificationType = FirstNotEmpty(type, topic, bodyType);
 
         logger.LogInformation(
             "Webhook Mercado Pago recebido. Path={Path}, Type={Type}, DataId={DataId}, RequestId={RequestId}.",
@@ -57,7 +59,7 @@ public sealed class WebhookController(
         if (!ValidateMercadoPagoSignature(Request, notificationId))
             return Unauthorized();
 
-        if (notificationType is not ("payment" or "order" or "orders"))
+        if (notificationType is not ("payment" or "order" or "orders" or "chargebacks" or "topic_chargebacks_wh"))
         {
             logger.LogInformation("Webhook Mercado Pago ignorado por tipo nao suportado. Type={Type}, DataId={DataId}.", notificationType, notificationId);
             return Ok();
@@ -69,32 +71,108 @@ public sealed class WebhookController(
             return Ok();
         }
 
-        PaymentResponseDto status = await mercadoPago.GetOrderStatusAsync(notificationId, cancellationToken);
+        using CancellationTokenSource processingTimeout = new(TimeSpan.FromSeconds(mercadoPagoOptions.Value.WebhookProcessingTimeoutSeconds));
+        using CancellationTokenSource processingCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            Request.HttpContext.RequestAborted,
+            processingTimeout.Token);
 
-        if (status.Status == "error")
+        PaymentResponseDto status;
+        try
         {
-            logger.LogError(
-                "Falha ao consultar status real do Mercado Pago no webhook. DataId={DataId}, ErrorCode={ErrorCode}, Message={Message}.",
-                notificationId,
-                status.ErrorCode,
-                status.Message);
+            bool isChargeback = notificationType is "chargebacks" or "topic_chargebacks_wh";
+            PaymentResponseDto? chargeback = null;
+
+            if (isChargeback)
+            {
+                chargeback = await mercadoPago.GetChargebackAsync(notificationId, processingCancellation.Token);
+
+                if (chargeback.Status == PaymentStatuses.Error || string.IsNullOrWhiteSpace(chargeback.MpPaymentId))
+                {
+                    logger.LogError(
+                        "Falha ao consultar chargeback no Mercado Pago. DataId={DataId}, ErrorCode={ErrorCode}, Message={Message}.",
+                        notificationId,
+                        chargeback.ErrorCode,
+                        chargeback.Message);
+                    return StatusCode(StatusCodes.Status502BadGateway);
+                }
+            }
+
+            string statusProviderId = chargeback?.MpPaymentId ?? notificationId;
+            status = await mercadoPago.GetOrderStatusAsync(statusProviderId, processingCancellation.Token);
+
+            if (status.Status == "error")
+            {
+                logger.LogError(
+                    "Falha ao consultar status real do Mercado Pago no webhook. DataId={DataId}, ErrorCode={ErrorCode}, Message={Message}.",
+                    notificationId,
+                    status.ErrorCode,
+                    status.Message);
+                return StatusCode(StatusCodes.Status502BadGateway);
+            }
+
+            if (chargeback is not null)
+            {
+                status.Status = chargeback.Status;
+                status.StatusDetail = chargeback.StatusDetail;
+                status.RefundedAmount = chargeback.RefundedAmount;
+            }
+
+            string providerId = status.MpOrderId ?? status.MpPaymentId ?? notificationId;
+            await payments.ConfirmPaymentAsync(
+                providerId,
+                status.Status,
+                status.StatusDetail,
+                status.MpPaymentId,
+                status.RefundedAmount,
+                status.OrderId,
+                status.Amount,
+                status.CurrencyId,
+                status.Method,
+                processingCancellation.Token);
+        }
+        catch (OperationCanceledException) when (processingTimeout.IsCancellationRequested &&
+                                                 !cancellationToken.IsCancellationRequested &&
+                                                 !Request.HttpContext.RequestAborted.IsCancellationRequested)
+        {
+            logger.LogWarning("Webhook Mercado Pago excedeu o tempo de processamento. DataId={DataId}.", notificationId);
             return StatusCode(StatusCodes.Status502BadGateway);
         }
-
-        string providerId = status.MpOrderId ?? status.MpPaymentId ?? notificationId;
-        await payments.ConfirmPaymentAsync(
-            providerId,
-            status.Status,
-            status.StatusDetail,
-            status.MpPaymentId,
-            status.RefundedAmount,
-            cancellationToken);
 
         return Ok();
     }
 
     private static bool HasMercadoPagoSignatureHeaders(HttpRequest request)
         => request.Headers.ContainsKey("x-signature") && request.Headers.ContainsKey("x-request-id");
+
+    private static async Task<(string? Id, string? Type)> ReadNotificationMetadataAsync(
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        request.EnableBuffering();
+
+        try
+        {
+            JsonDocument document = await JsonDocument.ParseAsync(request.Body, cancellationToken: cancellationToken);
+            using (document)
+            {
+                JsonElement root = document.RootElement;
+                string? type = TryGetValueAsString(root, "type");
+                string? id = root.TryGetProperty("data", out JsonElement data)
+                    ? TryGetValueAsString(data, "id")
+                    : null;
+                return (id, type);
+            }
+        }
+        catch (JsonException)
+        {
+            return (null, null);
+        }
+        finally
+        {
+            request.Body.Position = 0;
+        }
+    }
 
     private static async Task<bool> IsMercadoPagoPanelValidationRequestAsync(
         HttpRequest request,
@@ -144,6 +222,22 @@ public sealed class WebhookController(
                property.ValueKind == JsonValueKind.String &&
                !string.IsNullOrWhiteSpace(value = property.GetString() ?? string.Empty);
     }
+
+    private static string? TryGetValueAsString(JsonElement element, string propertyName)
+    {
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(propertyName, out JsonElement property))
+            return null;
+
+        return property.ValueKind switch
+        {
+            JsonValueKind.String => property.GetString(),
+            JsonValueKind.Number => property.GetRawText(),
+            _ => null
+        };
+    }
+
+    private static string? FirstNotEmpty(params string?[] values)
+        => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
     private bool ValidateMercadoPagoSignature(HttpRequest request, string? dataId)
     {
@@ -239,7 +333,7 @@ public sealed class WebhookController(
         StringBuilder manifest = new();
 
         if (!string.IsNullOrWhiteSpace(dataId))
-            manifest.Append("id:").Append(dataId.Trim()).Append(';');
+            manifest.Append("id:").Append(dataId.Trim().ToLowerInvariant()).Append(';');
 
         if (!string.IsNullOrWhiteSpace(requestId))
             manifest.Append("request-id:").Append(requestId.Trim()).Append(';');

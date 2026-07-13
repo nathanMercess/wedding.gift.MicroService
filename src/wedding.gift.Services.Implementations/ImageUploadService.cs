@@ -45,10 +45,15 @@ public sealed class ImageUploadService(StorageClient storageClient, IOptions<Gcs
         string bucketName = gcsOptions.Value.BucketName;
         string objectName = $"gifts/{Guid.NewGuid()}{extension}";
 
+        Google.Apis.Storage.v1.Data.Object destination = new()
+        {
+            Bucket = bucketName,
+            Name = objectName,
+            ContentType = contentType,
+            CacheControl = "public, max-age=31536000, immutable"
+        };
         Google.Apis.Storage.v1.Data.Object uploaded = await storageClient.UploadObjectAsync(
-            bucketName,
-            objectName,
-            contentType,
+            destination,
             content,
             cancellationToken: cancellationToken);
 

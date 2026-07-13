@@ -1,5 +1,6 @@
 using Google.Cloud.Storage.V1;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -132,21 +133,43 @@ builder.Services
                 User? user = await repository.GetByIdAsync(userId, context.HttpContext.RequestAborted);
 
                 if (user is null || !user.IsActive)
+                {
                     context.Fail("Usuário inativo.");
+                    return;
+                }
+
+                string? tokenRole = context.Principal?.FindFirstValue(ClaimTypes.Role);
+
+                if (!string.Equals(tokenRole, user.Role, StringComparison.Ordinal))
+                    context.Fail("Permissões do usuário foram alteradas.");
             }
         };
     });
 
 builder.Services.AddAuthorization();
 builder.Services.AddHttpContextAccessor();
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = 3;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 builder.Services.AddScoped<IRequestContext, HttpRequestContext>();
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton(_ => StorageClient.Create());
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(_ =>
+        RateLimitPartition.GetConcurrencyLimiter("global", _ => new ConcurrencyLimiterOptions
+        {
+            PermitLimit = 200,
+            QueueLimit = 0
+        }));
     options.AddPolicy("auth", context => CreateRateLimitPartition(context, 10, TimeSpan.FromMinutes(1)));
-    options.AddPolicy("payment", context => CreateRateLimitPartition(context, 30, TimeSpan.FromMinutes(5)));
+    options.AddPolicy("payment", context => CreateRateLimitPartition(context, 120, TimeSpan.FromMinutes(5)));
+    options.AddPolicy("payment-polling", context => CreatePaymentPollingRateLimitPartition(context, 120, TimeSpan.FromMinutes(5)));
     options.AddPolicy("public-write", context => CreateRateLimitPartition(context, 20, TimeSpan.FromMinutes(5)));
     options.AddPolicy("webhook", context => CreateRateLimitPartition(context, 120, TimeSpan.FromMinutes(1)));
     options.AddPolicy("order-lookup", context => CreateRateLimitPartition(context, 10, TimeSpan.FromMinutes(15)));
@@ -191,6 +214,7 @@ WebApplication app = builder.Build();
 await ApplyMigrationsAsync(app.Services);
 await EnsureBootstrapAdminAsync(app.Services, builder.Configuration);
 
+app.UseForwardedHeaders();
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseGlobalExceptionHandler();
 app.UseMiddleware<ApiResponseMiddleware>();
@@ -275,7 +299,23 @@ static RateLimitPartition<string> CreateRateLimitPartition(
     int permitLimit,
     TimeSpan window)
 {
-    string partitionKey = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    string partitionKey = RateLimitPartitionKeyBuilder.ClientAddress(context);
+
+    return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ => new FixedWindowRateLimiterOptions
+    {
+        AutoReplenishment = true,
+        PermitLimit = permitLimit,
+        QueueLimit = 0,
+        Window = window
+    });
+}
+
+static RateLimitPartition<string> CreatePaymentPollingRateLimitPartition(
+    HttpContext context,
+    int permitLimit,
+    TimeSpan window)
+{
+    string partitionKey = RateLimitPartitionKeyBuilder.PaymentPolling(context);
 
     return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ => new FixedWindowRateLimiterOptions
     {

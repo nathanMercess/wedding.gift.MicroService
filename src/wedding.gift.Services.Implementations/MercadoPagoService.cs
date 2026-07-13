@@ -44,47 +44,41 @@ public sealed class MercadoPagoService(
             }
         };
 
-        return await SendPaymentAsync(payment, request.DeviceId, cancellationToken);
+        PaymentResponseDto result = await SendPaymentAsync(payment, request.DeviceId, cancellationToken);
+        result.Amount ??= request.Amount;
+        result.CurrencyId ??= "BRL";
+        result.Method = string.IsNullOrWhiteSpace(result.Method) ? request.Method : result.Method;
+        return result;
     }
 
     public async Task<PaymentResponseDto> CreatePixOrderAsync(
         PixPaymentRequestDto request,
         CancellationToken cancellationToken)
     {
-        MercadoPagoOrderRequest order = new()
+        MercadoPagoPaymentRequest payment = new()
         {
-            Type = "online",
-            ProcessingMode = "automatic",
-            TotalAmount = request.Amount.ToString("F2", CultureInfo.InvariantCulture),
+            TransactionAmount = request.Amount,
+            Description = "Wedding gift",
+            PaymentMethodId = "pix",
             ExternalReference = request.OrderId,
-            Payer = new OrderPayer
+            DateOfExpiration = DateTimeOffset.UtcNow.AddMinutes(31).ToString("yyyy-MM-dd'T'HH:mm:ss.fffzzz", CultureInfo.InvariantCulture),
+            Payer = new MercadoPagoPaymentPayer
             {
+                FirstName = request.ContributorName,
                 Email = request.PayerEmail,
-                Identification = new OrderPayerIdentification
+                Identification = new MercadoPagoPaymentIdentification
                 {
                     Type = request.PayerDocType,
                     Number = request.PayerDocNumber
                 }
-            },
-            Transactions = new OrderTransactions
-            {
-                Payments = new List<OrderPayment>
-                {
-                    new()
-                    {
-                        Amount = request.Amount.ToString("F2", CultureInfo.InvariantCulture),
-                        ExpirationTime = "PT30M",
-                        PaymentMethod = new OrderPaymentMethod
-                        {
-                            Id = "pix",
-                            Type = "bank_transfer"
-                        }
-                    }
-                }
             }
         };
 
-        return await SendOrderAsync(order, cancellationToken);
+        PaymentResponseDto result = await SendPaymentAsync(payment, null, cancellationToken);
+        result.Amount ??= request.Amount;
+        result.CurrencyId ??= "BRL";
+        result.Method = string.IsNullOrWhiteSpace(result.Method) ? "pix" : result.Method;
+        return result;
     }
 
     public async Task<PaymentResponseDto> GetOrderStatusAsync(
@@ -93,6 +87,63 @@ public sealed class MercadoPagoService(
         => mpOrderId.StartsWith("ORD", StringComparison.OrdinalIgnoreCase)
             ? await GetOrderStatusFromOrderAsync(mpOrderId, cancellationToken)
             : await GetPaymentStatusFromPaymentAsync(mpOrderId, cancellationToken);
+
+    public async Task<PaymentResponseDto> GetChargebackAsync(
+        string chargebackId,
+        CancellationToken cancellationToken)
+    {
+        string baseUrl = _options.BaseUrl.TrimEnd('/');
+        using HttpRequestMessage request = new(HttpMethod.Get, $"{baseUrl}/v1/chargebacks/{chargebackId}");
+
+        if (!TryApplyAuth(request, out PaymentResponseDto? authError))
+            return authError!;
+
+        try
+        {
+            using HttpResponseMessage response = await httpClient.SendAsync(request, cancellationToken);
+            string requestId = ExtractRequestId(response);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                string raw = await response.Content.ReadAsStringAsync(cancellationToken);
+                MpError error = TryParseMpError(raw);
+                return new PaymentResponseDto
+                {
+                    Status = PaymentStatuses.Error,
+                    ErrorCode = MapMpError((int)response.StatusCode, error),
+                    Message = error?.Message ?? "Não foi possível consultar o chargeback.",
+                    MpRequestId = requestId
+                };
+            }
+
+            MercadoPagoChargebackResponse chargeback = await response.Content.ReadFromJsonAsync<MercadoPagoChargebackResponse>(cancellationToken: cancellationToken);
+            bool? coverageApplied = chargeback.CoverageAppliedValue();
+            return new PaymentResponseDto
+            {
+                Status = coverageApplied == true ? PaymentStatuses.Approved : PaymentStatuses.ChargedBack,
+                StatusDetail = coverageApplied switch
+                {
+                    true => "reimbursed",
+                    false => "settled",
+                    null => "in_process"
+                },
+                MpPaymentId = chargeback.PaymentId(),
+                Amount = chargeback.Amount,
+                RefundedAmount = coverageApplied == true ? 0 : chargeback.Amount,
+                CurrencyId = chargeback.Currency,
+                MpRequestId = requestId
+            };
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Falha de transporte ao consultar chargeback {ChargebackId} no Mercado Pago.", chargebackId);
+            return ProviderError("Falha de comunicação ao consultar o chargeback.");
+        }
+    }
 
     public async Task<PaymentResponseDto> RefundAsync(
         string? mpOrderId,
@@ -338,6 +389,7 @@ public sealed class MercadoPagoService(
         MercadoPagoOrderResponse result = await response.Content.ReadFromJsonAsync<MercadoPagoOrderResponse>(cancellationToken: cancellationToken);
 
         PaymentResponseDto dto = MapResponse(result);
+        dto.OrderId = string.IsNullOrWhiteSpace(dto.OrderId) ? order.ExternalReference : dto.OrderId;
         dto.MpRequestId = requestId;
         return dto;
     }
@@ -401,6 +453,7 @@ public sealed class MercadoPagoService(
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
         PaymentResponseDto dto = MapPaymentResponse(result);
+        dto.OrderId = string.IsNullOrWhiteSpace(dto.OrderId) ? payment.ExternalReference : dto.OrderId;
         dto.MpRequestId = requestId;
         return dto;
     }
@@ -468,8 +521,8 @@ public sealed class MercadoPagoService(
             (_, "empty_required_header") => PaymentErrorCodes.ValidationError,
             (_, "missing customer id") => PaymentErrorCodes.ValidationError,
             (_, "refund_amount_exceeds") => PaymentErrorCodes.ValidationError,
-            (409, _) => "IDEMPOTENCY_KEY_ALREADY_USED",
-            (423, _) => "RESOURCE_LOCKED",
+            (409, _) => PaymentErrorCodes.IdempotencyKeyAlreadyUsed,
+            (423, _) => PaymentErrorCodes.ResourceLocked,
             (500, _) => PaymentErrorCodes.ProviderError,
             (400, _) => PaymentErrorCodes.ValidationError,
             _ => PaymentErrorCodes.ProviderError
@@ -484,9 +537,11 @@ public sealed class MercadoPagoService(
         string paymentStatus = payment?.Status;
         string finalStatus = paymentStatus ?? orderStatus ?? "error";
         string statusDetail = payment?.StatusDetail ?? order?.StatusDetail;
-        decimal refundedAmount = order?.Transactions?.Refunds?
-            .Select(x => decimal.TryParse(x.Amount, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal amount) ? amount : 0)
-            .Sum() ?? 0;
+        decimal? refundedAmount = order?.Transactions?.Refunds is { Count: > 0 } refunds
+            ? refunds.Select(x => decimal.TryParse(x.Amount, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal amount) ? amount : 0).Sum()
+            : ParseAmount(payment?.RefundedAmount);
+        decimal? amount = ParseAmount(payment?.Amount) ?? ParseAmount(order?.TotalAmount);
+        string? method = payment?.PaymentMethod?.Id == "pix" ? "pix" : payment?.PaymentMethod?.Type;
 
         string errorCode = finalStatus switch
         {
@@ -499,11 +554,15 @@ public sealed class MercadoPagoService(
 
         return new PaymentResponseDto
         {
+            OrderId = order?.ExternalReference,
             Status = finalStatus,
             StatusDetail = statusDetail,
             ErrorCode = errorCode,
             MpOrderId = order?.Id,
             MpPaymentId = payment?.Id,
+            Amount = amount,
+            CurrencyId = NormalizeCurrency(order?.CountryCode),
+            Method = method ?? string.Empty,
             RefundedAmount = refundedAmount,
             QrCode = payment?.PaymentMethod?.QrCode,
             QrCodeBase64 = payment?.PaymentMethod?.QrCodeBase64
@@ -527,14 +586,28 @@ public sealed class MercadoPagoService(
 
         return new PaymentResponseDto
         {
+            OrderId = payment?.ExternalReference,
             Status = finalStatus,
             StatusDetail = statusDetail,
             ErrorCode = errorCode,
             MpOrderId = null,
             MpPaymentId = id,
-            RefundedAmount = payment?.TransactionAmountRefunded
+            Amount = payment?.TransactionAmount,
+            CurrencyId = payment?.CurrencyId,
+            Method = string.Equals(payment?.PaymentMethodId, "pix", StringComparison.OrdinalIgnoreCase)
+                ? "pix"
+                : payment?.PaymentTypeId ?? payment?.PaymentMethodId ?? string.Empty,
+            RefundedAmount = payment?.TransactionAmountRefunded,
+            QrCode = payment?.PointOfInteraction?.TransactionData?.QrCode ?? string.Empty,
+            QrCodeBase64 = payment?.PointOfInteraction?.TransactionData?.QrCodeBase64
         };
     }
+
+    private static decimal? ParseAmount(string? value)
+        => decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal amount) ? amount : null;
+
+    private static string? NormalizeCurrency(string? countryCode)
+        => countryCode?.Trim().ToUpperInvariant() is "BR" or "BRA" or "BRL" ? "BRL" : countryCode;
 
     private sealed class MpError
     {
@@ -560,17 +633,29 @@ public sealed class MercadoPagoService(
     private sealed class MercadoPagoPaymentRequest
     {
         [JsonPropertyName("transaction_amount")] public decimal TransactionAmount { get; set; }
-        [JsonPropertyName("token")] public string Token { get; set; } = string.Empty;
+        [JsonPropertyName("token")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Token { get; set; }
         [JsonPropertyName("description")] public string Description { get; set; } = string.Empty;
-        [JsonPropertyName("installments")] public int Installments { get; set; }
+        [JsonPropertyName("installments")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? Installments { get; set; }
         [JsonPropertyName("payment_method_id")] public string PaymentMethodId { get; set; } = string.Empty;
-        [JsonPropertyName("issuer_id")] public string? IssuerId { get; set; }
+        [JsonPropertyName("issuer_id")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? IssuerId { get; set; }
         [JsonPropertyName("external_reference")] public string ExternalReference { get; set; } = string.Empty;
+        [JsonPropertyName("date_of_expiration")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? DateOfExpiration { get; set; }
         [JsonPropertyName("payer")] public MercadoPagoPaymentPayer Payer { get; set; } = new();
     }
 
     private sealed class MercadoPagoPaymentPayer
     {
+        [JsonPropertyName("first_name")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? FirstName { get; set; }
         [JsonPropertyName("email")] public string Email { get; set; } = string.Empty;
         [JsonPropertyName("identification")] public MercadoPagoPaymentIdentification Identification { get; set; } = new();
     }
@@ -586,7 +671,13 @@ public sealed class MercadoPagoService(
         [JsonPropertyName("id")] public JsonElement Id { get; set; }
         [JsonPropertyName("status")] public string? Status { get; set; }
         [JsonPropertyName("status_detail")] public string? StatusDetail { get; set; }
+        [JsonPropertyName("external_reference")] public string? ExternalReference { get; set; }
+        [JsonPropertyName("transaction_amount")] public decimal? TransactionAmount { get; set; }
         [JsonPropertyName("transaction_amount_refunded")] public decimal? TransactionAmountRefunded { get; set; }
+        [JsonPropertyName("currency_id")] public string? CurrencyId { get; set; }
+        [JsonPropertyName("payment_type_id")] public string? PaymentTypeId { get; set; }
+        [JsonPropertyName("payment_method_id")] public string? PaymentMethodId { get; set; }
+        [JsonPropertyName("point_of_interaction")] public MercadoPagoPointOfInteraction? PointOfInteraction { get; set; }
 
         public string? IdAsString()
         {
@@ -596,6 +687,53 @@ public sealed class MercadoPagoService(
                 JsonValueKind.Number => Id.GetRawText(),
                 _ => null
             };
+        }
+    }
+
+    private sealed class MercadoPagoPointOfInteraction
+    {
+        [JsonPropertyName("transaction_data")] public MercadoPagoTransactionData? TransactionData { get; set; }
+    }
+
+    private sealed class MercadoPagoTransactionData
+    {
+        [JsonPropertyName("qr_code")] public string? QrCode { get; set; }
+        [JsonPropertyName("qr_code_base64")] public string? QrCodeBase64 { get; set; }
+    }
+
+    private sealed class MercadoPagoChargebackResponse
+    {
+        [JsonPropertyName("payments")] public JsonElement Payments { get; set; }
+        [JsonPropertyName("currency")] public string? Currency { get; set; }
+        [JsonPropertyName("amount")]
+        [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
+        public decimal Amount { get; set; }
+        [JsonPropertyName("coverage_applied")] public JsonElement CoverageApplied { get; set; }
+
+        public string? PaymentId()
+        {
+            JsonElement payment = Payments.ValueKind == JsonValueKind.Array
+                ? Payments.EnumerateArray().FirstOrDefault()
+                : Payments;
+            return payment.ValueKind switch
+            {
+                JsonValueKind.String => payment.GetString(),
+                JsonValueKind.Number => payment.GetRawText(),
+                JsonValueKind.Object when payment.TryGetProperty("id", out JsonElement id) && id.ValueKind == JsonValueKind.String => id.GetString(),
+                JsonValueKind.Object when payment.TryGetProperty("id", out JsonElement id) && id.ValueKind == JsonValueKind.Number => id.GetRawText(),
+                _ => null
+            };
+        }
+
+        public bool? CoverageAppliedValue()
+        {
+            if (CoverageApplied.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                return CoverageApplied.GetBoolean();
+
+            if (CoverageApplied.ValueKind == JsonValueKind.String && bool.TryParse(CoverageApplied.GetString(), out bool value))
+                return value;
+
+            return null;
         }
     }
 }

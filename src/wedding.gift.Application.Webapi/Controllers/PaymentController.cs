@@ -8,10 +8,10 @@ using wedding.gift.Services.Contracts;
 
 namespace wedding.gift.Application.Webapi.Controllers;
 
-[AllowAnonymous]
-[EnableRateLimiting("payment")]
 public sealed class PaymentController(IPaymentService paymentService, IOrderLookupService orderLookupService) : ApiControllerBase
 {
+    [AllowAnonymous]
+    [EnableRateLimiting("payment")]
     [HttpPost("card")]
     [ProducesResponseType(typeof(ApiResponseDto<PaymentResponseDto>), StatusCodes.Status200OK)]
     public async Task<PaymentResponseDto> PayWithCard([FromBody] CardPaymentRequestDto request, CancellationToken cancellationToken)
@@ -22,6 +22,7 @@ public sealed class PaymentController(IPaymentService paymentService, IOrderLook
     }
 
     [AllowAnonymous]
+    [EnableRateLimiting("payment")]
     [HttpPost("pix")]
     [ProducesResponseType(typeof(ApiResponseDto<PaymentResponseDto>), StatusCodes.Status200OK)]
     public async Task<PaymentResponseDto> PayWithPix([FromBody] PixPaymentRequestDto request, CancellationToken cancellationToken)
@@ -31,15 +32,19 @@ public sealed class PaymentController(IPaymentService paymentService, IOrderLook
         return result;
     }
 
-    [HttpGet("order/{orderId}")]
+    [AllowAnonymous]
+    [EnableRateLimiting("payment-polling")]
+    [HttpGet("order/{orderId:guid}")]
     [ProducesResponseType(typeof(ApiResponseDto<PaymentResponseDto>), StatusCodes.Status200OK)]
-    public async Task<PaymentResponseDto> GetPaymentOrder(string orderId, CancellationToken cancellationToken)
+    public async Task<PaymentResponseDto> GetPaymentOrder(Guid orderId, CancellationToken cancellationToken)
     {
-        PaymentResponseDto result = await paymentService.GetPaymentOrderAsync(orderId, cancellationToken);
+        PaymentResponseDto result = await paymentService.GetPaymentOrderAsync(orderId.ToString("D"), cancellationToken);
         SetPaymentStatusCode(result);
         return result;
     }
 
+    [AllowAnonymous]
+    [EnableRateLimiting("order-lookup")]
     [HttpPost("order-lookup")]
     [ProducesResponseType(typeof(ApiResponseDto<OrderLookupAcceptedDto>), StatusCodes.Status200OK)]
     public async Task<OrderLookupAcceptedDto> LookupPaymentOrder([FromBody] PaymentOrderLookupRequestDto request, CancellationToken cancellationToken)
@@ -48,6 +53,7 @@ public sealed class PaymentController(IPaymentService paymentService, IOrderLook
         return new OrderLookupAcceptedDto();
     }
 
+    [AllowAnonymous]
     [HttpPost("order-lookup/request")]
     [EnableRateLimiting("order-lookup")]
     [ProducesResponseType(typeof(ApiResponseDto<OrderLookupAcceptedDto>), StatusCodes.Status200OK)]
@@ -57,12 +63,15 @@ public sealed class PaymentController(IPaymentService paymentService, IOrderLook
         return new OrderLookupAcceptedDto();
     }
 
+    [AllowAnonymous]
     [HttpGet("order-lookup/{token}")]
     [EnableRateLimiting("order-lookup")]
     [ProducesResponseType(typeof(ApiResponseDto<OrderLookupResponseDto>), StatusCodes.Status200OK)]
     public async Task<OrderLookupResponseDto> ConsumeOrderLookup(string token, CancellationToken cancellationToken)
         => await orderLookupService.ConsumeAsync(token, cancellationToken);
 
+    [Authorize(Roles = UserRoles.AdminOrSuperAdmin)]
+    [EnableRateLimiting("payment-polling")]
     [HttpGet("status/{mpOrderId}")]
     [ProducesResponseType(typeof(ApiResponseDto<PaymentResponseDto>), StatusCodes.Status200OK)]
     public async Task<PaymentResponseDto> GetPaymentStatus(string mpOrderId, CancellationToken cancellationToken)

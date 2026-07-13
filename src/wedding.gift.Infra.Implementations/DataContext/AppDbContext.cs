@@ -10,6 +10,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<User> Users => Set<User>();
     public DbSet<Couple> Couples => Set<Couple>();
     public DbSet<Payment> Payments => Set<Payment>();
+    public DbSet<PaymentRefundOperation> PaymentRefundOperations => Set<PaymentRefundOperation>();
     public DbSet<ApiRequestLog> ApiRequestLogs => Set<ApiRequestLog>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<PaymentOrderLookupToken> PaymentOrderLookupTokens => Set<PaymentOrderLookupToken>();

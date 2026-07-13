@@ -47,6 +47,7 @@ public sealed class PaymentMapping : IEntityTypeConfiguration<Payment>
         builder.HasIndex(x => x.OrderId).IsUnique();
         builder.HasIndex(x => x.Nsu);
         builder.HasIndex(x => x.MpOrderId).IsUnique().HasFilter("[MpOrderId] IS NOT NULL");
+        builder.HasIndex(x => x.MpPaymentId).IsUnique().HasFilter("[MpPaymentId] IS NOT NULL");
         builder.HasIndex(x => x.ContributionId).IsUnique().HasFilter("[ContributionId] IS NOT NULL");
         builder.HasIndex(x => new { x.GiftId, x.Status, x.ExpiresAt });
         builder.HasIndex(x => new { x.Status, x.UpdatedAt });

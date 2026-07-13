@@ -209,11 +209,17 @@ public sealed class AdministrativeOperationsTests
     private sealed class FakeMercadoPago : IMercadoPagoService
     {
         public Task<PaymentResponseDto> CreateCardOrderAsync(CardPaymentRequestDto request, CancellationToken cancellationToken)
-            => Task.FromResult(new PaymentResponseDto { Status = PaymentStatuses.Approved, MpOrderId = "MP-APPROVED", MpPaymentId = "PAY-APPROVED" });
+            => Task.FromResult(new PaymentResponseDto { Status = PaymentStatuses.Approved, MpOrderId = "MP-APPROVED", MpPaymentId = "PAY-APPROVED", Amount = request.Amount, CurrencyId = "BRL", Method = request.Method });
         public Task<PaymentResponseDto> CreatePixOrderAsync(PixPaymentRequestDto request, CancellationToken cancellationToken)
             => Task.FromResult(new PaymentResponseDto { Status = PaymentStatuses.Pending, MpOrderId = "MP-PENDING" });
         public Task<PaymentResponseDto> GetOrderStatusAsync(string mpOrderId, CancellationToken cancellationToken)
-            => Task.FromResult(new PaymentResponseDto { Status = PaymentStatuses.Approved, MpOrderId = mpOrderId });
+            => Task.FromResult(new PaymentResponseDto { Status = PaymentStatuses.Approved, MpOrderId = mpOrderId, Amount = 100m, CurrencyId = "BRL", Method = "credit_card" });
+        public Task<PaymentResponseDto> GetChargebackAsync(string chargebackId, CancellationToken cancellationToken)
+            => Task.FromResult(new PaymentResponseDto { Status = PaymentStatuses.Error });
+        public Task<PaymentResponseDto> RefundAsync(string? mpOrderId, string? mpPaymentId, string idempotencyKey, CancellationToken cancellationToken)
+            => Task.FromResult(new PaymentResponseDto { Status = PaymentStatuses.Error });
+        public Task<PaymentResponseDto> RefundAsync(string? mpOrderId, string? mpPaymentId, decimal? amount, string idempotencyKey, CancellationToken cancellationToken)
+            => Task.FromResult(new PaymentResponseDto { Status = PaymentStatuses.Error });
     }
 
     private sealed class FakeEmail : IEmailService

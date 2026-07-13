@@ -16,7 +16,10 @@ public interface IPaymentRepository
     Task<Payment?> GetByProviderIdForUpdateAsync(string providerId, CancellationToken cancellationToken);
     Task<Payment?> GetByOrderIdAsync(string orderId, CancellationToken cancellationToken);
     Task<Payment?> GetByOrderIdForUpdateAsync(string orderId, CancellationToken cancellationToken);
+    Task<PaymentRefundOperation?> GetRefundOperationByIdempotencyKeyForUpdateAsync(Guid idempotencyKey, CancellationToken cancellationToken);
+    Task AddRefundOperationAsync(PaymentRefundOperation operation, CancellationToken cancellationToken);
     Task UpdateStatusAsync(string orderId, string status, string? statusDetail, CancellationToken cancellationToken);
-    Task<IRepositoryTransaction?> BeginSerializableTransactionAsync(CancellationToken cancellationToken);
+    Task<TResult> ExecuteSerializableAsync<TResult>(Func<CancellationToken, Task<TResult>> operation, CancellationToken cancellationToken);
+    Task<TResult> ExecutePaymentLockAsync<TResult>(Guid paymentId, Guid idempotencyKey, Func<CancellationToken, Task<TResult>> operation, CancellationToken cancellationToken);
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }

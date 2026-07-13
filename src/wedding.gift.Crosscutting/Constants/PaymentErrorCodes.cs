@@ -13,4 +13,7 @@ public static class PaymentErrorCodes
     public const string OrderNotFound = "PAYMENT_ORDER_NOT_FOUND";
     public const string PaymentNotRefundable = "PAYMENT_NOT_REFUNDABLE";
     public const string InvalidRefundAmount = "INVALID_REFUND_AMOUNT";
+    public const string IdempotencyKeyAlreadyUsed = "IDEMPOTENCY_KEY_ALREADY_USED";
+    public const string ResourceLocked = "RESOURCE_LOCKED";
+    public const string ProviderDataMismatch = "PROVIDER_DATA_MISMATCH";
 }

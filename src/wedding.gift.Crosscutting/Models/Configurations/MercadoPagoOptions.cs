@@ -16,4 +16,7 @@ public sealed class MercadoPagoOptions
     [Required]
     [MinLength(32)]
     public string WebhookSecret { get; set; } = string.Empty;
+
+    [Range(1, 20)]
+    public int WebhookProcessingTimeoutSeconds { get; set; } = 15;
 }

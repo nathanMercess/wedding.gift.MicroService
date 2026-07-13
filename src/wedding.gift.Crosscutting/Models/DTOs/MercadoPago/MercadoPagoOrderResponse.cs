@@ -13,6 +13,15 @@ public sealed class MercadoPagoOrderResponse
     [JsonPropertyName("status_detail")]
     public string? StatusDetail { get; set; }
 
+    [JsonPropertyName("external_reference")]
+    public string? ExternalReference { get; set; }
+
+    [JsonPropertyName("total_amount")]
+    public string? TotalAmount { get; set; }
+
+    [JsonPropertyName("country_code")]
+    public string? CountryCode { get; set; }
+
     [JsonPropertyName("transactions")]
     public OrderResponseTransactions? Transactions { get; set; }
 }

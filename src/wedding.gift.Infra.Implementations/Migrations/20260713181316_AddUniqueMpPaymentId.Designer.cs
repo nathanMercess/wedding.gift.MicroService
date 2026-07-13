@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using wedding.gift.Infra.Implementations.DataContext;
 
@@ -11,9 +12,11 @@ using wedding.gift.Infra.Implementations.DataContext;
 namespace wedding.gift.Infra.Implementations.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260713181316_AddUniqueMpPaymentId")]
+    partial class AddUniqueMpPaymentId
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -724,40 +727,6 @@ namespace wedding.gift.Infra.Implementations.Migrations
                     b.ToTable("PaymentOrderLookupTokens");
                 });
 
-            modelBuilder.Entity("wedding.gift.Domain.Model.Entities.PaymentRefundOperation", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("Amount")
-                        .HasColumnType("decimal(10,2)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("IdempotencyKey")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<bool>("IsFullRefund")
-                        .HasColumnType("bit");
-
-                    b.Property<Guid>("PaymentId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("RefundedAmount")
-                        .HasColumnType("decimal(10,2)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("IdempotencyKey")
-                        .IsUnique();
-
-                    b.HasIndex("PaymentId", "CreatedAt");
-
-                    b.ToTable("PaymentRefundOperations");
-                });
-
             modelBuilder.Entity("wedding.gift.Domain.Model.Entities.RefreshToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -895,17 +864,6 @@ namespace wedding.gift.Infra.Implementations.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Contribution");
-                });
-
-            modelBuilder.Entity("wedding.gift.Domain.Model.Entities.PaymentRefundOperation", b =>
-                {
-                    b.HasOne("wedding.gift.Domain.Model.Entities.Payment", "Payment")
-                        .WithMany()
-                        .HasForeignKey("PaymentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Payment");
                 });
 
             modelBuilder.Entity("wedding.gift.Domain.Model.Entities.RefreshToken", b =>

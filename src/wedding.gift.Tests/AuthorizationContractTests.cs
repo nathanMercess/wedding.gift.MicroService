@@ -54,4 +54,27 @@ public sealed class AuthorizationContractTests
         Assert.NotNull(update.GetCustomAttribute<HttpPutAttribute>());
         Assert.NotNull(update.GetCustomAttribute<HttpPatchAttribute>());
     }
+
+    [Fact]
+    public void PaymentStatusShouldRequireAdminAndControllerShouldNotBeAnonymous()
+    {
+        MethodInfo? status = typeof(PaymentController).GetMethod(nameof(PaymentController.GetPaymentStatus));
+        AuthorizeAttribute? authorize = status?.GetCustomAttributes<AuthorizeAttribute>(false)
+            .SingleOrDefault(attribute => !string.IsNullOrWhiteSpace(attribute.Roles));
+
+        Assert.DoesNotContain(typeof(PaymentController).GetCustomAttributes<AllowAnonymousAttribute>(false), _ => true);
+        Assert.NotNull(authorize);
+        Assert.Equal(UserRoles.AdminOrSuperAdmin, authorize.Roles);
+        Assert.Empty(status?.GetCustomAttributes<AllowAnonymousAttribute>(false) ?? []);
+    }
+
+    [Fact]
+    public void PaymentOrderAndRefundRoutesShouldRequireGuid()
+    {
+        MethodInfo? getOrder = typeof(PaymentController).GetMethod(nameof(PaymentController.GetPaymentOrder));
+        MethodInfo? refund = typeof(AdminPaymentsController).GetMethod(nameof(AdminPaymentsController.Refund));
+
+        Assert.Equal("order/{orderId:guid}", getOrder?.GetCustomAttribute<HttpGetAttribute>()?.Template);
+        Assert.Equal("{orderId:guid}/refund", refund?.GetCustomAttribute<HttpPostAttribute>()?.Template);
+    }
 }

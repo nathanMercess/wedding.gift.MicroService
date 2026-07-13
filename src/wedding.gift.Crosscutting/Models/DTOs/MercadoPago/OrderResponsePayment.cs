@@ -13,6 +13,12 @@ public sealed class OrderResponsePayment
     [JsonPropertyName("status_detail")]
     public string? StatusDetail { get; set; }
 
+    [JsonPropertyName("amount")]
+    public string? Amount { get; set; }
+
+    [JsonPropertyName("refunded_amount")]
+    public string? RefundedAmount { get; set; }
+
     [JsonPropertyName("payment_method")]
     public OrderResponsePaymentMethod? PaymentMethod { get; set; }
 }

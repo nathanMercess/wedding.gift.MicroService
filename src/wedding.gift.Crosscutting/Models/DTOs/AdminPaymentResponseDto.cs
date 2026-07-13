@@ -8,6 +8,8 @@ public sealed class AdminPaymentResponseDto
     public string GuestName { get; set; } = string.Empty;
     public string GuestEmail { get; set; } = string.Empty;
     public decimal Amount { get; set; }
+    public decimal RefundedAmount { get; set; }
+    public decimal RemainingAmount { get; set; }
     public string Method { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public string StatusDetail { get; set; } = string.Empty;

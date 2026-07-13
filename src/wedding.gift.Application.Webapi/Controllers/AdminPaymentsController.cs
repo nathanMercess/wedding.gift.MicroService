@@ -24,12 +24,38 @@ public sealed class AdminPaymentsController(IPaymentService paymentService) : Ap
     public async Task<PaymentReconciliationResponseDto> ReconcileApproved(CancellationToken cancellationToken)
         => await paymentService.ReconcileApprovedPaymentsAsync(cancellationToken);
 
-    [HttpPost("{orderId}/refund")]
+    [HttpPost("{orderId:guid}/refund")]
     [Authorize(Roles = UserRoles.SuperAdmin)]
     [ProducesResponseType(typeof(ApiResponseDto<PaymentResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponseDto<PaymentResponseDto>), StatusCodes.Status502BadGateway)]
     public async Task<PaymentResponseDto> Refund(
-        string orderId,
+        Guid orderId,
         [FromBody] PaymentRefundRequestDto request,
         CancellationToken cancellationToken)
-        => await paymentService.RefundPaymentAsync(orderId, request.Amount, cancellationToken);
+    {
+        PaymentResponseDto result = await paymentService.RefundPaymentAsync(
+            orderId.ToString("D"),
+            request.Amount,
+            request.IdempotencyKey.GetValueOrDefault(),
+            cancellationToken);
+        SetRefundStatusCode(result);
+        return result;
+    }
+
+    private void SetRefundStatusCode(PaymentResponseDto result)
+    {
+        if (result.Status != PaymentStatuses.Error)
+            return;
+
+        Response.StatusCode = result.ErrorCode switch
+        {
+            PaymentErrorCodes.ValidationError => StatusCodes.Status400BadRequest,
+            PaymentErrorCodes.OrderNotFound => StatusCodes.Status404NotFound,
+            PaymentErrorCodes.PaymentNotRefundable => StatusCodes.Status409Conflict,
+            PaymentErrorCodes.InvalidRefundAmount => StatusCodes.Status409Conflict,
+            PaymentErrorCodes.IdempotencyKeyAlreadyUsed => StatusCodes.Status409Conflict,
+            PaymentErrorCodes.ResourceLocked => StatusCodes.Status409Conflict,
+            _ => StatusCodes.Status502BadGateway
+        };
+    }
 }

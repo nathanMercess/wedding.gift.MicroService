@@ -3,6 +3,7 @@ namespace wedding.gift.Application.Webapi.Infrastructure;
 public static class RequestPathSanitizer
 {
     private const string LookupPrefix = "/api/payment/order-lookup/";
+    private const string PaymentOrderPrefix = "/api/payment/order/";
 
     public static string Sanitize(PathString path)
     {
@@ -12,6 +13,9 @@ public static class RequestPathSanitizer
         {
             return $"{LookupPrefix}[redacted]";
         }
+
+        if (value.StartsWith(PaymentOrderPrefix, StringComparison.OrdinalIgnoreCase))
+            return $"{PaymentOrderPrefix}[redacted]";
 
         return value;
     }

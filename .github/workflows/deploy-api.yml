@@ -65,6 +65,8 @@ jobs:
             echo "service=wedding-gift-api-prod" >> "$GITHUB_OUTPUT"
             echo "aspnet_environment=Production" >> "$GITHUB_OUTPUT"
             echo "api_base_url=https://davidmaira.com" >> "$GITHUB_OUTPUT"
+            echo "min_instances=1" >> "$GITHUB_OUTPUT"
+            echo "cpu_allocation_flag=--no-cpu-throttling" >> "$GITHUB_OUTPUT"
             echo "mercadopago_access_token_secret=mercadopago-access-token-prod" >> "$GITHUB_OUTPUT"
             echo "mercadopago_webhook_secret=mercadopago-webhook-secret-prod" >> "$GITHUB_OUTPUT"
             echo "jwt_signing_key_secret=jwt-signing-key-prod" >> "$GITHUB_OUTPUT"
@@ -72,6 +74,8 @@ jobs:
             echo "service=wedding-gift-api-dev" >> "$GITHUB_OUTPUT"
             echo "aspnet_environment=Development" >> "$GITHUB_OUTPUT"
             echo "api_base_url=https://dev.davidmaira.com" >> "$GITHUB_OUTPUT"
+            echo "min_instances=0" >> "$GITHUB_OUTPUT"
+            echo "cpu_allocation_flag=--cpu-throttling" >> "$GITHUB_OUTPUT"
             echo "mercadopago_access_token_secret=mercadopago-access-token-dev" >> "$GITHUB_OUTPUT"
             echo "mercadopago_webhook_secret=mercadopago-webhook-secret-dev" >> "$GITHUB_OUTPUT"
             echo "jwt_signing_key_secret=jwt-signing-key-dev" >> "$GITHUB_OUTPUT"
@@ -124,7 +128,8 @@ jobs:
             --memory 512Mi \
             --concurrency 80 \
             --timeout 300 \
-            --min-instances 0 \
+            --min-instances "${{ steps.target.outputs.min_instances }}" \
+            ${{ steps.target.outputs.cpu_allocation_flag }} \
             --max-instances 2 \
             --set-env-vars "ASPNETCORE_ENVIRONMENT=${{ steps.target.outputs.aspnet_environment }},ASPNETCORE_URLS=http://+:8080,BootstrapAdmin__Enabled=false,Api__BaseUrl=${{ steps.target.outputs.api_base_url }}" \
             --set-secrets "ConnectionStrings__DefaultConnection=wedding-gift-vm-connection-string:latest,Jwt__SigningKey=${{ steps.target.outputs.jwt_signing_key_secret }}:latest,Smtp__Host=smtp-host:latest,Smtp__Port=smtp-port:latest,Smtp__Username=smtp-username:latest,Smtp__Password=smtp-password:latest,Smtp__FromEmail=smtp-from-email:latest,Smtp__FromName=smtp-from-name:latest,Smtp__EnableSsl=smtp-enable-ssl:latest,Smtp__ErrorNotificationRecipient=smtp-error-notification-recipient:latest,Smtp__CoupleNotificationRecipient=smtp-couple-notification-recipient:latest,MercadoPago__AccessToken=${{ steps.target.outputs.mercadopago_access_token_secret }}:latest,MercadoPago__WebhookSecret=${{ steps.target.outputs.mercadopago_webhook_secret }}:latest" \

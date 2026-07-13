@@ -60,3 +60,19 @@ public sealed class AuditLogMapping : IEntityTypeConfiguration<AuditLog>
         builder.HasIndex(x => new { x.CoupleId, x.CreatedAtUtc });
     }
 }
+
+public sealed class PaymentRefundOperationMapping : IEntityTypeConfiguration<PaymentRefundOperation>
+{
+    public void Configure(EntityTypeBuilder<PaymentRefundOperation> builder)
+    {
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.IdempotencyKey).IsRequired();
+        builder.Property(x => x.Amount).HasColumnType("decimal(10,2)").IsRequired();
+        builder.Property(x => x.IsFullRefund).IsRequired();
+        builder.Property(x => x.RefundedAmount).HasColumnType("decimal(10,2)").IsRequired();
+        builder.Property(x => x.CreatedAt).IsRequired();
+        builder.HasOne(x => x.Payment).WithMany().HasForeignKey(x => x.PaymentId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasIndex(x => x.IdempotencyKey).IsUnique();
+        builder.HasIndex(x => new { x.PaymentId, x.CreatedAt });
+    }
+}
