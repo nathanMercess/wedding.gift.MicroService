@@ -4,7 +4,6 @@ using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Domain.Model.Entities;
 using wedding.gift.Infra.Contracts;
 using wedding.gift.Services.Contracts;
-using wedding.gift.Services.Implementations.Extensions;
 
 namespace wedding.gift.Services.Implementations;
 
@@ -38,11 +37,6 @@ public sealed class CoupleOverviewService(
             PendingContributions = payments.Count(x => PaymentStatuses.Reserving.Contains(x.Status)),
             FailedContributions = payments.Count(x => !PaymentStatuses.IsSettled(x.Status) && !PaymentStatuses.Reserving.Contains(x.Status)),
             UniqueContributors = approved.Select(x => string.IsNullOrWhiteSpace(x.GuestEmail) ? x.ContributorName : x.GuestEmail).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
-            UnreadMessages = approved.Count(x => !string.IsNullOrWhiteSpace(x.Message) && x.MessageReadAtUtc is null && x.MessageArchivedAtUtc is null),
-            RecentMessages = approved.Count(x => !string.IsNullOrWhiteSpace(x.Message) && x.CreatedAtUtc >= fromUtc),
-            RecentContributions = approved.OrderByDescending(x => x.CreatedAtUtc).Take(5).Select(x => x.ToResponseDto()).ToList(),
-            PaymentsNeedingAttention = payments.Where(x => !PaymentStatuses.IsSettled(x.Status) || !x.ContributionCreated)
-                .OrderByDescending(x => x.UpdatedAt).Take(5).Select(ToPaymentDto).ToList(),
             DailyApprovedAmounts = Enumerable.Range(0, days).Select(offset =>
             {
                 DateTime date = fromUtc.AddDays(offset);
@@ -50,21 +44,4 @@ public sealed class CoupleOverviewService(
             }).ToList()
         };
     }
-
-    private static AdminPaymentResponseDto ToPaymentDto(Payment payment) => new()
-    {
-        OrderId = payment.OrderId,
-        GiftId = payment.GiftId,
-        GiftName = payment.GiftName,
-        GuestName = payment.ContributorName,
-        Amount = payment.Amount,
-        Method = payment.Method,
-        Status = payment.Status,
-        StatusDetail = payment.StatusDetail ?? string.Empty,
-        ProviderId = payment.MpPaymentId ?? payment.MpOrderId ?? string.Empty,
-        CorrelationId = payment.CorrelationId ?? string.Empty,
-        ContributionCreated = payment.ContributionCreated,
-        CreatedAtUtc = payment.CreatedAt,
-        UpdatedAtUtc = payment.UpdatedAt
-    };
 }

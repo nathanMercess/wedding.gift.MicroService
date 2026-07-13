@@ -11,10 +11,6 @@ public sealed class CoupleOverviewDto
     public int PendingContributions { get; set; }
     public int FailedContributions { get; set; }
     public int UniqueContributors { get; set; }
-    public int UnreadMessages { get; set; }
-    public int RecentMessages { get; set; }
-    public List<ContributionResponseDto> RecentContributions { get; set; } = [];
-    public List<AdminPaymentResponseDto> PaymentsNeedingAttention { get; set; } = [];
     public List<DailyApprovedAmountDto> DailyApprovedAmounts { get; set; } = [];
 }
 

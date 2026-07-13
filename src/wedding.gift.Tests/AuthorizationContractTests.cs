@@ -11,11 +11,16 @@ public sealed class AuthorizationContractTests
 {
     public static TheoryData<Type> MemberOperationalControllers => new()
     {
-        typeof(AdminContributionsController),
         typeof(AdminCoupleController),
         typeof(AdminGiftsController),
         typeof(AdminOverviewController),
         typeof(AdminUploadsController)
+    };
+
+    public static TheoryData<Type> MemberRestrictedControllers => new()
+    {
+        typeof(AdminContributionsController),
+        typeof(AdminPaymentsController)
     };
 
     [Theory]
@@ -29,10 +34,11 @@ public sealed class AuthorizationContractTests
         Assert.Contains(UserRoles.Member, authorize.Roles?.Split(',') ?? []);
     }
 
-    [Fact]
-    public void PaymentsControllerShouldNotAllowMember()
+    [Theory]
+    [MemberData(nameof(MemberRestrictedControllers))]
+    public void RestrictedControllerShouldNotAllowMember(Type controllerType)
     {
-        AuthorizeAttribute? authorize = typeof(AdminPaymentsController).GetCustomAttributes<AuthorizeAttribute>(false)
+        AuthorizeAttribute? authorize = controllerType.GetCustomAttributes<AuthorizeAttribute>(false)
             .SingleOrDefault(attribute => !string.IsNullOrWhiteSpace(attribute.Roles));
 
         Assert.NotNull(authorize);

@@ -7,7 +7,7 @@ using wedding.gift.Services.Contracts;
 
 namespace wedding.gift.Application.Webapi.Controllers;
 
-[Authorize(Roles = UserRoles.AdminMemberOrSuperAdmin)]
+[Authorize(Roles = UserRoles.AdminOrSuperAdmin)]
 [Route("admin/contributions")]
 public sealed class AdminContributionsController(IContributionService contributionService) : ApiControllerBase
 {
