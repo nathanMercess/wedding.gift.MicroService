@@ -17,6 +17,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<OrderLookupAttempt> OrderLookupAttempts => Set<OrderLookupAttempt>();
     public DbSet<EmailOutboxMessage> EmailOutboxMessages => Set<EmailOutboxMessage>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<GuestInvitation> GuestInvitations => Set<GuestInvitation>();
+    public DbSet<GuestConfirmation> GuestConfirmations => Set<GuestConfirmation>();
+    public DbSet<ConfirmedGuest> ConfirmedGuests => Set<ConfirmedGuest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

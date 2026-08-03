@@ -171,6 +171,7 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy("payment", context => CreateRateLimitPartition(context, 120, TimeSpan.FromMinutes(5)));
     options.AddPolicy("payment-polling", context => CreatePaymentPollingRateLimitPartition(context, 120, TimeSpan.FromMinutes(5)));
     options.AddPolicy("public-write", context => CreateRateLimitPartition(context, 20, TimeSpan.FromMinutes(5)));
+    options.AddPolicy("guest-search", context => CreateRateLimitPartition(context, 60, TimeSpan.FromMinutes(1)));
     options.AddPolicy("webhook", context => CreateRateLimitPartition(context, 120, TimeSpan.FromMinutes(1)));
     options.AddPolicy("order-lookup", context => CreateRateLimitPartition(context, 10, TimeSpan.FromMinutes(15)));
 });
