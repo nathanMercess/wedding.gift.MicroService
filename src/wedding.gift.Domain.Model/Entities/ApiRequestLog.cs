@@ -6,24 +6,24 @@ public sealed class ApiRequestLog
     {
     }
 
-    public Guid Id { get; private set; }
-    public DateTime StartedAtUtc { get; private set; }
-    public DateTime CompletedAtUtc { get; private set; }
-    public long DurationMilliseconds { get; private set; }
-    public string Method { get; private set; } = string.Empty;
-    public string Path { get; private set; } = string.Empty;
-    public string QueryString { get; private set; } = string.Empty;
-    public string EndpointName { get; private set; } = string.Empty;
-    public int StatusCode { get; private set; }
-    public bool IsSuccess { get; private set; }
-    public bool IsAuthenticated { get; private set; }
-    public string UserId { get; private set; } = string.Empty;
-    public string UserRole { get; private set; } = string.Empty;
-    public string ClientIp { get; private set; } = string.Empty;
-    public string UserAgent { get; private set; } = string.Empty;
-    public string CorrelationId { get; private set; } = string.Empty;
-    public string ExceptionType { get; private set; } = string.Empty;
-    public string ExceptionMessage { get; private set; } = string.Empty;
+    public Guid Id { get; private init; }
+    public DateTime StartedAtUtc { get; private init; }
+    public DateTime CompletedAtUtc { get; private init; }
+    public long DurationMilliseconds { get; private init; }
+    public string Method { get; private init; } = string.Empty;
+    public string Path { get; private init; } = string.Empty;
+    public string QueryString { get; private init; } = string.Empty;
+    public string EndpointName { get; private init; } = string.Empty;
+    public int StatusCode { get; private init; }
+    public bool IsSuccess { get; private init; }
+    public bool IsAuthenticated { get; private init; }
+    public string UserId { get; private init; } = string.Empty;
+    public string UserRole { get; private init; } = string.Empty;
+    public string ClientIp { get; private init; } = string.Empty;
+    public string UserAgent { get; private init; } = string.Empty;
+    public string CorrelationId { get; private init; } = string.Empty;
+    public string ExceptionType { get; private init; } = string.Empty;
+    public string ExceptionMessage { get; private init; } = string.Empty;
 
     public static ApiRequestLog Create(
         DateTime startedAtUtc,

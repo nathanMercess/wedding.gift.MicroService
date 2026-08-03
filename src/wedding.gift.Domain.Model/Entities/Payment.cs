@@ -6,31 +6,31 @@ public sealed class Payment
     {
     }
 
-    public Guid Id { get; private set; }
+    public Guid Id { get; private init; }
     public Guid CoupleId { get; private set; }
-    public Guid GiftId { get; private set; }
+    public Guid GiftId { get; private init; }
     public string GiftName { get; private set; } = string.Empty;
-    public string ContributorName { get; private set; } = string.Empty;
-    public string? Message { get; private set; }
-    public string PayerEmail { get; private set; } = string.Empty;
-    public string PayerDocType { get; private set; } = string.Empty;
-    public string PayerDocNumber { get; private set; } = string.Empty;
+    public string ContributorName { get; private init; } = string.Empty;
+    public string? Message { get; private init; }
+    public string PayerEmail { get; private init; } = string.Empty;
+    public string PayerDocType { get; private init; } = string.Empty;
+    public string PayerDocNumber { get; private init; } = string.Empty;
     public Guid? ContributionId { get; private set; }
     public Contribution? Contribution { get; private set; }
     public bool ContributionCreated { get; private set; }
-    public string OrderId { get; private set; } = string.Empty;
-    public string Method { get; private set; } = string.Empty;
-    public decimal Amount { get; private set; }
+    public string OrderId { get; private init; } = string.Empty;
+    public string Method { get; private init; } = string.Empty;
+    public decimal Amount { get; private init; }
     public decimal RefundedAmount { get; private set; }
-    public int Installments { get; private set; }
+    public int Installments { get; private init; }
     public string Status { get; private set; } = string.Empty;
     public string? StatusDetail { get; private set; }
-    public string? Nsu { get; private set; }
+    public string? Nsu { get; private init; }
     public string? MpOrderId { get; private set; }
     public string? MpPaymentId { get; private set; }
     public string? PixQrCode { get; private set; }
     public string? QrCodeBase64 { get; private set; }
-    public DateTime CreatedAt { get; private set; }
+    public DateTime CreatedAt { get; private init; }
     public DateTime UpdatedAt { get; private set; }
     public DateTime ExpiresAt { get; private set; }
     public string? CorrelationId { get; private set; }

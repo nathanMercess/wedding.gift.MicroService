@@ -10,7 +10,7 @@ public sealed class Gift
     {
     }
 
-    public Guid Id { get; private set; }
+    public Guid Id { get; private init; }
     public Guid CoupleId { get; private set; }
     public string Name { get; private set; } = string.Empty;
     public string Description { get; private set; } = string.Empty;
@@ -19,7 +19,7 @@ public sealed class Gift
     public string Image { get; private set; } = string.Empty;
     public string? Category { get; private set; }
     public bool AllowPartialContribution { get; private set; } = true;
-    public DateTime CreatedAt { get; private set; }
+    public DateTime CreatedAt { get; private init; }
     public DateTime UpdatedAt { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
     public ICollection<Contribution> Contributions => _contributions;
@@ -37,14 +37,17 @@ public sealed class Gift
         bool allowPartialContribution,
         Guid? coupleId = null)
     {
+        DateTime now = DateTime.UtcNow;
+
         Gift gift = new()
         {
             Id = Guid.NewGuid(),
-            CoupleId = coupleId ?? Couple.SingletonId
+            CoupleId = coupleId ?? Couple.SingletonId,
+            CreatedAt = now,
+            UpdatedAt = now
         };
 
-        gift.Update(name, description, price, total, image, category, allowPartialContribution);
-        gift.CreatedAt = gift.UpdatedAt;
+        gift.ApplyChanges(name, description, price, total, image, category, allowPartialContribution);
 
         return gift;
     }
@@ -87,13 +90,7 @@ public sealed class Gift
         string? category,
         bool allowPartialContribution)
     {
-        Name = name.Trim();
-        Description = description.Trim();
-        Price = price;
-        Total = total > 0 ? total : price;
-        Image = image.Trim();
-        Category = string.IsNullOrWhiteSpace(category) ? string.Empty : category.Trim();
-        AllowPartialContribution = allowPartialContribution;
+        ApplyChanges(name, description, price, total, image, category, allowPartialContribution);
         Touch();
     }
 
@@ -105,6 +102,24 @@ public sealed class Gift
 
     public bool CanReceiveContribution(decimal amount)
         => (AllowPartialContribution || amount >= RemainingAmount) && amount <= RemainingAmount;
+
+    private void ApplyChanges(
+        string name,
+        string description,
+        decimal price,
+        decimal total,
+        string image,
+        string? category,
+        bool allowPartialContribution)
+    {
+        Name = name.Trim();
+        Description = description.Trim();
+        Price = price;
+        Total = total > 0 ? total : price;
+        Image = image.Trim();
+        Category = string.IsNullOrWhiteSpace(category) ? string.Empty : category.Trim();
+        AllowPartialContribution = allowPartialContribution;
+    }
 
     private void Touch()
         => UpdatedAt = DateTime.UtcNow;

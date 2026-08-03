@@ -8,16 +8,16 @@ public sealed class Contribution
     {
     }
 
-    public Guid Id { get; private set; }
+    public Guid Id { get; private init; }
     public Guid CoupleId { get; private set; }
-    public Guid GiftId { get; private set; }
+    public Guid GiftId { get; private init; }
     public string OrderId { get; private set; } = string.Empty;
     public string GuestEmail { get; private set; } = string.Empty;
-    public string ContributorName { get; private set; } = string.Empty;
-    public string Message { get; private set; } = string.Empty;
-    public decimal Amount { get; private set; }
+    public string ContributorName { get; private init; } = string.Empty;
+    public string Message { get; private init; } = string.Empty;
+    public decimal Amount { get; private init; }
     public decimal RefundedAmount { get; private set; }
-    public string PaymentMethod { get; private set; } = string.Empty;
+    public string PaymentMethod { get; private init; } = string.Empty;
     public string PaymentStatus { get; private set; } = string.Empty;
     public DateTime PaidAt { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }

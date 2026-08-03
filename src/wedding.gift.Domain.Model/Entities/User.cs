@@ -6,11 +6,11 @@ public sealed class User
     {
     }
 
-    public Guid Id { get; private set; }
+    public Guid Id { get; private init; }
     public Guid? CoupleId { get; private set; }
-    public string Name { get; private set; } = string.Empty;
-    public string Email { get; private set; } = string.Empty;
-    public string NormalizedEmail { get; private set; } = string.Empty;
+    public string Name { get; private init; } = string.Empty;
+    public string Email { get; private init; } = string.Empty;
+    public string NormalizedEmail { get; private init; } = string.Empty;
     public string PasswordHash { get; private set; } = string.Empty;
     public string PasswordSalt { get; private set; } = string.Empty;
     public string Role { get; private set; } = string.Empty;
@@ -20,7 +20,7 @@ public sealed class User
     public DateTime? EmailConfirmationTokenExpiresAt { get; private set; }
     public string? PasswordResetToken { get; private set; }
     public DateTime? PasswordResetTokenExpiresAt { get; private set; }
-    public DateTime CreatedAt { get; private set; }
+    public DateTime CreatedAt { get; private init; }
     public DateTime UpdatedAt { get; private set; }
 
     public static User Create(

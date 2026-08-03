@@ -9,7 +9,7 @@ public sealed class Couple
     {
     }
 
-    public Guid Id { get; private set; }
+    public Guid Id { get; private init; }
     public string Names { get; private set; } = string.Empty;
     public DateTime WeddingDate { get; private set; }
     public string PhotoUrl { get; private set; } = string.Empty;
@@ -20,7 +20,7 @@ public sealed class Couple
     public string GiftDisplayMode { get; private set; } = GiftDisplayModes.Traditional;
     public string? CarouselPhotosJson { get; private set; }
     public string? SiteSettingsJson { get; private set; }
-    public DateTime CreatedAt { get; private set; }
+    public DateTime CreatedAt { get; private init; }
     public DateTime UpdatedAt { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
 
