@@ -4,7 +4,7 @@ namespace wedding.gift.Domain.Model.Entities;
 
 public sealed class Couple
 {
-    public static readonly Guid SingletonId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    public static readonly Guid SingletonId = Guid.Parse("1107B70C-C715-4672-9D51-73DB9ED8D4FB");
     private Couple()
     {
     }

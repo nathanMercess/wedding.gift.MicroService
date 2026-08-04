@@ -20,18 +20,27 @@ public sealed class GiftService(
 {
     public async Task<PagedResult<GiftResponseDto>> GetPublicAsync(GiftQueryParams queryParams, CancellationToken cancellationToken)
     {
-        Couple? couple = await coupleRepository.GetAsync(false, cancellationToken);
+        Couple couple = await coupleRepository.GetAsync(false, cancellationToken);
+
+        if (couple is null)
+            throw new NotFoundException(ErrorCodes.NOT_FOUND);
+
         SiteSettingsDto settings = SiteSettingsExtensions.Normalize(couple?.SiteSettingsJson);
+        
         bool allowsUnlimitedPurchases = GiftDisplayModes.AllowsUnlimitedPurchases(couple?.GiftDisplayMode);
 
-        return await GetAllCoreAsync(queryParams, settings, allowsUnlimitedPurchases, Couple.SingletonId, cancellationToken);
+        return await GetAllCoreAsync(queryParams, settings, allowsUnlimitedPurchases, couple.Id, cancellationToken);
     }
 
     public async Task<PagedResult<GiftResponseDto>> GetAllAsync(GiftQueryParams queryParams, CancellationToken cancellationToken)
         => await GetPublicAsync(queryParams, cancellationToken);
 
     public async Task<PagedResult<GiftResponseDto>> GetAllAdminAsync(GiftQueryParams queryParams, CancellationToken cancellationToken)
-        => await GetAllCoreAsync(queryParams, null, false, GetAdministrativeCoupleId(), cancellationToken);
+    {
+        Couple? couple = await coupleRepository.GetAsync(false, cancellationToken);
+
+        return await GetAllCoreAsync(queryParams, null, false, couple.Id, cancellationToken);
+    }
 
     private async Task<PagedResult<GiftResponseDto>> GetAllCoreAsync(
         GiftQueryParams queryParams,
