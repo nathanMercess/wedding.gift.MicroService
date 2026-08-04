@@ -24,7 +24,7 @@ public sealed class CardPaymentRequestDto
     public required string PaymentMethodId { get; set; }
     [MaxLength(50)]
     public string? IssuerId { get; set; }
-    [MaxLength(200)]
+    [MaxLength(512)]
     public string? DeviceId { get; set; }
     [Required, EmailAddress, MaxLength(180)]
     public required string PayerEmail { get; set; }
