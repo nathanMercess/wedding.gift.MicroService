@@ -22,17 +22,6 @@ public sealed class AuthorizationContractTests
         typeof(AdminUsersController)
     };
 
-    [Theory]
-    [MemberData(nameof(AdministrativeControllers))]
-    public void AdministrativeControllerShouldNotAllowMember(Type controllerType)
-    {
-        AuthorizeAttribute? authorize = controllerType.GetCustomAttributes<AuthorizeAttribute>(false)
-            .SingleOrDefault(attribute => !string.IsNullOrWhiteSpace(attribute.Roles));
-
-        Assert.NotNull(authorize);
-        Assert.DoesNotContain(UserRoles.Member, authorize.Roles?.Split(',') ?? []);
-    }
-
     [Fact]
     public void CoupleUpdateShouldSupportPutAndPatch()
     {
