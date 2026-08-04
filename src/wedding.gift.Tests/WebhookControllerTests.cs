@@ -86,6 +86,35 @@ public sealed class WebhookControllerTests
         Assert.Equal("credit_card", payments.Method);
     }
 
+    [Fact]
+    public async Task ReceiveMercadoPagoNotification_DeveIgnorarEventoDuplicadoAntesDeConsultarProvider()
+    {
+        DefaultHttpContext httpContext = new();
+        httpContext.Request.Headers["x-signature"] = "test";
+        httpContext.Request.Headers["x-request-id"] = "request-duplicate";
+        CountingMercadoPago mercadoPago = new();
+        WebhookController controller = new(
+            mercadoPago,
+            new RecordingPaymentService(),
+            Options.Create(new MercadoPagoOptions { WebhookProcessingTimeoutSeconds = 5 }),
+            new DevelopmentEnvironment(),
+            NullLogger<WebhookController>.Instance,
+            new DuplicateWebhookInbox())
+        {
+            ControllerContext = new ControllerContext { HttpContext = httpContext }
+        };
+
+        IActionResult result = await controller.ReceiveMercadoPagoNotification(
+            "PAY_DUPLICATE",
+            null,
+            "payment",
+            null,
+            CancellationToken.None);
+
+        Assert.IsType<OkResult>(result);
+        Assert.Equal(0, mercadoPago.StatusRequestCount);
+    }
+
     private sealed class SlowMercadoPago : IMercadoPagoService
     {
         public Task<PaymentResponseDto> CreateCardOrderAsync(CardPaymentRequestDto request, CancellationToken cancellationToken)
@@ -99,6 +128,9 @@ public sealed class WebhookControllerTests
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             return new PaymentResponseDto { Status = "pending" };
         }
+
+        public Task<PaymentResponseDto> GetPaymentByExternalReferenceAsync(string externalReference, CancellationToken cancellationToken)
+            => Task.FromResult(new PaymentResponseDto { Status = PaymentStatuses.Error, ErrorCode = PaymentErrorCodes.OrderNotFound });
 
         public Task<PaymentResponseDto> GetChargebackAsync(string chargebackId, CancellationToken cancellationToken)
             => Task.FromResult(new PaymentResponseDto { Status = "error" });
@@ -129,6 +161,9 @@ public sealed class WebhookControllerTests
                 Method = "credit_card"
             });
 
+        public Task<PaymentResponseDto> GetPaymentByExternalReferenceAsync(string externalReference, CancellationToken cancellationToken)
+            => Task.FromResult(new PaymentResponseDto { Status = PaymentStatuses.Error, ErrorCode = PaymentErrorCodes.OrderNotFound });
+
         public Task<PaymentResponseDto> GetChargebackAsync(string chargebackId, CancellationToken cancellationToken)
             => Task.FromResult(new PaymentResponseDto
             {
@@ -143,6 +178,29 @@ public sealed class WebhookControllerTests
 
         public Task<PaymentResponseDto> RefundAsync(string? mpOrderId, string? mpPaymentId, decimal? amount, string idempotencyKey, CancellationToken cancellationToken)
             => Task.FromResult(new PaymentResponseDto { Status = PaymentStatuses.Error });
+    }
+
+    private sealed class CountingMercadoPago : IMercadoPagoService
+    {
+        public int StatusRequestCount { get; private set; }
+        public Task<PaymentResponseDto> CreateCardOrderAsync(CardPaymentRequestDto request, CancellationToken cancellationToken) => Task.FromResult(new PaymentResponseDto { Status = PaymentStatuses.Error });
+        public Task<PaymentResponseDto> CreatePixOrderAsync(PixPaymentRequestDto request, CancellationToken cancellationToken) => Task.FromResult(new PaymentResponseDto { Status = PaymentStatuses.Error });
+        public Task<PaymentResponseDto> GetOrderStatusAsync(string mpOrderId, CancellationToken cancellationToken)
+        {
+            StatusRequestCount++;
+            return Task.FromResult(new PaymentResponseDto { Status = PaymentStatuses.Pending });
+        }
+        public Task<PaymentResponseDto> GetPaymentByExternalReferenceAsync(string externalReference, CancellationToken cancellationToken) => Task.FromResult(new PaymentResponseDto { Status = PaymentStatuses.Error, ErrorCode = PaymentErrorCodes.OrderNotFound });
+        public Task<PaymentResponseDto> GetChargebackAsync(string chargebackId, CancellationToken cancellationToken) => Task.FromResult(new PaymentResponseDto { Status = PaymentStatuses.Error });
+        public Task<PaymentResponseDto> RefundAsync(string? mpOrderId, string? mpPaymentId, string idempotencyKey, CancellationToken cancellationToken) => Task.FromResult(new PaymentResponseDto { Status = PaymentStatuses.Error });
+        public Task<PaymentResponseDto> RefundAsync(string? mpOrderId, string? mpPaymentId, decimal? amount, string idempotencyKey, CancellationToken cancellationToken) => Task.FromResult(new PaymentResponseDto { Status = PaymentStatuses.Error });
+    }
+
+    private sealed class DuplicateWebhookInbox : IWebhookInboxService
+    {
+        public Task<bool> TryBeginAsync(string eventKey, string eventType, string resourceId, string? correlationId, CancellationToken cancellationToken) => Task.FromResult(false);
+        public Task MarkProcessedAsync(string eventKey, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task MarkFailedAsync(string eventKey, string error, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     private sealed class RecordingPaymentService : IPaymentService

@@ -10,9 +10,11 @@ public sealed class OperationalRepository(AppDbContext context) : IOperationalRe
     public IQueryable<PaymentOrderLookupToken> LookupTokens => context.PaymentOrderLookupTokens;
     public IQueryable<OrderLookupAttempt> LookupAttempts => context.OrderLookupAttempts;
     public IQueryable<EmailOutboxMessage> EmailOutbox => context.EmailOutboxMessages;
+    public IQueryable<WebhookInboxMessage> WebhookInbox => context.WebhookInboxMessages;
     public async Task AddLookupTokenAsync(PaymentOrderLookupToken token, CancellationToken cancellationToken) => await context.PaymentOrderLookupTokens.AddAsync(token, cancellationToken);
     public async Task AddLookupAttemptAsync(OrderLookupAttempt attempt, CancellationToken cancellationToken) => await context.OrderLookupAttempts.AddAsync(attempt, cancellationToken);
     public async Task AddEmailOutboxAsync(EmailOutboxMessage message, CancellationToken cancellationToken) => await context.EmailOutboxMessages.AddAsync(message, cancellationToken);
+    public async Task AddWebhookInboxAsync(WebhookInboxMessage message, CancellationToken cancellationToken) => await context.WebhookInboxMessages.AddAsync(message, cancellationToken);
     public async Task AddAuditLogAsync(AuditLog auditLog, CancellationToken cancellationToken) => await context.AuditLogs.AddAsync(auditLog, cancellationToken);
     public async Task<EmailOutboxMessage?> TryClaimEmailOutboxAsync(Guid id, DateTime nowUtc, CancellationToken cancellationToken)
     {

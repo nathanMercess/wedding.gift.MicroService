@@ -1,3 +1,5 @@
+using wedding.gift.Crosscutting.Constants;
+
 namespace wedding.gift.Domain.Model.Entities;
 
 public sealed class Payment
@@ -194,7 +196,7 @@ public sealed class Payment
         return payment;
     }
 
-    public void UpdateProviderStatus(
+    public bool UpdateProviderStatus(
         string status,
         string? statusDetail,
         string? mpOrderId = null,
@@ -203,15 +205,28 @@ public sealed class Payment
         string? qrCodeBase64 = null,
         decimal? refundedAmount = null)
     {
-        Status = status;
-        StatusDetail = statusDetail;
+        string normalizedStatus = PaymentStatuses.Normalize(status, statusDetail);
+        bool transitionAccepted = PaymentStatuses.CanTransition(Status, normalizedStatus);
+
+        if (transitionAccepted)
+        {
+            Status = normalizedStatus;
+            StatusDetail = statusDetail;
+        }
+
         MpOrderId = string.IsNullOrWhiteSpace(mpOrderId) ? MpOrderId : mpOrderId.Trim();
         MpPaymentId = mpPaymentId ?? MpPaymentId;
-        PixQrCode = pixQrCode ?? PixQrCode;
-        QrCodeBase64 = qrCodeBase64 ?? QrCodeBase64;
+        if (transitionAccepted)
+        {
+            PixQrCode = pixQrCode ?? PixQrCode;
+            QrCodeBase64 = qrCodeBase64 ?? QrCodeBase64;
+        }
+
         if (refundedAmount.HasValue)
-            RefundedAmount = Math.Clamp(refundedAmount.Value, 0, Amount);
+            RefundedAmount = Math.Max(RefundedAmount, Math.Clamp(refundedAmount.Value, 0, Amount));
+
         Touch();
+        return transitionAccepted;
     }
 
     public void MarkContributionCreated(Guid contributionId)
@@ -226,8 +241,11 @@ public sealed class Payment
 
     public void Expire()
     {
-        Status = "expired";
-        Touch();
+        if (PaymentStatuses.IsReserving(Status))
+        {
+            Status = PaymentStatuses.Expired;
+            Touch();
+        }
     }
 
     private static Payment CreateBase(

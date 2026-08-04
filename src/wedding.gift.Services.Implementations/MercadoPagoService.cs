@@ -17,24 +17,31 @@ namespace wedding.gift.Services.Implementations;
 public sealed class MercadoPagoService(
     HttpClient httpClient,
     IOptions<MercadoPagoOptions> mercadoPagoOptions,
+    IOptions<ApiOptions> apiOptions,
     ILogger<MercadoPagoService> logger) : IMercadoPagoService
 {
     private readonly MercadoPagoOptions _options = mercadoPagoOptions.Value;
+    private readonly ApiOptions _apiOptions = apiOptions.Value;
     public async Task<PaymentResponseDto> CreateCardOrderAsync(
         CardPaymentRequestDto request,
         CancellationToken cancellationToken)
     {
+        (string firstName, string? lastName) = SplitName(request.ContributorName);
         MercadoPagoPaymentRequest payment = new()
         {
             TransactionAmount = request.Amount,
             Token = request.CardToken,
-            Description = "Wedding gift",
+            Description = "Presente de casamento",
             Installments = request.Installments,
             PaymentMethodId = request.PaymentMethodId,
             IssuerId = request.IssuerId,
             ExternalReference = request.OrderId,
+            NotificationUrl = BuildNotificationUrl(),
+            AdditionalInfo = BuildAdditionalInfo(request.GiftId, request.Amount),
             Payer = new MercadoPagoPaymentPayer
             {
+                FirstName = firstName,
+                LastName = lastName,
                 Email = request.PayerEmail,
                 Identification = new MercadoPagoPaymentIdentification
                 {
@@ -55,16 +62,20 @@ public sealed class MercadoPagoService(
         PixPaymentRequestDto request,
         CancellationToken cancellationToken)
     {
+        (string firstName, string? lastName) = SplitName(request.ContributorName);
         MercadoPagoPaymentRequest payment = new()
         {
             TransactionAmount = request.Amount,
-            Description = "Wedding gift",
+            Description = "Presente de casamento",
             PaymentMethodId = "pix",
             ExternalReference = request.OrderId,
+            NotificationUrl = BuildNotificationUrl(),
+            AdditionalInfo = BuildAdditionalInfo(request.GiftId, request.Amount),
             DateOfExpiration = DateTimeOffset.UtcNow.AddMinutes(31).ToString("yyyy-MM-dd'T'HH:mm:ss.fffzzz", CultureInfo.InvariantCulture),
             Payer = new MercadoPagoPaymentPayer
             {
-                FirstName = request.ContributorName,
+                FirstName = firstName,
+                LastName = lastName,
                 Email = request.PayerEmail,
                 Identification = new MercadoPagoPaymentIdentification
                 {
@@ -87,6 +98,72 @@ public sealed class MercadoPagoService(
         => mpOrderId.StartsWith("ORD", StringComparison.OrdinalIgnoreCase)
             ? await GetOrderStatusFromOrderAsync(mpOrderId, cancellationToken)
             : await GetPaymentStatusFromPaymentAsync(mpOrderId, cancellationToken);
+
+    public async Task<PaymentResponseDto> GetPaymentByExternalReferenceAsync(
+        string externalReference,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(externalReference))
+            return ProviderError("A referência externa é obrigatória.");
+
+        string baseUrl = _options.BaseUrl.TrimEnd('/');
+        string escapedReference = Uri.EscapeDataString(externalReference.Trim());
+        using HttpRequestMessage request = new(
+            HttpMethod.Get,
+            $"{baseUrl}/v1/payments/search?external_reference={escapedReference}&sort=date_created&criteria=desc");
+
+        if (!TryApplyAuth(request, out PaymentResponseDto? authError))
+            return authError!;
+
+        try
+        {
+            using HttpResponseMessage response = await httpClient.SendAsync(request, cancellationToken);
+            string requestId = ExtractRequestId(response);
+            string raw = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                MpError error = TryParseMpError(raw);
+                return new PaymentResponseDto
+                {
+                    Status = PaymentStatuses.Error,
+                    ErrorCode = MapMpError((int)response.StatusCode, error),
+                    Message = error?.Message ?? "Não foi possível localizar o pagamento pela referência externa.",
+                    MpRequestId = requestId
+                };
+            }
+
+            MercadoPagoPaymentSearchResponse? search = JsonSerializer.Deserialize<MercadoPagoPaymentSearchResponse>(
+                raw,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            MercadoPagoPaymentResponse? payment = search?.Results?.FirstOrDefault(x =>
+                string.Equals(x.ExternalReference, externalReference.Trim(), StringComparison.Ordinal));
+
+            if (payment is null)
+            {
+                return new PaymentResponseDto
+                {
+                    Status = PaymentStatuses.Error,
+                    ErrorCode = PaymentErrorCodes.OrderNotFound,
+                    Message = "O pagamento ainda não foi localizado no provedor.",
+                    MpRequestId = requestId
+                };
+            }
+
+            PaymentResponseDto result = MapPaymentResponse(payment);
+            result.MpRequestId = requestId;
+            return result;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Falha de transporte ao pesquisar pagamento por referência externa.");
+            return ProviderError("Falha de comunicação ao pesquisar o pagamento.");
+        }
+    }
 
     public async Task<PaymentResponseDto> GetChargebackAsync(
         string chargebackId,
@@ -609,6 +686,33 @@ public sealed class MercadoPagoService(
     private static string? NormalizeCurrency(string? countryCode)
         => countryCode?.Trim().ToUpperInvariant() is "BR" or "BRA" or "BRL" ? "BRL" : countryCode;
 
+    private string BuildNotificationUrl()
+        => $"{_apiOptions.BaseUrl.TrimEnd('/')}/api/webhook/mercadopago";
+
+    private static MercadoPagoAdditionalInfo BuildAdditionalInfo(Guid giftId, decimal amount)
+        => new()
+        {
+            Items =
+            [
+                new MercadoPagoAdditionalInfoItem
+                {
+                    Id = giftId.ToString("D"),
+                    Title = "Presente de casamento",
+                    Description = "Contribuição para presente de casamento",
+                    Quantity = 1,
+                    UnitPrice = amount
+                }
+            ]
+        };
+
+    private static (string FirstName, string? LastName) SplitName(string fullName)
+    {
+        string[] parts = fullName.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 0
+            ? (string.Empty, null)
+            : (parts[0], parts.Length > 1 ? parts[1] : null);
+    }
+
     private sealed class MpError
     {
         [JsonPropertyName("message")] public string? Message { get; set; }
@@ -645,6 +749,8 @@ public sealed class MercadoPagoService(
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? IssuerId { get; set; }
         [JsonPropertyName("external_reference")] public string ExternalReference { get; set; } = string.Empty;
+        [JsonPropertyName("notification_url")] public string NotificationUrl { get; set; } = string.Empty;
+        [JsonPropertyName("additional_info")] public MercadoPagoAdditionalInfo AdditionalInfo { get; set; } = new();
         [JsonPropertyName("date_of_expiration")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? DateOfExpiration { get; set; }
@@ -656,6 +762,9 @@ public sealed class MercadoPagoService(
         [JsonPropertyName("first_name")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? FirstName { get; set; }
+        [JsonPropertyName("last_name")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? LastName { get; set; }
         [JsonPropertyName("email")] public string Email { get; set; } = string.Empty;
         [JsonPropertyName("identification")] public MercadoPagoPaymentIdentification Identification { get; set; } = new();
     }
@@ -664,6 +773,20 @@ public sealed class MercadoPagoService(
     {
         [JsonPropertyName("type")] public string Type { get; set; } = "CPF";
         [JsonPropertyName("number")] public string Number { get; set; } = string.Empty;
+    }
+
+    private sealed class MercadoPagoAdditionalInfo
+    {
+        [JsonPropertyName("items")] public List<MercadoPagoAdditionalInfoItem> Items { get; set; } = [];
+    }
+
+    private sealed class MercadoPagoAdditionalInfoItem
+    {
+        [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+        [JsonPropertyName("title")] public string Title { get; set; } = string.Empty;
+        [JsonPropertyName("description")] public string Description { get; set; } = string.Empty;
+        [JsonPropertyName("quantity")] public int Quantity { get; set; }
+        [JsonPropertyName("unit_price")] public decimal UnitPrice { get; set; }
     }
 
     private sealed class MercadoPagoPaymentResponse
@@ -688,6 +811,11 @@ public sealed class MercadoPagoService(
                 _ => null
             };
         }
+    }
+
+    private sealed class MercadoPagoPaymentSearchResponse
+    {
+        [JsonPropertyName("results")] public List<MercadoPagoPaymentResponse> Results { get; set; } = [];
     }
 
     private sealed class MercadoPagoPointOfInteraction

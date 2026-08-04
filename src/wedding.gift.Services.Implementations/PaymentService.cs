@@ -25,7 +25,8 @@ public sealed class PaymentService(
     IOperationalRepository? operationalRepository = null) : IPaymentService
 {
     private const int CreditCardMaxInstallments = 12;
-    private const int ProviderLockRecoveryAttempts = 5;
+    private const int ProviderLockRecoveryAttempts = 10;
+    private const decimal MinimumPaymentAmount = 10m;
     private static readonly TimeSpan ReservationDuration = TimeSpan.FromMinutes(35);
     private static readonly TimeSpan ProviderLockRecoveryDelay = TimeSpan.FromMilliseconds(200);
 
@@ -54,8 +55,8 @@ public sealed class PaymentService(
         if (string.IsNullOrWhiteSpace(request.CardToken))
             return await BuildErrorResponseAsync("card", "validation", "O token do cartão é obrigatório.", PaymentErrorCodes.ValidationError, cancellationToken);
 
-        if (request.Amount <= 0)
-            return await BuildErrorResponseAsync("card", "validation", "O valor do pagamento é inválido.", PaymentErrorCodes.ValidationError, cancellationToken);
+        if (request.Amount < MinimumPaymentAmount || !HasValidCurrencyScale(request.Amount))
+            return await BuildErrorResponseAsync("card", "validation", "O valor deve ser de pelo menos R$ 10,00 e ter no máximo duas casas decimais.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         if (request.Installments <= 0)
             return await BuildErrorResponseAsync("card", "validation", "A quantidade de parcelas é inválida.", PaymentErrorCodes.ValidationError, cancellationToken);
@@ -120,8 +121,8 @@ public sealed class PaymentService(
         if (string.IsNullOrWhiteSpace(request.ContributorName))
             return await BuildErrorResponseAsync("pix", "validation", "O nome do contribuinte é obrigatório.", PaymentErrorCodes.ValidationError, cancellationToken);
 
-        if (request.Amount <= 0)
-            return await BuildErrorResponseAsync("pix", "validation", "O valor do pagamento é inválido.", PaymentErrorCodes.ValidationError, cancellationToken);
+        if (request.Amount < MinimumPaymentAmount || !HasValidCurrencyScale(request.Amount))
+            return await BuildErrorResponseAsync("pix", "validation", "O valor deve ser de pelo menos R$ 10,00 e ter no máximo duas casas decimais.", PaymentErrorCodes.ValidationError, cancellationToken);
 
         if (string.IsNullOrWhiteSpace(request.PayerEmail))
             return await BuildErrorResponseAsync("pix", "validation", "O e-mail do pagador é obrigatório.", PaymentErrorCodes.ValidationError, cancellationToken);
@@ -493,6 +494,44 @@ public sealed class PaymentService(
                 logger.LogError(ex, "Falha ao reconciliar pagamento. ProviderId={ProviderId}.", providerId);
             }
         }
+
+        List<string> uncorrelatedOrderIds = await paymentRepository.Query()
+            .Where(x => PaymentStatuses.Reserving.Contains(x.Status) &&
+                        x.MpOrderId == null &&
+                        x.MpPaymentId == null &&
+                        x.UpdatedAt <= DateTime.UtcNow.AddSeconds(-30))
+            .OrderBy(x => x.UpdatedAt)
+            .Take(100)
+            .Select(x => x.OrderId)
+            .ToListAsync(cancellationToken);
+
+        foreach (string orderId in uncorrelatedOrderIds)
+        {
+            try
+            {
+                PaymentResponseDto providerResult = await mercadoPagoService.GetPaymentByExternalReferenceAsync(orderId, cancellationToken);
+                string? providerId = providerResult.MpOrderId ?? providerResult.MpPaymentId;
+
+                if (providerResult.Status == PaymentStatuses.Error || string.IsNullOrWhiteSpace(providerId))
+                    continue;
+
+                await ConfirmPaymentAsync(
+                    providerId,
+                    providerResult.Status,
+                    providerResult.StatusDetail,
+                    providerResult.MpPaymentId,
+                    providerResult.RefundedAmount,
+                    orderId,
+                    providerResult.Amount,
+                    providerResult.CurrencyId,
+                    providerResult.Method,
+                    cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Falha ao reconciliar pagamento pela referência externa. OrderId={OrderId}.", orderId);
+            }
+        }
     }
 
     public async Task ConfirmPaymentAsync(
@@ -565,7 +604,7 @@ public sealed class PaymentService(
             cacheService.Invalidate();
         }
 
-        if (PaymentStatuses.IsSettled(normalizedStatus))
+        if (PaymentStatuses.IsSettled(payment.Status))
             await TryCreateContributionForSettledPaymentAsync(mpOrderId, cancellationToken);
 
         Payment refreshedPayment = await paymentRepository.GetByProviderIdAsync(mpOrderId, cancellationToken) ?? payment;
@@ -680,7 +719,7 @@ public sealed class PaymentService(
         string paymentMethod,
         CancellationToken cancellationToken)
     {
-        if (IsConcurrentProviderFailure(providerResult) && !HasProviderId(providerResult))
+        if (IsRetryableProviderFailure(providerResult) && !HasProviderId(providerResult))
             return await RecoverConcurrentProviderResultAsync(reservedPayment, cancellationToken);
 
         if (providerResult.Status == PaymentStatuses.Error)
@@ -1273,7 +1312,7 @@ public sealed class PaymentService(
             RefundedAmount = payment.RefundedAmount,
             RemainingAmount = Math.Max(payment.Amount - payment.RefundedAmount, 0),
             Method = payment.Method switch { "pix" => "Pix", "credit_card" => "CreditCard", "debit_card" => "DebitCard", _ => payment.Method },
-            Status = string.IsNullOrWhiteSpace(payment.Status) ? string.Empty : char.ToUpperInvariant(payment.Status[0]) + payment.Status[1..],
+            Status = PaymentStatuses.Normalize(payment.Status, payment.StatusDetail),
             StatusDetail = FriendlyPaymentDetail(payment.Status),
             ProviderId = payment.MpPaymentId ?? payment.MpOrderId ?? string.Empty,
             CorrelationId = PaymentStatuses.IsSettled(payment.Status) ? string.Empty : payment.CorrelationId ?? string.Empty,
@@ -1381,9 +1420,8 @@ public sealed class PaymentService(
         => providerResult.Status == PaymentStatuses.Error &&
            providerResult.ErrorCode is PaymentErrorCodes.ProviderError or PaymentErrorCodes.IdempotencyKeyAlreadyUsed or PaymentErrorCodes.ResourceLocked;
 
-    private static bool IsConcurrentProviderFailure(PaymentResponseDto providerResult)
-        => providerResult.Status == PaymentStatuses.Error &&
-           providerResult.ErrorCode is PaymentErrorCodes.IdempotencyKeyAlreadyUsed or PaymentErrorCodes.ResourceLocked;
+    private static bool HasValidCurrencyScale(decimal amount)
+        => ((decimal.GetBits(amount)[3] >> 16) & 0x7F) <= 2;
 
     private static string NormalizeValue(string? value)
         => string.IsNullOrWhiteSpace(value) ? "-" : value.Trim();

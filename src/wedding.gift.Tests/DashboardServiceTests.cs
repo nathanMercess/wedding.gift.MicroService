@@ -129,14 +129,11 @@ public class DashboardServiceTests
 
     private static DashboardService CreateService(AppDbContext context)
     {
-        IMemoryCache cache = new MemoryCache(new MemoryCacheOptions());
         return new(
             new GiftRepository(context),
             new ContributionRepository(context),
             new PaymentRepository(context),
             new ApiRequestLogRepository(context),
-            cache,
-            new ApplicationCacheService(cache),
             NullLogger<DashboardService>.Instance);
     }
 

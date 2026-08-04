@@ -35,6 +35,46 @@ public static class PaymentStatuses
         => status is not null &&
            new[] { Refunded, ChargedBack }.Contains(status, StringComparer.OrdinalIgnoreCase);
 
+    public static bool CanTransition(string? currentStatus, string? nextStatus)
+    {
+        string current = Normalize(currentStatus);
+        string next = Normalize(nextStatus);
+
+        if (!IsKnown(next))
+            return false;
+
+        if (string.Equals(current, next, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (IsReserving(current) || current == Error)
+            return true;
+
+        if (IsSettled(current))
+            return IsSettled(next) || next is PartiallyRefunded or Refunded or ChargedBack;
+
+        if (current == PartiallyRefunded)
+            return next is PartiallyRefunded or Refunded or ChargedBack;
+
+        if (current == Refunded)
+            return next is Refunded or ChargedBack;
+
+        if (current == ChargedBack)
+            return next == ChargedBack || IsSettled(next);
+
+        if (current == Expired)
+            return next == Expired || IsSettled(next);
+
+        return false;
+    }
+
+    public static bool IsKnown(string? status)
+    {
+        string normalized = status?.Trim().ToLowerInvariant() ?? string.Empty;
+        return Reserving.Contains(normalized, StringComparer.OrdinalIgnoreCase) ||
+               Settled.Contains(normalized, StringComparer.OrdinalIgnoreCase) ||
+               Released.Contains(normalized, StringComparer.OrdinalIgnoreCase);
+    }
+
     public static string Normalize(string? status, string? statusDetail = null)
     {
         if (string.IsNullOrWhiteSpace(status))

@@ -16,6 +16,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<PaymentOrderLookupToken> PaymentOrderLookupTokens => Set<PaymentOrderLookupToken>();
     public DbSet<OrderLookupAttempt> OrderLookupAttempts => Set<OrderLookupAttempt>();
     public DbSet<EmailOutboxMessage> EmailOutboxMessages => Set<EmailOutboxMessage>();
+    public DbSet<WebhookInboxMessage> WebhookInboxMessages => Set<WebhookInboxMessage>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<GuestInvitation> GuestInvitations => Set<GuestInvitation>();
     public DbSet<GuestConfirmation> GuestConfirmations => Set<GuestConfirmation>();

@@ -14,16 +14,12 @@ public sealed class DashboardService(
     IContributionRepository contributionRepository,
     IPaymentRepository paymentRepository,
     IApiRequestLogRepository apiRequestLogRepository,
-    IMemoryCache cache,
-    IApplicationCacheService cacheService,
     ILogger<DashboardService> logger) : IDashboardService
 {
     private const int SlowRequestThresholdMilliseconds = 1000;
     private const int PendingPaymentWarningMinutes = 30;
     private const int RecentFailureHours = 24;
     private const int MaxRequestLogsToLoad = 5000;
-    private static readonly TimeSpan DashboardCacheDuration = TimeSpan.FromSeconds(15);
-
     public async Task<DashboardResponseDto> GetAsync(DashboardQueryDto query, CancellationToken cancellationToken)
     {
         DashboardData data = await LoadDashboardDataAsync(query, cancellationToken);
@@ -94,67 +90,59 @@ public sealed class DashboardService(
         if (query.RecentItems < 1 || query.RecentItems > 50)
             throw new BadRequestException(ErrorCodes.INVALID_DASHBOARD_RECENT_ITEMS);
 
-        string cacheKey = $"dashboard:data:{cacheService.CurrentVersion}:{query.Days}:{query.RecentItems}";
-        DashboardData? cached = await cache.GetOrCreateAsync(cacheKey, async entry =>
+        DateTime now = DateTime.UtcNow;
+        DateTime fromUtc = now.Date.AddDays(-(query.Days - 1));
+
+        List<Gift> gifts = (await giftRepository.GetAllWithContributionsAsync(cancellationToken)).ToList();
+        List<Contribution> contributions = (await contributionRepository.GetAllAsync(cancellationToken)).ToList();
+        List<Payment> payments = (await paymentRepository.GetAllAsync(cancellationToken)).ToList();
+        List<ApiRequestLog> requestLogs = await GetRequestLogsAsync(fromUtc, now, cancellationToken);
+        Dictionary<Guid, string> giftNames = gifts.ToDictionary(x => x.Id, x => x.Name);
+        List<DashboardGiftFundingDto> giftFunding = BuildGiftFunding(gifts);
+        List<Contribution> paidContributions = contributions
+            .Where(x => string.Equals(x.Status, ContributionStatus.Paid, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        List<Contribution> pendingContributions = contributions
+            .Where(x => string.Equals(x.Status, ContributionStatus.Pending, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        List<Contribution> cancelledContributions = contributions
+            .Where(x => string.Equals(x.Status, ContributionStatus.Cancelled, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        List<Contribution> periodPaidContributions = paidContributions
+            .Where(x => x.PaidAt >= fromUtc && x.PaidAt <= now)
+            .ToList();
+        List<Payment> approvedPayments = payments.Where(x => IsApprovedPayment(x.Status)).ToList();
+        List<Payment> pendingPayments = payments.Where(x => IsPendingPayment(x.Status)).ToList();
+        List<Payment> failedPayments = payments.Where(x => IsFailedPayment(x.Status)).ToList();
+        List<DashboardMessageDto> contributionMessages = BuildContributionMessages(contributions, giftNames);
+        List<DashboardMessageDto> paymentMessages = BuildPaymentIntentMessages(payments, giftNames);
+        List<DashboardMessageDto> allMessages = contributionMessages
+            .Concat(paymentMessages)
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .ToList();
+
+        return new DashboardData
         {
-            entry.AbsoluteExpirationRelativeToNow = DashboardCacheDuration;
-
-            DateTime now = DateTime.UtcNow;
-            DateTime fromUtc = now.Date.AddDays(-(query.Days - 1));
-
-            List<Gift> gifts = (await giftRepository.GetAllWithContributionsAsync(cancellationToken)).ToList();
-            List<Contribution> contributions = (await contributionRepository.GetAllAsync(cancellationToken)).ToList();
-            List<Payment> payments = (await paymentRepository.GetAllAsync(cancellationToken)).ToList();
-            List<ApiRequestLog> requestLogs = await GetRequestLogsAsync(fromUtc, now, cancellationToken);
-            Dictionary<Guid, string> giftNames = gifts.ToDictionary(x => x.Id, x => x.Name);
-            List<DashboardGiftFundingDto> giftFunding = BuildGiftFunding(gifts);
-            List<Contribution> paidContributions = contributions
-                .Where(x => string.Equals(x.Status, ContributionStatus.Paid, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-            List<Contribution> pendingContributions = contributions
-                .Where(x => string.Equals(x.Status, ContributionStatus.Pending, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-            List<Contribution> cancelledContributions = contributions
-                .Where(x => string.Equals(x.Status, ContributionStatus.Cancelled, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-            List<Contribution> periodPaidContributions = paidContributions
-                .Where(x => x.PaidAt >= fromUtc && x.PaidAt <= now)
-                .ToList();
-            List<Payment> approvedPayments = payments.Where(x => IsApprovedPayment(x.Status)).ToList();
-            List<Payment> pendingPayments = payments.Where(x => IsPendingPayment(x.Status)).ToList();
-            List<Payment> failedPayments = payments.Where(x => IsFailedPayment(x.Status)).ToList();
-            List<DashboardMessageDto> contributionMessages = BuildContributionMessages(contributions, giftNames);
-            List<DashboardMessageDto> paymentMessages = BuildPaymentIntentMessages(payments, giftNames);
-            List<DashboardMessageDto> allMessages = contributionMessages
-                .Concat(paymentMessages)
-                .OrderByDescending(x => x.CreatedAtUtc)
-                .ToList();
-
-            return new DashboardData
-            {
-                Query = query,
-                Now = now,
-                FromUtc = fromUtc,
-                Gifts = gifts,
-                Contributions = contributions,
-                Payments = payments,
-                RequestLogs = requestLogs,
-                GiftNames = giftNames,
-                GiftFunding = giftFunding,
-                PaidContributions = paidContributions,
-                PendingContributions = pendingContributions,
-                CancelledContributions = cancelledContributions,
-                PeriodPaidContributions = periodPaidContributions,
-                ApprovedPayments = approvedPayments,
-                PendingPayments = pendingPayments,
-                FailedPayments = failedPayments,
-                ContributionMessages = contributionMessages,
-                PaymentMessages = paymentMessages,
-                AllMessages = allMessages
-            };
-        });
-
-        return cached!;
+            Query = query,
+            Now = now,
+            FromUtc = fromUtc,
+            Gifts = gifts,
+            Contributions = contributions,
+            Payments = payments,
+            RequestLogs = requestLogs,
+            GiftNames = giftNames,
+            GiftFunding = giftFunding,
+            PaidContributions = paidContributions,
+            PendingContributions = pendingContributions,
+            CancelledContributions = cancelledContributions,
+            PeriodPaidContributions = periodPaidContributions,
+            ApprovedPayments = approvedPayments,
+            PendingPayments = pendingPayments,
+            FailedPayments = failedPayments,
+            ContributionMessages = contributionMessages,
+            PaymentMessages = paymentMessages,
+            AllMessages = allMessages
+        };
     }
 
     private async Task<List<ApiRequestLog>> GetRequestLogsAsync(

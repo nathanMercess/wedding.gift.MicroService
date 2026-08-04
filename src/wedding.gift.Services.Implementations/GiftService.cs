@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
 using wedding.gift.Crosscutting.Constants;
 using wedding.gift.Crosscutting.Models.DTOs;
 using wedding.gift.Domain.Model.Entities;
@@ -15,13 +14,10 @@ public sealed class GiftService(
     IContributionRepository contributionRepository,
     IPaymentRepository paymentRepository,
     ICoupleRepository coupleRepository,
-    IMemoryCache cache,
     IApplicationCacheService cacheService,
     IRequestContext? requestContext = null,
     IOperationalRepository? operationalRepository = null) : IGiftService
 {
-    private static readonly TimeSpan CacheDuration = TimeSpan.FromSeconds(15);
-
     public async Task<PagedResult<GiftResponseDto>> GetPublicAsync(GiftQueryParams queryParams, CancellationToken cancellationToken)
     {
         Couple? couple = await coupleRepository.GetAsync(false, cancellationToken);
@@ -179,27 +175,20 @@ public sealed class GiftService(
 
     public async Task<GiftStatsDto> GetStatsAsync(CancellationToken cancellationToken)
     {
-        string cacheKey = $"gifts:stats:{cacheService.CurrentVersion}";
-        GiftStatsDto? cached = await cache.GetOrCreateAsync(cacheKey, async entry =>
+        int total = await giftRepository.CountAsync(cancellationToken);
+        int completed = await giftRepository.CountFullyFundedAsync(cancellationToken);
+        decimal goal = await giftRepository.SumTotalAsync(cancellationToken);
+        decimal raised = await contributionRepository.SumPaidAmountAsync(cancellationToken);
+        int contributors = await contributionRepository.CountUniquePaidContributorsAsync(cancellationToken);
+
+        return new GiftStatsDto
         {
-            entry.AbsoluteExpirationRelativeToNow = CacheDuration;
-            int total = await giftRepository.CountAsync(cancellationToken);
-            int completed = await giftRepository.CountFullyFundedAsync(cancellationToken);
-            decimal goal = await giftRepository.SumTotalAsync(cancellationToken);
-            decimal raised = await contributionRepository.SumPaidAmountAsync(cancellationToken);
-            int contributors = await contributionRepository.CountUniquePaidContributorsAsync(cancellationToken);
-
-            return new GiftStatsDto
-            {
-                Total = total,
-                Completed = completed,
-                Contributors = contributors,
-                Raised = raised,
-                Goal = goal
-            };
-        });
-
-        return cached!;
+            Total = total,
+            Completed = completed,
+            Contributors = contributors,
+            Raised = raised,
+            Goal = goal
+        };
     }
 
     public async Task<GiftResponseDto> GetByIdAsync(Guid id, CancellationToken cancellationToken)

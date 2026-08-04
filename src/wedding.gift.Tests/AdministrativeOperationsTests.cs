@@ -214,6 +214,8 @@ public sealed class AdministrativeOperationsTests
             => Task.FromResult(new PaymentResponseDto { Status = PaymentStatuses.Pending, MpOrderId = "MP-PENDING" });
         public Task<PaymentResponseDto> GetOrderStatusAsync(string mpOrderId, CancellationToken cancellationToken)
             => Task.FromResult(new PaymentResponseDto { Status = PaymentStatuses.Approved, MpOrderId = mpOrderId, Amount = 100m, CurrencyId = "BRL", Method = "credit_card" });
+        public Task<PaymentResponseDto> GetPaymentByExternalReferenceAsync(string externalReference, CancellationToken cancellationToken)
+            => Task.FromResult(new PaymentResponseDto { Status = PaymentStatuses.Error, ErrorCode = PaymentErrorCodes.OrderNotFound });
         public Task<PaymentResponseDto> GetChargebackAsync(string chargebackId, CancellationToken cancellationToken)
             => Task.FromResult(new PaymentResponseDto { Status = PaymentStatuses.Error });
         public Task<PaymentResponseDto> RefundAsync(string? mpOrderId, string? mpPaymentId, string idempotencyKey, CancellationToken cancellationToken)

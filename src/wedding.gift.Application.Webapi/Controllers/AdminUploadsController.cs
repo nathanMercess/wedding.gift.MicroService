@@ -8,7 +8,7 @@ using wedding.gift.Services.Implementations.Exceptions;
 
 namespace wedding.gift.Application.Webapi.Controllers;
 
-[Authorize(Roles = UserRoles.AdminMemberOrSuperAdmin)]
+[Authorize(Roles = UserRoles.AdminOrSuperAdmin)]
 [Route("admin/uploads")]
 public sealed class AdminUploadsController(IImageUploadService imageUploadService) : ApiControllerBase
 {

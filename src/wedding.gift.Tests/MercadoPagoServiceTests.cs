@@ -70,9 +70,48 @@ public sealed class MercadoPagoServiceTests
         Assert.Equal("order-1", handler.IdempotencyKey);
         Assert.Equal("pix", root.GetProperty("payment_method_id").GetString());
         Assert.Equal("APRO", root.GetProperty("payer").GetProperty("first_name").GetString());
+        Assert.Equal("https://dev.example.com/api/webhook/mercadopago", root.GetProperty("notification_url").GetString());
+        JsonElement item = root.GetProperty("additional_info").GetProperty("items")[0];
+        Assert.Equal("Contribuição para presente de casamento", item.GetProperty("description").GetString());
+        Assert.Equal(100m, item.GetProperty("unit_price").GetDecimal());
         Assert.False(root.TryGetProperty("token", out _));
         Assert.False(root.TryGetProperty("installments", out _));
         Assert.InRange(expiration, minimumExpiration, maximumExpiration);
+    }
+
+    [Fact]
+    public async Task GetPaymentByExternalReferenceAsync_DevePesquisarEMapearPagamentoExato()
+    {
+        CaptureHandler handler = new()
+        {
+            Response = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""
+                    {
+                      "results": [{
+                        "id": "PAY_SEARCH_1",
+                        "external_reference": "order-search-1",
+                        "transaction_amount": 75.00,
+                        "currency_id": "BRL",
+                        "status": "approved",
+                        "payment_method_id": "pix",
+                        "payment_type_id": "bank_transfer"
+                      }]
+                    }
+                    """, Encoding.UTF8, "application/json")
+            }
+        };
+        MercadoPagoService service = CreateService(handler);
+
+        PaymentResponseDto result = await service.GetPaymentByExternalReferenceAsync("order-search-1", CancellationToken.None);
+
+        Assert.Contains("/v1/payments/search?external_reference=order-search-1", handler.RequestUri);
+        Assert.Equal(PaymentStatuses.Approved, result.Status);
+        Assert.Equal("PAY_SEARCH_1", result.MpPaymentId);
+        Assert.Equal("order-search-1", result.OrderId);
+        Assert.Equal(75m, result.Amount);
+        Assert.Equal("BRL", result.CurrencyId);
+        Assert.Equal("pix", result.Method);
     }
 
     [Fact]
@@ -220,6 +259,7 @@ public sealed class MercadoPagoServiceTests
                 BaseUrl = "https://api.mercadopago.com",
                 WebhookSecret = new string('s', 32)
             }),
+            Options.Create(new ApiOptions { BaseUrl = "https://dev.example.com" }),
             NullLogger<MercadoPagoService>.Instance);
 
     private sealed class CaptureHandler : HttpMessageHandler

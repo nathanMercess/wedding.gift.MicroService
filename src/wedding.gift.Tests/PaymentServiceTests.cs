@@ -88,7 +88,7 @@ public class PaymentServiceTests
         PaymentResponseDto first = await service.ProcessCardPaymentAsync(request, CancellationToken.None);
         PaymentResponseDto second = await service.ProcessCardPaymentAsync(request, CancellationToken.None);
 
-        Assert.Equal(PaymentStatuses.Error, first.Status);
+        Assert.Equal(PaymentStatuses.InProcess, first.Status);
         Assert.Equal(PaymentStatuses.Approved, second.Status);
         Assert.Equal(2, provider.CardCreateCount);
         Assert.Single(context.Payments);
@@ -947,6 +947,7 @@ public class PaymentServiceTests
         Assert.Equal(100m, item.Amount);
         Assert.Equal(35m, item.RefundedAmount);
         Assert.Equal(65m, item.RemainingAmount);
+        Assert.Equal(PaymentStatuses.PartiallyRefunded, item.Status);
     }
 
     [Fact]
@@ -1057,6 +1058,75 @@ public class PaymentServiceTests
         Assert.Equal(1, provider.PixCreateCount);
     }
 
+    [Theory]
+    [InlineData(0.01)]
+    [InlineData(9.99)]
+    [InlineData(10.999)]
+    public async Task ProcessPixPaymentAsync_DeveRejeitarValorForaDaRegraAntesDoProvider(double rawAmount)
+    {
+        AppDbContext context = CreateContext();
+        Gift gift = SeedGift(context);
+        FakeMercadoPago provider = new();
+        PaymentService service = CreateService(context, provider);
+
+        PaymentResponseDto result = await service.ProcessPixPaymentAsync(
+            Pix(gift.Id, Convert.ToDecimal(rawAmount)),
+            CancellationToken.None);
+
+        Assert.Equal(PaymentStatuses.Error, result.Status);
+        Assert.Equal(PaymentErrorCodes.ValidationError, result.ErrorCode);
+        Assert.Equal(0, provider.PixCreateCount);
+        Assert.Empty(context.Payments);
+    }
+
+    [Fact]
+    public async Task ReconcilePendingPaymentsAsync_DeveRecuperarProviderIdPelaReferenciaExterna()
+    {
+        AppDbContext context = CreateContext();
+        Gift gift = SeedGift(context);
+        Payment payment = Payment.CreatePix(
+            gift.Id,
+            gift.Name,
+            "Ana",
+            string.Empty,
+            "ana@test.com",
+            "CPF",
+            "12345678909",
+            Guid.NewGuid().ToString("D"),
+            100m,
+            PaymentStatuses.Pending,
+            null,
+            null,
+            null,
+            string.Empty,
+            null);
+        context.Payments.Add(payment);
+        await context.SaveChangesAsync();
+        context.Entry(payment).Property(x => x.UpdatedAt).CurrentValue = DateTime.UtcNow.AddMinutes(-1);
+        await context.SaveChangesAsync();
+        FakeMercadoPago provider = new()
+        {
+            ExternalReferenceResult = new PaymentResponseDto
+            {
+                Status = PaymentStatuses.Approved,
+                MpPaymentId = "PAY_EXTERNAL_REFERENCE",
+                Amount = 100m,
+                CurrencyId = "BRL",
+                Method = "pix"
+            }
+        };
+        PaymentService service = CreateService(context, provider);
+
+        await service.ReconcilePendingPaymentsAsync(CancellationToken.None);
+
+        Payment reconciled = Assert.Single(context.Payments);
+        Assert.Equal("PAY_EXTERNAL_REFERENCE", reconciled.MpPaymentId);
+        Assert.Equal(PaymentStatuses.Approved, reconciled.Status);
+        Assert.True(reconciled.ContributionCreated);
+        Assert.Equal(1, provider.ExternalReferenceRequestCount);
+        Assert.Single(context.Contributions);
+    }
+
     private static PaymentService CreateService(
         AppDbContext context,
         IMercadoPagoService mp,
@@ -1158,6 +1228,7 @@ public class PaymentServiceTests
         public PaymentResponseDto PixResult = new() { Status = "pending", MpOrderId = "mp" };
         public PaymentResponseDto StatusResult = new() { Status = "approved", MpOrderId = "mp" };
         public PaymentResponseDto RefundResult = new() { Status = "refunded", MpOrderId = "mp" };
+        public PaymentResponseDto ExternalReferenceResult = new() { Status = PaymentStatuses.Error, ErrorCode = PaymentErrorCodes.OrderNotFound };
         public Func<int, PaymentResponseDto>? CardResultFactory;
         public Func<int, Task<PaymentResponseDto>>? CardResultAsyncFactory;
         public CardPaymentRequestDto LastCardRequest = null!;
@@ -1166,6 +1237,7 @@ public class PaymentServiceTests
         public int PixCreateCount;
         public int StatusRequestCount;
         public int RefundCount;
+        public int ExternalReferenceRequestCount;
         public decimal? LastRefundAmount;
         public List<string> RefundIdempotencyKeys = [];
 
@@ -1198,6 +1270,13 @@ public class PaymentServiceTests
                 CompleteProviderData(StatusResult, LastPixRequest.Amount, "pix");
 
             return Task.FromResult(StatusResult);
+        }
+
+        public Task<PaymentResponseDto> GetPaymentByExternalReferenceAsync(string externalReference, CancellationToken cancellationToken)
+        {
+            ExternalReferenceRequestCount++;
+            ExternalReferenceResult.OrderId ??= externalReference;
+            return Task.FromResult(ExternalReferenceResult);
         }
 
         public Task<PaymentResponseDto> GetChargebackAsync(string chargebackId, CancellationToken cancellationToken)

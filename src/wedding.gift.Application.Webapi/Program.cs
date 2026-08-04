@@ -218,6 +218,7 @@ await EnsureBootstrapAdminAsync(app.Services, builder.Configuration);
 app.UseForwardedHeaders();
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseGlobalExceptionHandler();
+app.UseMiddleware<SensitiveResponseCacheMiddleware>();
 app.UseMiddleware<ApiResponseMiddleware>();
 app.UseMiddleware<CacheInvalidationMiddleware>();
 app.UseCors("AllowedOrigins");
@@ -232,6 +233,8 @@ app.UseMiddleware<ApiRequestLoggingMiddleware>();
 app.UseAuthorization();
 app.MapHealthChecks("/health/live", new() { Predicate = registration => registration.Tags.Contains("live") });
 app.MapHealthChecks("/health/ready", new() { Predicate = registration => registration.Tags.Contains("ready") });
+app.MapHealthChecks("/api/health/live", new() { Predicate = registration => registration.Tags.Contains("live") });
+app.MapHealthChecks("/api/health/ready", new() { Predicate = registration => registration.Tags.Contains("ready") });
 app.MapControllers();
 
 app.Run();

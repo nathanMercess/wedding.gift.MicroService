@@ -48,6 +48,23 @@ public sealed class EmailOutboxMessageMapping : IEntityTypeConfiguration<EmailOu
     }
 }
 
+public sealed class WebhookInboxMessageMapping : IEntityTypeConfiguration<WebhookInboxMessage>
+{
+    public void Configure(EntityTypeBuilder<WebhookInboxMessage> builder)
+    {
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Provider).IsRequired().HasMaxLength(50);
+        builder.Property(x => x.EventKey).IsRequired().HasMaxLength(200);
+        builder.Property(x => x.EventType).IsRequired().HasMaxLength(80);
+        builder.Property(x => x.ResourceId).IsRequired().HasMaxLength(100);
+        builder.Property(x => x.Status).IsRequired().HasMaxLength(20);
+        builder.Property(x => x.CorrelationId).IsRequired(false).HasMaxLength(100);
+        builder.Property(x => x.LastError).IsRequired(false).HasMaxLength(500);
+        builder.HasIndex(x => x.EventKey).IsUnique();
+        builder.HasIndex(x => new { x.Status, x.UpdatedAtUtc });
+    }
+}
+
 public sealed class AuditLogMapping : IEntityTypeConfiguration<AuditLog>
 {
     public void Configure(EntityTypeBuilder<AuditLog> builder)

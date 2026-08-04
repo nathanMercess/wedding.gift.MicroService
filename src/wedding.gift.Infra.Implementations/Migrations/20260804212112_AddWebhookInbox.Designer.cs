@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using wedding.gift.Infra.Implementations.DataContext;
 
@@ -11,9 +12,11 @@ using wedding.gift.Infra.Implementations.DataContext;
 namespace wedding.gift.Infra.Implementations.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260804212112_AddWebhookInbox")]
+    partial class AddWebhookInbox
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1076,18 +1079,6 @@ namespace wedding.gift.Infra.Implementations.Migrations
                         .WithMany()
                         .HasForeignKey("ContributionId")
                         .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("wedding.gift.Domain.Model.Entities.Couple", null)
-                        .WithMany()
-                        .HasForeignKey("CoupleId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("wedding.gift.Domain.Model.Entities.Gift", null)
-                        .WithMany()
-                        .HasForeignKey("GiftId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
 
                     b.Navigation("Contribution");
                 });

@@ -18,6 +18,7 @@ public static class DependencyInjectionExtensions
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IPaymentService, PaymentService>();
         services.AddScoped<IOrderLookupService, OrderLookupService>();
+        services.AddScoped<IWebhookInboxService, WebhookInboxService>();
         services.AddScoped<ICoupleOverviewService, CoupleOverviewService>();
         services.AddScoped<IGuestService, GuestService>();
         services.AddTransient<IEmailService, EmailService>();

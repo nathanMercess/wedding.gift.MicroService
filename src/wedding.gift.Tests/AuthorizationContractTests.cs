@@ -9,34 +9,22 @@ namespace wedding.gift.Tests;
 
 public sealed class AuthorizationContractTests
 {
-    public static TheoryData<Type> MemberOperationalControllers => new()
+    public static TheoryData<Type> AdministrativeControllers => new()
     {
         typeof(AdminCoupleController),
         typeof(AdminGiftsController),
         typeof(AdminOverviewController),
-        typeof(AdminUploadsController)
-    };
-
-    public static TheoryData<Type> MemberRestrictedControllers => new()
-    {
+        typeof(AdminUploadsController),
+        typeof(AdminGuestsController),
         typeof(AdminContributionsController),
-        typeof(AdminPaymentsController)
+        typeof(AdminPaymentsController),
+        typeof(AdminDashboardController),
+        typeof(AdminUsersController)
     };
 
     [Theory]
-    [MemberData(nameof(MemberOperationalControllers))]
-    public void OperationalControllerShouldAllowMember(Type controllerType)
-    {
-        AuthorizeAttribute? authorize = controllerType.GetCustomAttributes<AuthorizeAttribute>(false)
-            .SingleOrDefault(attribute => !string.IsNullOrWhiteSpace(attribute.Roles));
-
-        Assert.NotNull(authorize);
-        Assert.Contains(UserRoles.Member, authorize.Roles?.Split(',') ?? []);
-    }
-
-    [Theory]
-    [MemberData(nameof(MemberRestrictedControllers))]
-    public void RestrictedControllerShouldNotAllowMember(Type controllerType)
+    [MemberData(nameof(AdministrativeControllers))]
+    public void AdministrativeControllerShouldNotAllowMember(Type controllerType)
     {
         AuthorizeAttribute? authorize = controllerType.GetCustomAttributes<AuthorizeAttribute>(false)
             .SingleOrDefault(attribute => !string.IsNullOrWhiteSpace(attribute.Roles));

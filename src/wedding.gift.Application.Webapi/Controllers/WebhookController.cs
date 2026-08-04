@@ -25,7 +25,8 @@ public sealed class WebhookController(
     IPaymentService payments,
     IOptions<MercadoPagoOptions> mercadoPagoOptions,
     IWebHostEnvironment env,
-    ILogger<WebhookController> logger) : ApiControllerBase
+    ILogger<WebhookController> logger,
+    IWebhookInboxService? webhookInbox = null) : ApiControllerBase
 {
     [HttpPost("mercadopago")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -38,16 +39,19 @@ public sealed class WebhookController(
         [FromQuery] string? topic,
         CancellationToken cancellationToken)
     {
-        (string? bodyId, string? bodyType) = await ReadNotificationMetadataAsync(Request, cancellationToken);
+        (string? bodyId, string? bodyEventId, string? bodyType) = await ReadNotificationMetadataAsync(Request, cancellationToken);
         string? notificationId = FirstNotEmpty(dataId, id, bodyId);
         string? notificationType = FirstNotEmpty(type, topic, bodyType);
+        string requestId = Request.Headers.TryGetValue("x-request-id", out StringValues requestIdHeader)
+            ? requestIdHeader.ToString()
+            : string.Empty;
 
         logger.LogInformation(
             "Webhook Mercado Pago recebido. Path={Path}, Type={Type}, DataId={DataId}, RequestId={RequestId}.",
             Request.Path,
             notificationType,
             notificationId,
-            Request.Headers.TryGetValue("x-request-id", out StringValues requestIdHeader) ? requestIdHeader.ToString() : "-");
+            string.IsNullOrWhiteSpace(requestId) ? "-" : requestId);
 
         if (!HasMercadoPagoSignatureHeaders(Request) &&
             await IsMercadoPagoPanelValidationRequestAsync(Request, cancellationToken))
@@ -68,6 +72,19 @@ public sealed class WebhookController(
         if (string.IsNullOrWhiteSpace(notificationId))
         {
             logger.LogWarning("Webhook Mercado Pago recebido sem identificador. Type={Type}.", notificationType);
+            return Ok();
+        }
+
+        string inboxEventKey = BuildInboxEventKey(bodyEventId, requestId, notificationType, notificationId);
+        if (webhookInbox is not null &&
+            !await webhookInbox.TryBeginAsync(
+                inboxEventKey,
+                notificationType ?? "unknown",
+                notificationId,
+                HttpContext.TraceIdentifier,
+                cancellationToken))
+        {
+            logger.LogInformation("Webhook Mercado Pago duplicado ignorado. EventKey={EventKey}.", inboxEventKey);
             return Ok();
         }
 
@@ -94,6 +111,8 @@ public sealed class WebhookController(
                         notificationId,
                         chargeback.ErrorCode,
                         chargeback.Message);
+                    if (webhookInbox is not null)
+                        await webhookInbox.MarkFailedAsync(inboxEventKey, chargeback.ErrorCode ?? "chargeback_lookup_failed", CancellationToken.None);
                     return StatusCode(StatusCodes.Status502BadGateway);
                 }
             }
@@ -108,6 +127,8 @@ public sealed class WebhookController(
                     notificationId,
                     status.ErrorCode,
                     status.Message);
+                if (webhookInbox is not null)
+                    await webhookInbox.MarkFailedAsync(inboxEventKey, status.ErrorCode ?? "payment_lookup_failed", CancellationToken.None);
                 return StatusCode(StatusCodes.Status502BadGateway);
             }
 
@@ -136,8 +157,19 @@ public sealed class WebhookController(
                                                  !Request.HttpContext.RequestAborted.IsCancellationRequested)
         {
             logger.LogWarning("Webhook Mercado Pago excedeu o tempo de processamento. DataId={DataId}.", notificationId);
+            if (webhookInbox is not null)
+                await webhookInbox.MarkFailedAsync(inboxEventKey, "processing_timeout", CancellationToken.None);
             return StatusCode(StatusCodes.Status502BadGateway);
         }
+        catch (Exception ex)
+        {
+            if (webhookInbox is not null)
+                await webhookInbox.MarkFailedAsync(inboxEventKey, ex.GetType().Name, CancellationToken.None);
+            throw;
+        }
+
+        if (webhookInbox is not null)
+            await webhookInbox.MarkProcessedAsync(inboxEventKey, cancellationToken);
 
         return Ok();
     }
@@ -145,7 +177,7 @@ public sealed class WebhookController(
     private static bool HasMercadoPagoSignatureHeaders(HttpRequest request)
         => request.Headers.ContainsKey("x-signature") && request.Headers.ContainsKey("x-request-id");
 
-    private static async Task<(string? Id, string? Type)> ReadNotificationMetadataAsync(
+    private static async Task<(string? DataId, string? EventId, string? Type)> ReadNotificationMetadataAsync(
         HttpRequest request,
         CancellationToken cancellationToken)
     {
@@ -158,15 +190,16 @@ public sealed class WebhookController(
             {
                 JsonElement root = document.RootElement;
                 string? type = TryGetValueAsString(root, "type");
+                string? eventId = TryGetValueAsString(root, "id");
                 string? id = root.TryGetProperty("data", out JsonElement data)
                     ? TryGetValueAsString(data, "id")
                     : null;
-                return (id, type);
+                return (id, eventId, type);
             }
         }
         catch (JsonException)
         {
-            return (null, null);
+            return (null, null, null);
         }
         finally
         {
@@ -238,6 +271,17 @@ public sealed class WebhookController(
 
     private static string? FirstNotEmpty(params string?[] values)
         => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+    private static string BuildInboxEventKey(
+        string? eventId,
+        string requestId,
+        string? notificationType,
+        string notificationId)
+        => string.Join(
+            ':',
+            "mercadopago",
+            notificationType?.Trim().ToLowerInvariant() ?? "unknown",
+            FirstNotEmpty(eventId, requestId, notificationId)!.Trim());
 
     private bool ValidateMercadoPagoSignature(HttpRequest request, string? dataId)
     {

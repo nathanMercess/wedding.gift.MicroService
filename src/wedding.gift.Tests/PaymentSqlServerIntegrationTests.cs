@@ -31,6 +31,7 @@ public sealed class PaymentSqlServerIntegrationTests
         try
         {
             await context.Database.EnsureCreatedAsync();
+            context.Couples.Add(Couple.Create());
             Gift gift = Gift.Create("Presente SQL", string.Empty, 100m, 100m, string.Empty, string.Empty, true);
             context.Gifts.Add(gift);
             await context.SaveChangesAsync();
@@ -82,6 +83,7 @@ public sealed class PaymentSqlServerIntegrationTests
         await using (AppDbContext setupContext = new(options))
         {
             await setupContext.Database.EnsureCreatedAsync();
+            setupContext.Couples.Add(Couple.Create());
             Gift gift = Gift.Create("Presente SQL", string.Empty, 100m, 100m, string.Empty, string.Empty, true);
             setupContext.Gifts.Add(gift);
             await setupContext.SaveChangesAsync();
@@ -148,6 +150,7 @@ public sealed class PaymentSqlServerIntegrationTests
         await using (AppDbContext setupContext = new(options))
         {
             await setupContext.Database.EnsureCreatedAsync();
+            setupContext.Couples.Add(Couple.Create());
             Gift gift = Gift.Create("Presente SQL", string.Empty, 200m, 200m, string.Empty, string.Empty, true);
             setupContext.Gifts.Add(gift);
             setupContext.Payments.AddRange(
@@ -243,6 +246,9 @@ public sealed class PaymentSqlServerIntegrationTests
                 });
             }
         }
+
+        public Task<PaymentResponseDto> GetPaymentByExternalReferenceAsync(string externalReference, CancellationToken cancellationToken)
+            => Task.FromResult(new PaymentResponseDto { Status = PaymentStatuses.Error, ErrorCode = PaymentErrorCodes.OrderNotFound });
 
         public Task<PaymentResponseDto> GetChargebackAsync(string chargebackId, CancellationToken cancellationToken)
             => Task.FromResult(new PaymentResponseDto { Status = PaymentStatuses.Error });

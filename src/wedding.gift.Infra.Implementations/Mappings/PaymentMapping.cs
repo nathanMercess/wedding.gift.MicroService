@@ -43,6 +43,16 @@ public sealed class PaymentMapping : IEntityTypeConfiguration<Payment>
             .HasForeignKey(x => x.ContributionId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        builder.HasOne<Gift>()
+            .WithMany()
+            .HasForeignKey(x => x.GiftId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne<Couple>()
+            .WithMany()
+            .HasForeignKey(x => x.CoupleId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasIndex(x => x.GiftId);
         builder.HasIndex(x => x.OrderId).IsUnique();
         builder.HasIndex(x => x.Nsu);

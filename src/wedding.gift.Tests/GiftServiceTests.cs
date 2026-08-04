@@ -383,7 +383,6 @@ public class GiftServiceTests
             new ContributionRepository(context),
             new PaymentRepository(context),
             new CoupleRepository(context),
-            cache,
             new ApplicationCacheService(cache));
     }
 
