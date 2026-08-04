@@ -377,6 +377,12 @@ public class GiftServiceTests
 
     private static GiftService CreateService(AppDbContext context)
     {
+        if (!context.Couples.Any())
+        {
+            context.Couples.Add(Couple.Create());
+            context.SaveChanges();
+        }
+
         IMemoryCache cache = new MemoryCache(new MemoryCacheOptions());
         return new(
             new GiftRepository(context),

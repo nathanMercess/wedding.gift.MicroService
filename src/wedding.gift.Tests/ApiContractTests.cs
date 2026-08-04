@@ -5,9 +5,11 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using wedding.gift.Domain.Model.Entities;
 using wedding.gift.Infra.Implementations.DataContext;
 using Xunit;
 
@@ -110,8 +112,26 @@ public sealed class ApiContractTests : IClassFixture<ApiContractTests.ApiFactory
                 services.RemoveAll<IDbContextOptionsConfiguration<AppDbContext>>();
                 services.RemoveAll<AppDbContext>();
                 services.AddDbContext<AppDbContext>(options =>
-                    options.UseInMemoryDatabase($"api-tests-{Guid.NewGuid()}"));
+                    options.UseInMemoryDatabase($"api-tests-{Guid.Parse("1107B70C-C715-4672-9D51-73DB9ED8D4FB")}"));
             });
+        }
+
+        protected override IHost CreateHost(IHostBuilder builder)
+        {
+            IHost host = base.CreateHost(builder);
+
+            using IServiceScope scope = host.Services.CreateScope();
+
+            AppDbContext context =
+                scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+            if (!context.Couples.Any())
+            {
+                context.Couples.Add(Couple.Create());
+                context.SaveChanges();
+            }
+
+            return host;
         }
     }
 }

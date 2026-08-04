@@ -22,9 +22,6 @@ public sealed class GiftService(
     {
         Couple couple = await coupleRepository.GetAsync(false, cancellationToken);
 
-        if (couple is null)
-            throw new NotFoundException(ErrorCodes.NOT_FOUND);
-
         SiteSettingsDto settings = SiteSettingsExtensions.Normalize(couple?.SiteSettingsJson);
         
         bool allowsUnlimitedPurchases = GiftDisplayModes.AllowsUnlimitedPurchases(couple?.GiftDisplayMode);
