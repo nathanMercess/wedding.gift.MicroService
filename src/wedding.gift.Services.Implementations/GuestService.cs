@@ -107,9 +107,11 @@ public sealed class GuestService(
             .Take(queryDto.PageSize)
             .ToListAsync(cancellationToken);
         Guid[] invitationIds = invitations.Select(x => x.Id).ToArray();
-        Dictionary<Guid, ConfirmedGuest> confirmationsByInvitation = (await confirmedGuests
-                .Where(x => x.GuestInvitationId.HasValue && invitationIds.Contains(x.GuestInvitationId.Value))
+        Dictionary<Guid, ConfirmedGuest> confirmationsByInvitation = (await guestRepository.QueryConfirmations()
+                .Where(x => x.CoupleId == coupleId && x.Guests.Any(g => g.GuestInvitationId.HasValue && invitationIds.Contains(g.GuestInvitationId.Value)))
                 .ToListAsync(cancellationToken))
+            .SelectMany(x => x.Guests)
+            .Where(x => x.GuestInvitationId.HasValue && invitationIds.Contains(x.GuestInvitationId.Value))
             .ToDictionary(x => x.GuestInvitationId!.Value);
 
         return new PagedResult<GuestInvitationResponseDto>
@@ -139,8 +141,7 @@ public sealed class GuestService(
     {
         Guid coupleId = GetCoupleId();
         GuestInvitation invitation = await GetInvitationAsync(id, coupleId, cancellationToken);
-        ConfirmedGuest? confirmedGuest = await guestRepository.QueryConfirmedGuests()
-            .FirstOrDefaultAsync(x => x.GuestInvitationId == id, cancellationToken);
+        ConfirmedGuest? confirmedGuest = await GetConfirmedGuestByInvitationAsync(id, coupleId, cancellationToken);
         return invitation.ToResponseDto(confirmedGuest);
     }
 
@@ -155,8 +156,7 @@ public sealed class GuestService(
         invitation.Update(name, normalizedName);
         await AddAuditAsync("GuestInvitationUpdated", "GuestInvitation", id, coupleId, cancellationToken);
         await SaveAsync(ErrorCodes.GUEST_INVITATION_ALREADY_EXISTS, cancellationToken);
-        ConfirmedGuest? confirmedGuest = await guestRepository.QueryConfirmedGuests()
-            .FirstOrDefaultAsync(x => x.GuestInvitationId == id, cancellationToken);
+        ConfirmedGuest? confirmedGuest = await GetConfirmedGuestByInvitationAsync(id, coupleId, cancellationToken);
         return invitation.ToResponseDto(confirmedGuest);
     }
 
@@ -167,8 +167,7 @@ public sealed class GuestService(
         invitation.SetActive(isActive);
         await AddAuditAsync("GuestInvitationActiveChanged", "GuestInvitation", id, coupleId, cancellationToken);
         await guestRepository.SaveChangesAsync(cancellationToken);
-        ConfirmedGuest? confirmedGuest = await guestRepository.QueryConfirmedGuests()
-            .FirstOrDefaultAsync(x => x.GuestInvitationId == id, cancellationToken);
+        ConfirmedGuest? confirmedGuest = await GetConfirmedGuestByInvitationAsync(id, coupleId, cancellationToken);
         return invitation.ToResponseDto(confirmedGuest);
     }
 
@@ -433,6 +432,13 @@ public sealed class GuestService(
             throw new NotFoundException(ErrorCodes.GUEST_INVITATION_NOT_FOUND);
 
         return invitation;
+    }
+
+    private async Task<ConfirmedGuest?> GetConfirmedGuestByInvitationAsync(Guid invitationId, Guid coupleId, CancellationToken cancellationToken)
+    {
+        GuestConfirmation? confirmation = await guestRepository.QueryConfirmations()
+            .FirstOrDefaultAsync(x => x.CoupleId == coupleId && x.Guests.Any(g => g.GuestInvitationId == invitationId), cancellationToken);
+        return confirmation?.Guests.FirstOrDefault(x => x.GuestInvitationId == invitationId);
     }
 
     private async Task<GuestConfirmation> GetConfirmationAsync(Guid id, Guid coupleId, CancellationToken cancellationToken)

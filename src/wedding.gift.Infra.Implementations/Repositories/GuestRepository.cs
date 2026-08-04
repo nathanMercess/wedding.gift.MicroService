@@ -20,8 +20,7 @@ public sealed class GuestRepository(AppDbContext context) : IGuestRepository
         => context.ConfirmedGuests
             .AsNoTracking()
             .Include(x => x.GuestInvitation)
-            .Include(x => x.GuestConfirmation)
-            .ThenInclude(x => x.Guests);
+            .Include(x => x.GuestConfirmation);
 
     public async Task<GuestInvitation?> GetInvitationByIdAsync(Guid id, CancellationToken cancellationToken)
         => await context.GuestInvitations.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);

@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using System.Text;
 using wedding.gift.Crosscutting.Constants;
@@ -191,6 +192,28 @@ public sealed class GuestServiceTests
     }
 
     [Fact]
+    public async Task GetInvitationsAsync_ShouldLoadConfirmationPartyWithRelationalProvider()
+    {
+        await using SqliteConnection connection = new("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using AppDbContext context = new(new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options);
+        await CreateGuestTablesAsync(context);
+        GuestInvitation invitation = SeedInvitation(context, "Mariana Silva");
+        GuestService service = CreateService(context);
+        await service.CreateConfirmationAsync(new GuestConfirmationCreateDto
+        {
+            Guests = [Guest(invitation.Id, invitation.Name, true), Guest(null, "João Silva")]
+        }, CancellationToken.None);
+
+        PagedResult<GuestInvitationResponseDto> result = await service.GetInvitationsAsync(new GuestInvitationQueryDto(), CancellationToken.None);
+
+        GuestInvitationResponseDto item = Assert.Single(result.Items);
+        Assert.True(item.IsConfirmed);
+        Assert.Equal("Mariana Silva", item.SubmittedByName);
+        Assert.Equal(2, item.PartySize);
+    }
+
+    [Fact]
     public async Task ExportConfirmationsCsvAsync_ShouldExportEveryGuestWithItsSource()
     {
         AppDbContext context = CreateContext();
@@ -257,6 +280,38 @@ public sealed class GuestServiceTests
         => new(new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options);
+
+    private static async Task CreateGuestTablesAsync(AppDbContext context)
+        => await context.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE "GuestInvitations" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_GuestInvitations" PRIMARY KEY,
+                "CoupleId" TEXT NOT NULL,
+                "Name" TEXT NOT NULL,
+                "NormalizedName" TEXT NOT NULL,
+                "IsActive" INTEGER NOT NULL,
+                "CreatedAtUtc" TEXT NOT NULL,
+                "UpdatedAtUtc" TEXT NOT NULL
+            );
+            CREATE TABLE "GuestConfirmations" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_GuestConfirmations" PRIMARY KEY,
+                "CoupleId" TEXT NOT NULL,
+                "ConfirmedAtUtc" TEXT NOT NULL,
+                "UpdatedAtUtc" TEXT NOT NULL
+            );
+            CREATE TABLE "ConfirmedGuests" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_ConfirmedGuests" PRIMARY KEY,
+                "GuestConfirmationId" TEXT NOT NULL,
+                "GuestInvitationId" TEXT NULL,
+                "Name" TEXT NOT NULL,
+                "NormalizedName" TEXT NOT NULL,
+                "Source" TEXT NOT NULL,
+                "IsSubmitter" INTEGER NOT NULL,
+                "CreatedAtUtc" TEXT NOT NULL,
+                CONSTRAINT "FK_ConfirmedGuests_GuestConfirmations_GuestConfirmationId" FOREIGN KEY ("GuestConfirmationId") REFERENCES "GuestConfirmations" ("Id") ON DELETE CASCADE,
+                CONSTRAINT "FK_ConfirmedGuests_GuestInvitations_GuestInvitationId" FOREIGN KEY ("GuestInvitationId") REFERENCES "GuestInvitations" ("Id") ON DELETE RESTRICT
+            );
+            CREATE UNIQUE INDEX "IX_ConfirmedGuests_GuestInvitationId" ON "ConfirmedGuests" ("GuestInvitationId") WHERE "GuestInvitationId" IS NOT NULL;
+            """);
 
     private static GuestService CreateService(
         AppDbContext context,
